@@ -8,7 +8,10 @@ authors = [
     { name = "Habib Farr", email = "Habib.Farr@thomsonreuters.com" },
     { name = "Habib Farr", email = "habib.farr@pm.me" },
 ]
-requires-python = ">=3.11"
+# `uvloop` is pulled in transitively via `litellm[proxy]` and has no cp314 wheel
+# at time of writing; building from source fails on macOS. Lift the upper bound
+# once uvloop ships 3.14 wheels. See https://github.com/thomsonreuters/claude-forge/issues/1
+requires-python = ">=3.11,<3.14"
 classifiers = [
     "Development Status :: 4 - Beta",
     "License :: OSI Approved :: Apache Software License",
@@ -35,10 +38,13 @@ dependencies = [
     "pyyaml>=6.0.0",
     "ruamel.yaml>=0.18.0",
     "packaging>=21.0",
-    # Proxy dependencies (previously optional, now core)
-    "fastapi[standard]>=0.115.11",
+    # Proxy dependencies (previously optional, now core).
+    # Plain `fastapi` (no `[standard]` extras): Forge uses none of websockets/
+    # uvloop/httptools/multipart/jinja2. `watchfiles` is declared explicitly
+    # because Forge owns `--reload` (`forge proxy server --reload`).
+    "fastapi>=0.115.11",
     "uvicorn>=0.31.1",
-    "tiktoken>=0.11.0",
+    "watchfiles>=0.20",
     "litellm[proxy]>=1.83.0",
 ]
 

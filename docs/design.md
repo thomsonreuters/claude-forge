@@ -9,11 +9,8 @@
 
 ## 1. Philosophy: The "Glue" Approach
 
-Forge is **not** a monolith. It is the **connective tissue** between specialized tools.
-
-- **Old vision**: A complex framework with custom databases, deep hooks, and reinvented session management.
-- **Current vision**: A monorepo of proven tools sharing common libraries (Auth, Models, State) and a unified interface
-  (`forge` CLI).
+Forge is **not** a monolith. It is the **connective tissue** between specialized tools -- a monorepo of proven tools
+sharing common libraries (Auth, Models, State) under a unified interface (`forge` CLI).
 
 ## 2. Core components (the "pieces")
 

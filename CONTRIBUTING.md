@@ -4,6 +4,8 @@ Thanks for your interest in contributing to Claude Forge!
 
 ## Quick Start
 
+**Prerequisites:** Python 3.11–3.13 and [uv](https://docs.astral.sh/uv/).
+
 ```bash
 git clone <repo-url>
 cd claude-forge

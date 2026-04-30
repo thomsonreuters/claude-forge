@@ -73,5 +73,6 @@ repos:
     - id: mdformat
       additional_dependencies:
         - mdformat-gfm                   # GitHub-Flavored Markdown support - see https://github.github.com/gfm
+        - mdformat-gfm-alerts            # GitHub admonitions ([!WARNING], [!NOTE], etc.)
         - mdformat-simple-breaks         # thematic breaks using three dashes instead of 70 underscores
         - mdformat-frontmatter           # support for YAML front matter in Markdown files

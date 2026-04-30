@@ -1,5 +1,13 @@
 # Claude Forge
 
+[![PyPI](https://img.shields.io/pypi/v/tr-claude-forge.svg)](https://pypi.org/project/tr-claude-forge/)
+[![Python](https://img.shields.io/pypi/pyversions/tr-claude-forge.svg)](https://pypi.org/project/tr-claude-forge/)
+[![License](https://img.shields.io/pypi/l/tr-claude-forge.svg)](LICENSE)
+
+> [!WARNING]
+> **Research Preview** -- Forge is under active development. APIs, commands, and file formats may change without notice
+> between releases. Not recommended for production use.
+
 **The missing connective tissue for [Claude Code](https://claude.ai/code).**
 
 Forge is a CLI that wraps Claude Code, adding persistent sessions, multi-model routing, and autonomous verification. You
@@ -69,7 +77,6 @@ tracking, hooks, and all Forge features except multi-model routing. Use `--proxy
 
 - **Platform**: macOS or Linux
 - **Python**: 3.11–3.13 (3.14 blocked on upstream `uvloop` wheels — see #1)
-- **[uv](https://docs.astral.sh/uv/)**
 - **Claude Code**: installed and on PATH
 - **API key**: at least one provider key (e.g., `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`)
 

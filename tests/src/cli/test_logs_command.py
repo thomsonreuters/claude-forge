@@ -108,7 +108,7 @@ def test_logs_shows_file_counts(tmp_path, monkeypatch):
 
     logs_dir = get_forge_home() / "logs" / "hooks"
     logs_dir.mkdir(parents=True)
-    (logs_dir / "policy-check.1234.log").write_text("x" * 1024)
+    (logs_dir / "policy-check.99999999.log").write_text("x" * 1024)
 
     runner = CliRunner()
     result = runner.invoke(main, ["logs"])
@@ -151,8 +151,8 @@ def test_logs_clean_removes_files(tmp_path, monkeypatch):
 
     logs_dir = get_forge_home() / "logs" / "hooks"
     logs_dir.mkdir(parents=True)
-    (logs_dir / "policy-check.1234.log").write_text("test")
-    (logs_dir / "session-start.5678.log").write_text("test")
+    (logs_dir / "policy-check.99999998.log").write_text("test")
+    (logs_dir / "session-start.99999999.log").write_text("test")
 
     runner = CliRunner()
     result = runner.invoke(main, ["logs", "--clean"])

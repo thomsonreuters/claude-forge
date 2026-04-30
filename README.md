@@ -187,4 +187,4 @@ pip uninstall tr-claude-forge
 
 ## License
 
-Apache 2.0 -- see [LICENSE](LICENSE.md).
+Apache 2.0 -- see [LICENSE](LICENSE).

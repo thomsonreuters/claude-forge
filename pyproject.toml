@@ -1,6 +1,6 @@
 [project]
 name = "tr-claude-forge"
-version = "0.1.0"
+version = "0.1.1"
 description = "Developer toolkit for Claude Code: multi-model proxy routing, session management, policy engine, and skills architecture"
 readme = "README.md"
 license = "Apache-2.0"

@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/tr-claude-forge.svg)](https://pypi.org/project/tr-claude-forge/)
 [![Python](https://img.shields.io/pypi/pyversions/tr-claude-forge.svg)](https://pypi.org/project/tr-claude-forge/)
-[![License](https://img.shields.io/pypi/l/tr-claude-forge.svg)](LICENSE.md)
+[![License](https://img.shields.io/pypi/l/tr-claude-forge.svg)](LICENSE)
 
 > [!WARNING]
 > **Research Preview** -- Forge is under active development. APIs, commands, and file formats may change without

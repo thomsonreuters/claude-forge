@@ -1,5 +1,9 @@
 # Claude Forge
 
+> [!WARNING]
+> **Research Preview** -- Forge is under active development. APIs, commands, and file formats may change without
+> notice between releases. Not recommended for production use.
+
 **The missing connective tissue for [Claude Code](https://claude.ai/code).**
 
 Forge is a CLI that wraps Claude Code, adding persistent sessions, multi-model routing, and autonomous verification. You

@@ -45,4 +45,4 @@ The full developer guide lives in [`docs/developer/`](docs/developer/):
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [Apache 2.0 License](LICENSE.md).
+By contributing, you agree that your contributions will be licensed under the [Apache 2.0 License](LICENSE).

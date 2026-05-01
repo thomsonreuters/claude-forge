@@ -140,7 +140,7 @@ COPY tests ./tests
 COPY docs ./docs
 COPY scripts ./scripts
 COPY docker ./docker
-COPY CLAUDE.md CONTRIBUTING.md LICENSE.md Makefile ./
+COPY CLAUDE.md CONTRIBUTING.md LICENSE Makefile ./
 
 # =============================================================================
 # Final stage: Select based on INSTALL_METHOD

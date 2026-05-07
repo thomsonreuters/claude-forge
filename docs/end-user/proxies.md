@@ -37,16 +37,17 @@ require a proxy instance.
 
 Forge provides ready-to-use proxy configurations (internal templates):
 
-| Template                     | Use case                                   |
-| ---------------------------- | ------------------------------------------ |
-| `litellm-anthropic`          | Anthropic models via remote/shared LiteLLM |
-| `litellm-anthropic-local`    | Local LiteLLM + Anthropic API key          |
-| `litellm-openai`             | OpenAI models via remote/shared LiteLLM    |
-| `litellm-gemini`             | Gemini models via remote/shared LiteLLM    |
-| `litellm-openai-local`       | Local LiteLLM + OpenAI API key             |
-| `litellm-openai-codex-local` | Local LiteLLM + OpenAI Codex models        |
-| `litellm-gemini-local`       | Local LiteLLM + Gemini API key             |
-| `litellm-gemini-flash-local` | Local LiteLLM + Gemini Flash (fast/cheap)  |
+| Template                     | Use case                                        |
+| ---------------------------- | ----------------------------------------------- |
+| `openrouter`                 | Multi-provider via OpenRouter (direct, no LiteLLM) |
+| `litellm-anthropic`          | Anthropic models via remote/shared LiteLLM      |
+| `litellm-anthropic-local`    | Local LiteLLM + Anthropic API key               |
+| `litellm-openai`             | OpenAI models via remote/shared LiteLLM         |
+| `litellm-gemini`             | Gemini models via remote/shared LiteLLM         |
+| `litellm-openai-local`       | Local LiteLLM + OpenAI API key                  |
+| `litellm-openai-codex-local` | Local LiteLLM + OpenAI Codex models             |
+| `litellm-gemini-local`       | Local LiteLLM + Gemini API key                  |
+| `litellm-gemini-flash-local` | Local LiteLLM + Gemini Flash (fast/cheap)       |
 
 `litellm-gemini-test` also exists internally, but it is hidden from normal end-user template lists.
 
@@ -86,6 +87,36 @@ forge proxy metrics --json       # Raw JSON output
 forge proxy clean                # Clean up stale proxies
 forge proxy validate <proxy_id>  # Validate config
 ```
+
+---
+
+## OpenRouter (direct, no LiteLLM)
+
+The `openrouter` template calls the OpenRouter API directly -- no LiteLLM subprocess needed.
+
+```bash
+# Store your key
+forge authentication login -p openrouter
+
+# Create and start
+forge proxy create openrouter
+
+# Launch Claude Code through OpenRouter
+forge claude start --proxy <proxy_id>
+```
+
+Default tiers use Anthropic Claude models on OpenRouter. Edit the proxy to use any OpenRouter model:
+
+```bash
+forge proxy edit <proxy_id>
+# Change tiers to e.g.:
+#   haiku: google/gemini-2.5-flash
+#   sonnet: anthropic/claude-sonnet-4.6
+#   opus: openai/gpt-5.5
+```
+
+Models not in Forge's catalog (e.g., `meta-llama/llama-3.1-70b`) work -- the proxy uses safe defaults for
+`max_output_tokens` and `context_window` when catalog data is unavailable.
 
 ---
 

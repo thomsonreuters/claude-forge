@@ -24,7 +24,10 @@ from forge.core.models import (
 logger = logging.getLogger(__name__)
 
 
-def _enforce_max_output_tokens_cap(model_name: str, requested: int | None) -> int:
+DEFAULT_MAX_OUTPUT_TOKENS = 16384
+
+
+def _enforce_max_output_tokens_cap(model_name: str, requested: int | None, *, strict: bool = True) -> int:
     """Enforce the catalog's max_output_tokens as a hard cap.
 
     The model catalog defines the maximum output tokens each model can produce.
@@ -33,15 +36,21 @@ def _enforce_max_output_tokens_cap(model_name: str, requested: int | None) -> in
     Args:
         model_name: Model ID (canonical or alias).
         requested: Requested max_tokens from config/env/request (or None for default).
+        strict: If True (default), raise on unknown models. If False, return
+                requested or a safe default for models not in the catalog
+                (used by OpenRouter where the model space is open).
 
     Returns:
         Effective max_tokens, capped to catalog limit.
 
     Raises:
-        ModelCatalogError: If model is unknown or requested exceeds catalog cap.
+        ModelCatalogError: If model is unknown (strict mode) or requested exceeds catalog cap.
     """
     if not model_exists(model_name):
-        raise ModelCatalogError(f"Model {model_name!r} not in catalog. Add it to core/data/model_catalog.yaml.")
+        if strict:
+            raise ModelCatalogError(f"Model {model_name!r} not in catalog. Add it to core/data/model_catalog.yaml.")
+        logger.debug(f"Model {model_name!r} not in catalog, using default max_output_tokens")
+        return requested if requested is not None else DEFAULT_MAX_OUTPUT_TOKENS
 
     catalog_cap = get_max_output_tokens(model_name)
 
@@ -357,10 +366,11 @@ class TierClientFactory:
         tier_upper = tier.upper()
         tier_override = provider_cfg.tier_overrides.get(tier)
 
-        # max_tokens: env > catalog cap
+        # max_tokens: env > catalog cap (lenient for OpenRouter's open model space)
         tier_max_tokens = os.getenv(f"{env_prefix}_{tier_upper}_MAX_TOKENS")
         requested_max_tokens = int(tier_max_tokens) if tier_max_tokens else None
-        max_tokens_override = _enforce_max_output_tokens_cap(model_name, requested_max_tokens)
+        catalog_strict = provider != ModelProvider.OPENROUTER
+        max_tokens_override = _enforce_max_output_tokens_cap(model_name, requested_max_tokens, strict=catalog_strict)
 
         # reasoning_effort: env > tier_override
         tier_reasoning: str | None

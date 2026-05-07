@@ -709,22 +709,26 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
         )
 
 
+DEFAULT_CONTEXT_WINDOW = 200000
+
+
 def get_context_window(model_name: str) -> int:
     """Get context window size for a model from the central catalog.
 
-    This function delegates to core.models which is the single source of truth
-    for model intrinsic properties. Unknown models will raise ModelCatalogError.
+    Falls back to a safe default for models not in the catalog (e.g.,
+    OpenRouter models outside Forge's known set).
 
     Args:
         model_name: Model ID (canonical or alias like 'openai/gpt-5.5')
 
     Returns:
         Context window size in tokens.
-
-    Raises:
-        ModelCatalogError: If the model is not in the catalog.
     """
-    from forge.core.models import get_context_window_tokens
+    from forge.core.models import get_context_window_tokens, model_exists
+
+    if not model_exists(model_name):
+        logger.debug(f"Model {model_name!r} not in catalog, using default context window")
+        return DEFAULT_CONTEXT_WINDOW
 
     return get_context_window_tokens(model_name)
 

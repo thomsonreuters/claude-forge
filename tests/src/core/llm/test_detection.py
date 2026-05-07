@@ -71,9 +71,9 @@ class TestIsImplemented:
     def test_deferred_providers_not_implemented(self):
         assert is_implemented("anthropic") is False
 
-    def test_openrouter_not_implemented_until_client_lands(self):
-        """OpenRouter is in ProviderType but not yet implemented (no client class)."""
-        assert is_implemented("openrouter") is False
+    def test_openrouter_implemented(self):
+        """OpenRouter has a client implementation."""
+        assert is_implemented("openrouter") is True
 
 
 class TestPrefixConstants:

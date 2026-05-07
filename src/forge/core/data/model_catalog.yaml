@@ -44,6 +44,10 @@ defaults:
     haiku: claude-haiku-4-5-20251001
     sonnet: claude-sonnet-4-6
     opus: claude-opus-4-6
+  openrouter:
+    haiku: claude-haiku-4-5-20251001
+    sonnet: claude-sonnet-4-6
+    opus: claude-opus-4-6
 
 # =============================================================================
 # MODELS - Canonical IDs are provider-agnostic

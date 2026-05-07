@@ -1,0 +1,18 @@
+# Template: openrouter
+# Multi-provider access via OpenRouter (direct, no LiteLLM)
+#
+# Requires OPENROUTER_API_KEY in .env (or environment).
+# Default tier mapping uses Anthropic Claude models on OpenRouter.
+# Edit tiers to use any OpenRouter model (openai/gpt-5.5, google/gemini-2.5-pro, etc.)
+
+proxy:
+  preferred_provider: openrouter
+  default_port: 8095
+
+  openrouter:
+    tiers:
+      haiku: anthropic/claude-haiku-4.5
+      sonnet: anthropic/claude-sonnet-4.6
+      opus: anthropic/claude-opus-4.6
+    base_url: "https://openrouter.ai/api/v1"
+    error_hints: true

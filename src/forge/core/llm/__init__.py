@@ -125,7 +125,16 @@ def get_client(
         else:
             raise NotImplementedError(f"Provider '{resolved_provider}' not yet implemented.")
 
-    # Create LiteLLM client (handles both remote and local)
+    if resolved_provider == "openrouter":
+        from .clients.openrouter import OpenRouterClient
+
+        return OpenRouterClient(
+            model=model,
+            provider=resolved_provider,
+            credentials=creds_manager,
+            default_hyperparams=default_hyperparams,
+        )
+
     return LiteLLMClient(
         model=model,
         provider=resolved_provider,

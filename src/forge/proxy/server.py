@@ -282,7 +282,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
         # Upstream LLM gateways may filter traffic by User-Agent; without this,
         # the proxy's OpenAI SDK default header could cause requests to be blocked.
         # Only inject for LiteLLM providers (other clients don't need it).
-        if provider_name in ("litellm_remote", "litellm_local"):
+        if provider_name in ("litellm_remote", "litellm_local", "openrouter"):
             incoming_user_agent = raw_request.headers.get("user-agent")
             if incoming_user_agent:
                 openai_request_dict["_user_agent"] = incoming_user_agent

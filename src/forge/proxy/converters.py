@@ -233,7 +233,7 @@ def convert_anthropic_to_openai(request: MessagesRequest, provider: str = "gemin
             system_text = "\n".join(text_parts) if text_parts else None
 
         if system_text:
-            if provider in ("openai", "litellm"):
+            if provider in ("openai", "litellm", "openrouter"):
                 # Auto-inject cache_control if configured and no explicit cache_control
                 if not system_cache_control and _model_supports_cache_control(request.model):
                     try:

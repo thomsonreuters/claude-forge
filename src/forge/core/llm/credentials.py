@@ -112,7 +112,7 @@ def _get_openrouter_base_url() -> str:
 
     Resolution order:
     1. Template/proxy config (config.proxy.openrouter.base_url)
-    2. OPENROUTER_BASE_URL environment variable
+    2. OPENROUTER_BASE_URL environment variable or credential file
     3. Default: https://openrouter.ai/api/v1
     """
     try:
@@ -125,10 +125,12 @@ def _get_openrouter_base_url() -> str:
     except (ImportError, AttributeError):
         pass
 
-    env_url = os.environ.get("OPENROUTER_BASE_URL")
-    if env_url:
-        logger.debug(f"Using OpenRouter base_url from OPENROUTER_BASE_URL: {env_url}")
-        return env_url
+    from forge.core.auth.template_secrets import resolve_env_or_credential
+
+    resolved = resolve_env_or_credential("OPENROUTER_BASE_URL")
+    if resolved:
+        logger.debug(f"Using OpenRouter base_url from env/credential file: {resolved}")
+        return resolved
 
     return OPENROUTER_DEFAULT_BASE_URL
 
@@ -336,7 +338,7 @@ class CredentialManager:
             "api_key": api_key,
             "base_url": base_url,
             "extra_headers": {
-                "HTTP-Referer": "https://github.com/anthropics/claude-forge",
+                "HTTP-Referer": "https://github.com/thomsonreuters/claude-forge",
                 "X-OpenRouter-Title": "Claude Forge",
             },
         }

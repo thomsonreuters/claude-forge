@@ -396,6 +396,26 @@ class TestProxyInstanceConfigValidation:
                 tiers=TierModels(haiku="h", sonnet="s", opus="o"),
             )
 
+    def test_openrouter_provider_accepted(self):
+        """OpenRouter should be a valid provider."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter",
+            template_digest="sha256:test",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8095",
+            port=8095,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(
+                haiku="anthropic/claude-haiku-4.5",
+                sonnet="anthropic/claude-sonnet-4.6",
+                opus="anthropic/claude-opus-4.6",
+            ),
+        )
+        assert config.provider == "openrouter"
+
     def test_invalid_port_too_low(self):
         """Port 0 should be rejected."""
         from forge.config.schema import ProxyInstanceConfig, TierModels

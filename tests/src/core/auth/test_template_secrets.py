@@ -25,6 +25,10 @@ class TestTemplateSecrets:
         assert "GEMINI_API_KEY" in TEMPLATE_SECRETS["litellm-gemini-local"]
         assert "OPENAI_API_KEY" in TEMPLATE_SECRETS["litellm-openai-local"]
 
+    def test_openrouter_requires_api_key(self) -> None:
+        assert "OPENROUTER_API_KEY" in TEMPLATE_SECRETS["openrouter"]
+        assert "OPENROUTER_BASE_URL" not in TEMPLATE_SECRETS["openrouter"]
+
 
 class TestResolveEnvOrCredential:
     """Verify env > credential-file fallback."""

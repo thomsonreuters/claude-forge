@@ -226,6 +226,58 @@ class TestAnthropicCredentials:
             assert creds["api_key"] == "sk-ant-test"
 
 
+@pytest.mark.asyncio
+class TestOpenRouterCredentials:
+    """Tests for OpenRouter credentials."""
+
+    async def test_missing_api_key_raises(self, mock_config):
+        """Missing API key raises NoApiKeyError."""
+        with patch.dict(os.environ, {}, clear=True):
+            cm = CredentialManager()
+            with pytest.raises(NoApiKeyError) as exc_info:
+                await cm.get_credentials("openrouter")
+            assert "OPENROUTER_API_KEY" in str(exc_info.value)
+
+    async def test_with_api_key_uses_default_base_url(self, mock_config):
+        """Returns credentials with default base URL when only API key is set."""
+        from forge.core.llm import credentials
+
+        with (
+            patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-test"}, clear=True),
+            patch.object(credentials, "_get_openrouter_base_url", return_value="https://openrouter.ai/api/v1"),
+        ):
+            cm = CredentialManager()
+            creds = await cm.get_credentials("openrouter")
+            assert creds["api_key"] == "sk-or-test"
+            assert creds["base_url"] == "https://openrouter.ai/api/v1"
+            assert "X-OpenRouter-Title" in creds["extra_headers"]
+            assert creds["extra_headers"]["X-OpenRouter-Title"] == "Claude Forge"
+
+    async def test_env_base_url_overrides_default(self, mock_config):
+        """OPENROUTER_BASE_URL env var overrides the default."""
+        env = {
+            "OPENROUTER_API_KEY": "sk-or-test",
+            "OPENROUTER_BASE_URL": "https://custom-or.example.com/v1",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            from forge.core.llm.credentials import _get_openrouter_base_url
+
+            url = _get_openrouter_base_url()
+            assert url == "https://custom-or.example.com/v1"
+
+    async def test_config_base_url_takes_precedence(self, mock_config):
+        """Template config base_url wins over env var."""
+        from forge.core.llm import credentials
+
+        with (
+            patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-test", "OPENROUTER_BASE_URL": "https://env.example.com"}, clear=True),
+            patch.object(credentials, "_get_openrouter_base_url", return_value="https://config.example.com/v1"),
+        ):
+            cm = CredentialManager()
+            creds = await cm.get_credentials("openrouter")
+            assert creds["base_url"] == "https://config.example.com/v1"
+
+
 # --- Phase 3: File-based credential chain tests ---
 
 

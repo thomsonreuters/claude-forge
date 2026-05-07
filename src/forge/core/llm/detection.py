@@ -83,4 +83,4 @@ def is_implemented(provider: ProviderType) -> bool:
     Returns:
         True if the provider's client is implemented, False otherwise.
     """
-    return provider in ("litellm_remote", "litellm_local", "openrouter")
+    return provider in ("litellm_remote", "litellm_local")

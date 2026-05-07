@@ -216,7 +216,7 @@ class TestSpawnPassesProxyIdCliArg:
             captured_cmd.extend(cmd)
             return _Proc(pid=1234)
 
-        monkeypatch.setattr(orchestrator, "_check_proxy_dependencies", lambda: None)
+        monkeypatch.setattr(orchestrator, "_check_proxy_dependencies", lambda **_kw: None)
         monkeypatch.setattr(subprocess, "Popen", mock_popen)
 
         _, _ = orchestrator._spawn_proxy_process(
@@ -241,7 +241,7 @@ class TestSpawnPassesProxyIdCliArg:
             captured_env.update(env)
             return _Proc(pid=1234)
 
-        monkeypatch.setattr(orchestrator, "_check_proxy_dependencies", lambda: None)
+        monkeypatch.setattr(orchestrator, "_check_proxy_dependencies", lambda **_kw: None)
         monkeypatch.setattr(subprocess, "Popen", mock_popen)
         monkeypatch.delenv("FORGE_PROXY_ID", raising=False)
 
@@ -267,7 +267,7 @@ class TestSpawnPassesProxyIdCliArg:
             captured_env.update(env)
             return _Proc(pid=1234)
 
-        monkeypatch.setattr(orchestrator, "_check_proxy_dependencies", lambda: None)
+        monkeypatch.setattr(orchestrator, "_check_proxy_dependencies", lambda **_kw: None)
         monkeypatch.setattr(subprocess, "Popen", mock_popen)
 
         _, _ = orchestrator._spawn_proxy_process(
@@ -306,7 +306,7 @@ class TestStartGeneratesProxyIdBeforeSpawn:
 
         spawned_proxy_id: str | None = None
 
-        def capture_spawn(*, template, host, port, proxy_id):
+        def capture_spawn(*, template, host, port, proxy_id, provider=""):
             nonlocal spawned_proxy_id
             spawned_proxy_id = proxy_id
             return (_Proc(), tmp_path / "stderr.log")

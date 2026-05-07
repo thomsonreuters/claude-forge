@@ -502,7 +502,10 @@ def start_proxy(
 
     store.update(timeout_s=5.0, mutate=_register_starting)
 
-    proc, stderr_capture = _spawn_proxy_process(template=template, host=host, port=spawn_port, proxy_id=actual_proxy_id)
+    proc, stderr_capture = _spawn_proxy_process(
+        template=template, host=host, port=spawn_port, proxy_id=actual_proxy_id,
+        provider=cfg.proxy.preferred_provider,
+    )
     try:
         _wait_until_healthy(
             base_url=base_url,
@@ -725,8 +728,12 @@ def _is_port_in_use(port: int) -> bool:
         return False
 
 
-def _check_proxy_dependencies() -> None:
+def _check_proxy_dependencies(*, provider: str = "") -> None:
     """Check if proxy dependencies are installed.
+
+    Args:
+        provider: The preferred_provider from the template. When "openrouter",
+                  litellm is not required (direct API, no LiteLLM subprocess).
 
     Raises:
         ProxyStartError: If required proxy dependencies are missing.
@@ -742,10 +749,11 @@ def _check_proxy_dependencies() -> None:
     except ImportError:
         missing.append("uvicorn")
 
-    try:
-        import litellm  # noqa: F401
-    except ImportError:
-        missing.append("litellm")
+    if provider != "openrouter":
+        try:
+            import litellm  # noqa: F401
+        except ImportError:
+            missing.append("litellm")
 
     if missing:
         deps_str = ", ".join(missing)
@@ -759,13 +767,15 @@ def _check_proxy_dependencies() -> None:
         )
 
 
-def _spawn_proxy_process(*, template: str, host: str, port: int, proxy_id: str) -> tuple[subprocess.Popen[bytes], Path]:
+def _spawn_proxy_process(
+    *, template: str, host: str, port: int, proxy_id: str, provider: str = ""
+) -> tuple[subprocess.Popen[bytes], Path]:
     """Spawn a proxy subprocess with the given configuration.
 
     Returns:
         Tuple of (process, stderr_capture_path) for error reporting.
     """
-    _check_proxy_dependencies()
+    _check_proxy_dependencies(provider=provider)
 
     cmd = [
         sys.executable,

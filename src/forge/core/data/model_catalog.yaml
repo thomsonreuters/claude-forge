@@ -1059,3 +1059,8 @@ aliases:
   claude-haiku-4-5: claude-haiku-4-5-20251001
   haiku-4-5: claude-haiku-4-5-20251001
   haiku: claude-haiku-4-5-20251001
+
+  # OpenRouter dot-form aliases (OpenRouter uses dots, Forge uses hyphens)
+  anthropic/claude-opus-4.6: claude-opus-4-6
+  anthropic/claude-sonnet-4.6: claude-sonnet-4-6
+  anthropic/claude-haiku-4.5: claude-haiku-4-5-20251001

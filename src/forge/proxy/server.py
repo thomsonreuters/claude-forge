@@ -226,22 +226,29 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
     # Check if original model is an explicit backend model (has provider prefix)
     # These should be passed through, not tier-resolved
-    is_explicit_backend = (
-        original_model_name is not None
-        and "/" in original_model_name
-        and any(
-            original_model_name.startswith(prefix)
-            for prefix in [
-                "openai/",
-                "anthropic/",
-                "vertex_ai/",
-                "bedrock/",
-                "gemini/",
-                "together_ai/",
-                "replicate/",
-            ]
+    if config.proxy.preferred_provider == "openrouter":
+        # OpenRouter: any provider/model format is explicit (google/, meta-llama/, etc.)
+        is_explicit_backend = (
+            original_model_name is not None
+            and "/" in original_model_name
         )
-    )
+    else:
+        is_explicit_backend = (
+            original_model_name is not None
+            and "/" in original_model_name
+            and any(
+                original_model_name.startswith(prefix)
+                for prefix in [
+                    "openai/",
+                    "anthropic/",
+                    "vertex_ai/",
+                    "bedrock/",
+                    "gemini/",
+                    "together_ai/",
+                    "replicate/",
+                ]
+            )
+        )
 
     # Only use tier-resolved model for Anthropic-style or ambiguous requests
     # For explicit backend models, use what map_model_name() returned (usually pass-through)

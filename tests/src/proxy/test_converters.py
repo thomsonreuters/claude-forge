@@ -899,3 +899,32 @@ class TestConvertOpenaiToAnthropicSse:
         ]
         assert len(input_deltas) >= 1
         assert input_deltas[0]["data"]["usage"]["input_tokens"] == 150
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter provider compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestOpenRouterSystemPromptPreservation:
+    """Verify OpenRouter is treated as OpenAI-compatible for system prompts."""
+
+    def test_system_prompt_added_as_message_for_openrouter(self):
+        """System prompt must become a message, not be separated (Gemini path)."""
+        req = _make_request(system="You are a helpful assistant.", model="anthropic/claude-sonnet-4.6")
+        result = convert_anthropic_to_openai(req, provider="openrouter")
+        messages = result["messages"]
+        system_msgs = [m for m in messages if m["role"] == "system"]
+        assert len(system_msgs) == 1
+        assert system_msgs[0]["content"] == "You are a helpful assistant."
+
+    def test_tools_forwarded_for_openrouter(self):
+        """Tool definitions should be present in OpenRouter output."""
+        req = _make_request(
+            tools=[_make_tool()],
+            model="anthropic/claude-sonnet-4.6",
+        )
+        result = convert_anthropic_to_openai(req, provider="openrouter")
+        assert "tools" in result
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["function"]["name"] == "Read"

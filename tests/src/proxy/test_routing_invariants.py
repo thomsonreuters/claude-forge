@@ -296,3 +296,61 @@ def test_model_mapping_uses_fresh_config(monkeypatch):
 
     # The key invariant: same input, different config → different output
     assert result_a != result_b
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter model name mapping
+# ---------------------------------------------------------------------------
+
+
+class TestOpenRouterModelMapping:
+    """Tests for map_model_name() with preferred_provider=openrouter."""
+
+    def test_slash_id_passed_through(self, monkeypatch):
+        """OpenRouter model IDs (provider/model) pass through unchanged."""
+        from forge.config import config as config_proxy
+        from forge.proxy.data_models import map_model_name
+
+        class ORProvider:
+            tiers = type("T", (), {
+                "haiku": "anthropic/claude-haiku-4.5",
+                "sonnet": "anthropic/claude-sonnet-4.6",
+                "opus": "anthropic/claude-opus-4.6",
+            })()
+
+        class ProxyCfg:
+            preferred_provider = "openrouter"
+
+            @staticmethod
+            def get_provider(_name=None):
+                return ORProvider()
+
+        monkeypatch.setattr(config_proxy, "proxy", ProxyCfg())
+
+        assert map_model_name("google/gemini-2.5-pro") == "google/gemini-2.5-pro"
+        assert map_model_name("anthropic/claude-sonnet-4.6") == "anthropic/claude-sonnet-4.6"
+        assert map_model_name("meta-llama/llama-3.1-70b") == "meta-llama/llama-3.1-70b"
+
+    def test_anthropic_flavor_maps_to_openrouter_tier(self, monkeypatch):
+        """Anthropic-style model names map to OpenRouter tier models."""
+        from forge.config import config as config_proxy
+        from forge.proxy.data_models import map_model_name
+
+        class ORProvider:
+            tiers = type("T", (), {
+                "haiku": "anthropic/claude-haiku-4.5",
+                "sonnet": "anthropic/claude-sonnet-4.6",
+                "opus": "anthropic/claude-opus-4.6",
+            })()
+
+        class ProxyCfg:
+            preferred_provider = "openrouter"
+
+            @staticmethod
+            def get_provider(_name=None):
+                return ORProvider()
+
+        monkeypatch.setattr(config_proxy, "proxy", ProxyCfg())
+
+        assert map_model_name("claude-3-5-sonnet") == "anthropic/claude-sonnet-4.6"
+        assert map_model_name("claude-3-5-haiku-20241022") == "anthropic/claude-haiku-4.5"

@@ -7,7 +7,7 @@ core.llm only supports prefixed canonical IDs (e.g., "openai/gpt-5.2").
 from typing import Literal
 
 # Provider type - all supported providers (some may not be implemented yet)
-ProviderType = Literal["litellm_remote", "litellm_local", "anthropic"]
+ProviderType = Literal["litellm_remote", "litellm_local", "anthropic", "openrouter"]
 
 # Prefixes that route to remote LiteLLM
 LITELLM_REMOTE_PREFIXES = (
@@ -83,4 +83,4 @@ def is_implemented(provider: ProviderType) -> bool:
     Returns:
         True if the provider's client is implemented, False otherwise.
     """
-    return provider in ("litellm_remote", "litellm_local")
+    return provider in ("litellm_remote", "litellm_local", "openrouter")

@@ -558,6 +558,8 @@ def _proxy_instance_to_forge_config(
         proxy_server_config.gemini = provider_config
     elif proxy_config.provider == "openai":
         proxy_server_config.openai = provider_config
+    elif proxy_config.provider == "openrouter":
+        proxy_server_config.openrouter = provider_config
     else:  # litellm is default
         proxy_server_config.litellm = provider_config
 

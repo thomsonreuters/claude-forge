@@ -104,6 +104,35 @@ def _get_litellm_local_base_url() -> str:
     )
 
 
+OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+def _get_openrouter_base_url() -> str:
+    """Get OpenRouter base URL.
+
+    Resolution order:
+    1. Template/proxy config (config.proxy.openrouter.base_url)
+    2. OPENROUTER_BASE_URL environment variable
+    3. Default: https://openrouter.ai/api/v1
+    """
+    try:
+        from forge.config import config
+
+        base_url = config.proxy.openrouter.base_url
+        if base_url:
+            logger.debug(f"Using OpenRouter base_url from template: {base_url}")
+            return base_url
+    except (ImportError, AttributeError):
+        pass
+
+    env_url = os.environ.get("OPENROUTER_BASE_URL")
+    if env_url:
+        logger.debug(f"Using OpenRouter base_url from OPENROUTER_BASE_URL: {env_url}")
+        return env_url
+
+    return OPENROUTER_DEFAULT_BASE_URL
+
+
 class CredentialManager:
     """Injectable credential manager with TTL caching and proactive refresh.
 
@@ -229,6 +258,8 @@ class CredentialManager:
             return self._get_litellm_local_credentials()
         elif provider == "anthropic":
             return self._get_anthropic_credentials()
+        elif provider == "openrouter":
+            return self._get_openrouter_credentials()
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -286,6 +317,28 @@ class CredentialManager:
 
         return {
             "api_key": api_key,
+        }
+
+    def _get_openrouter_credentials(self) -> dict[str, Any]:
+        """Get credentials for OpenRouter.
+
+        Resolution mirrors the LiteLLM remote pattern: config base_url first,
+        then env var, then default. API key is always required.
+        """
+        secrets = self._resolve_secrets()
+        api_key = secrets.get("OPENROUTER_API_KEY")
+        if not api_key:
+            raise NoApiKeyError("openrouter", "OPENROUTER_API_KEY")
+
+        base_url = _get_openrouter_base_url()
+
+        return {
+            "api_key": api_key,
+            "base_url": base_url,
+            "extra_headers": {
+                "HTTP-Referer": "https://github.com/anthropics/claude-forge",
+                "X-OpenRouter-Title": "Claude Forge",
+            },
         }
 
     async def invalidate(

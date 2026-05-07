@@ -48,6 +48,11 @@ PROVIDERS = {
         "optional": [],
         "description": "Direct Anthropic API",
     },
+    "openrouter": {
+        "required": ["OPENROUTER_API_KEY"],
+        "optional": ["OPENROUTER_BASE_URL"],
+        "description": "OpenRouter multi-provider gateway",
+    },
 }
 
 # Keys that should be hidden during prompt input

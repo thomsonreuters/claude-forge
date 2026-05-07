@@ -181,6 +181,7 @@ class ProxyConfig:
     gemini: ProviderConfig = field(default_factory=ProviderConfig)
     openai: ProviderConfig = field(default_factory=ProviderConfig)
     litellm: ProviderConfig = field(default_factory=ProviderConfig)
+    openrouter: ProviderConfig = field(default_factory=ProviderConfig)
 
     preferred_provider: str = ""  # set by --template flag
     active_template: str = ""
@@ -256,7 +257,7 @@ class ProxyInstanceConfig:
         if self.proxy_format != 1:
             raise ValueError(f"Unsupported proxy_format: {self.proxy_format} (expected 1)")
 
-        valid_providers = {"litellm", "openai", "gemini"}
+        valid_providers = {"litellm", "openai", "gemini", "openrouter"}
         if self.provider not in valid_providers:
             raise ValueError(
                 f"Invalid provider: '{self.provider}' (must be one of: {', '.join(sorted(valid_providers))})"

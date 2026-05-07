@@ -2,11 +2,8 @@
 
 import pytest
 
-from forge.core.llm.clients.litellm import (
-    GPT5_MODELS,
-    LiteLLMClient,
-    _extract_cached_tokens,
-)
+from forge.core.llm.clients.litellm import GPT5_MODELS, LiteLLMClient
+from forge.core.llm.clients.openai_compat import extract_cached_tokens
 from forge.core.llm.types import Message, ModelHyperparameters, ToolCall
 
 
@@ -568,7 +565,7 @@ class TestGPT5Constants:
 
 
 class TestExtractCachedTokens:
-    """Tests for _extract_cached_tokens helper."""
+    """Tests for extract_cached_tokens helper."""
 
     def test_object_with_prompt_tokens_details(self) -> None:
         """Extract cached_tokens from SDK response usage object."""
@@ -579,12 +576,12 @@ class TestExtractCachedTokens:
         class FakeUsage:
             prompt_tokens_details = FakeDetails()
 
-        assert _extract_cached_tokens(FakeUsage()) == 500
+        assert extract_cached_tokens(FakeUsage()) == 500
 
     def test_dict_with_prompt_tokens_details(self) -> None:
         """Extract cached_tokens from dict-style usage."""
         usage = {"prompt_tokens_details": {"cached_tokens": 300}}
-        assert _extract_cached_tokens(usage) == 300
+        assert extract_cached_tokens(usage) == 300
 
     def test_no_prompt_tokens_details(self) -> None:
         """Return 0 when prompt_tokens_details is absent."""
@@ -592,19 +589,19 @@ class TestExtractCachedTokens:
         class FakeUsage:
             pass
 
-        assert _extract_cached_tokens(FakeUsage()) == 0
+        assert extract_cached_tokens(FakeUsage()) == 0
 
     def test_none_cached_tokens(self) -> None:
         """Return 0 when cached_tokens is None."""
         usage = {"prompt_tokens_details": {"cached_tokens": None}}
-        assert _extract_cached_tokens(usage) == 0
+        assert extract_cached_tokens(usage) == 0
 
     def test_zero_cached_tokens(self) -> None:
         """Return 0 when cached_tokens is 0."""
         usage = {"prompt_tokens_details": {"cached_tokens": 0}}
-        assert _extract_cached_tokens(usage) == 0
+        assert extract_cached_tokens(usage) == 0
 
     def test_empty_prompt_details(self) -> None:
         """Return 0 when prompt_tokens_details is empty dict."""
         usage: dict[str, object] = {"prompt_tokens_details": {}}
-        assert _extract_cached_tokens(usage) == 0
+        assert extract_cached_tokens(usage) == 0

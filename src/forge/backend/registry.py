@@ -36,9 +36,7 @@ BACKEND_INDEX_FILENAME = "index.json"
 CLI_LOCK_TIMEOUT_S = 5.0
 
 
-from forge.core.process import (  # noqa: E402, F401  # re-export
-    is_pid_alive as is_pid_alive,
-)
+from forge.core.process import is_pid_alive as is_pid_alive  # noqa: E402, F401  # re-export
 
 
 class BackendRegistryCorruptedError(StateCorruptedError):

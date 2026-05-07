@@ -196,9 +196,12 @@ CLAUDE.md files and design docs are AI context. Write for machine parsability to
 
 ### Maximum Document Size (Hard Limits)
 
-Agents: ~25k tokens; Read truncates >2k lines. Keep docs under these limits; use `count-tokens`:
+Agents: ~25k tokens; Read truncates >2k lines. Keep docs under these limits; use
+[count-tokens.py](../../scripts/count-tokens.py) with `--model` matching the coding agent's model for accurate counts
+(the agent knows its own model ID):
 
 ```bash
-$ count-tokens docs/design.md
+./scripts/count-tokens.py --model claude-sonnet-4-6 docs/design.md
 25,677 tokens | 99,378 chars | 1,924 lines
+  method: anthropic API (claude-sonnet-4-6)
 ```

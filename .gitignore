@@ -61,6 +61,10 @@ __pypackages__/
 # Claude Code local artifacts (machine-specific)
 .claude/
 
+# Codex local config
+.agents
+.codex/
+
 # Forge local artifacts (machine-specific, may contain sensitive transcript snippets)
 .forge/
 

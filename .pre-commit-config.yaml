@@ -27,7 +27,7 @@ repos:
     - id: gitleaks                      # defaults to: gitleaks git --pre-commit --redact --staged --verbose
 
 - repo: https://github.com/pycqa/isort
-  rev: 7.0.0
+  rev: 9.0.0a3
   hooks:
    - id: isort
      args: ['--profile', 'black']
@@ -37,13 +37,13 @@ repos:
          )
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.15.1
+  rev: v0.15.12
   hooks:
     - id: ruff
       args: ['--fix', '--line-length', '120', '--exclude', '__init__.py']
 
 - repo: https://github.com/psf/black
-  rev: 26.1.0
+  rev: 26.3.1
   hooks:
     - id: black
       name: black

@@ -78,7 +78,8 @@ tracking, hooks, and all Forge features except multi-model routing. Use `--proxy
 - **Platform**: macOS or Linux
 - **Python**: 3.11–3.13 (3.14 blocked on upstream `uvloop` wheels — see #1)
 - **Claude Code**: installed and on PATH
-- **API key**: at least one provider key (e.g., `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`)
+- **Provider auth**: Claude Code login is enough for direct interactive sessions. Proxies and headless workflows need a
+  supported API or gateway credential such as `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, or LiteLLM auth.
 
 ## Quick Start
 

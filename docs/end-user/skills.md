@@ -114,18 +114,21 @@ Multi-model panel review. Multiple models review independently, then findings ar
 | ---------- | -------- | ------------------------------------------------------------------- |
 | `target`   | Optional | File, directory, or instruction on what to review (defaults to cwd) |
 | `--code`   | Optional | Switch: use code review framework (default: document review)        |
-| `--models` | Optional | Comma-separated model list (default: all available)                 |
+| `--models` | Optional | Comma-separated model list (default: Forge workflow defaults)       |
 
 The panel runs `forge workflow panel` under the hood. Each model reviews independently, then the main agent synthesizes
 consensus findings, unique insights, and conflicts.
 
 **Default models:**
 
-| Model            | Strength                             | Via                  |
-| ---------------- | ------------------------------------ | -------------------- |
-| `gpt-5.5`        | Logical problems, systematic review  | litellm-openai proxy |
-| `gemini-2.5-pro` | Balanced analysis, large context     | litellm-gemini       |
-| `claude-opus`    | Deep architecture, complex reasoning | Direct Anthropic     |
+| Model            | Strength                            | Via                  |
+| ---------------- | ----------------------------------- | -------------------- |
+| `gpt-5.5`        | Logical problems, systematic review | litellm-openai proxy |
+| `gemini-2.5-pro` | Balanced analysis, large context    | litellm-gemini       |
+| `claude-opus`    | Stable Claude Opus 4.6 reasoning    | Direct Anthropic     |
+
+Selectable direct Claude workers include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Use
+`--models claude-opus-4.6,claude-opus-4.7` when you want both stable Opus 4.6 and bounded-review Opus 4.7 in the panel.
 
 **Requirements:** GPT-5.5 and Gemini require active proxies; Claude Opus requires `ANTHROPIC_API_KEY`. See
 [auth.md](auth.md#which-auth-do-i-need) for setup.
@@ -144,7 +147,7 @@ Adversarial multi-model evaluation. Models argue for, against, and neutrally abo
 | ---------- | -------- | ------------------------------------------------------------------------------- |
 | `subject`  | Optional | File, directory, proposal, or instruction on what to evaluate (defaults to cwd) |
 | `--code`   | Optional | Switch: use code evaluation framework (default: proposal)                       |
-| `--models` | Optional | Comma-separated model list (default: all available)                             |
+| `--models` | Optional | Comma-separated model list (default: Forge workflow defaults)                   |
 
 The debate runs `forge workflow debate` under the hood. Each model is assigned a stance (for/against/neutral) and
 evaluates independently -- workers are blinded to each other's output. The main agent synthesizes points of agreement,

@@ -913,6 +913,10 @@ Note: `session context` is a deprecated alias for `session show`.
 | `forge workflow consensus [subject]` | Two-round multi-model convergence          |
 | `forge workflow list-models`         | Show available model backends              |
 
+Workflow model specs support proxy-backed workers and explicit direct Claude workers. The stable `claude-opus` worker is
+kept on Claude Opus 4.6; newer direct workers such as `claude-opus-4.7` are opt-in and can attach per-worker prompt
+hints through `ModelSpec.prompt`.
+
 #### Search
 
 | Command                      | Purpose                              |

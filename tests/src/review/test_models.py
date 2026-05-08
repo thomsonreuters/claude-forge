@@ -8,10 +8,12 @@ import pytest
 
 from forge.core.models.catalog import get_compact_name, get_default_model
 from forge.review.models import (
+    AVAILABLE_MODELS,
     DEFAULT_MODELS,
     ModelSpec,
     MultiReviewOutput,
     ReviewResult,
+    available_model_specs,
     check_model_availability,
     resolve_model_specs,
 )
@@ -43,6 +45,9 @@ class TestModelSpec:
 
 
 class TestDefaultModels:
+    def test_default_quorum_names_are_explicit(self):
+        assert list(DEFAULT_MODELS) == [OPENAI_DEFAULT, GEMINI_DEFAULT, "claude-opus"]
+
     def test_has_expected_entries(self):
         assert OPENAI_DEFAULT in DEFAULT_MODELS
         assert GEMINI_DEFAULT in DEFAULT_MODELS
@@ -57,6 +62,19 @@ class TestDefaultModels:
     def test_claude_is_direct(self):
         assert DEFAULT_MODELS["claude-opus"].proxy is None
         assert DEFAULT_MODELS["claude-opus"].model_flag == ANTHROPIC_DEFAULT
+        assert DEFAULT_MODELS["claude-opus"].direct is True
+        assert DEFAULT_MODELS["claude-opus"].direct_model == "claude-opus-4-6"
+
+    def test_explicit_claude_47_is_selectable_not_default(self):
+        assert "claude-opus-4.7" in AVAILABLE_MODELS
+        assert "claude-opus-4.7" not in DEFAULT_MODELS
+
+        spec = AVAILABLE_MODELS["claude-opus-4.7"]
+        assert spec.direct is True
+        assert spec.direct_model == "claude-opus-4-7"
+        assert spec.prompt is not None
+        assert spec.prompt_mode == "prefix"
+        assert "file:line" in spec.prompt
 
 
 class TestReviewResult:
@@ -117,6 +135,13 @@ class TestResolveModelSpecs:
         specs = resolve_model_specs(f"{OPENAI_DEFAULT},claude-opus")
         assert [s.name for s in specs] == [OPENAI_DEFAULT, "claude-opus"]
 
+    def test_specific_direct_claude_versions_have_distinct_specs(self):
+        specs = resolve_model_specs("claude-opus-4.6,claude-opus-4.7")
+
+        assert [s.name for s in specs] == ["claude-opus-4.6", "claude-opus-4.7"]
+        assert [s.effective_worker_id for s in specs] == ["claude-opus-4.6", "claude-opus-4.7"]
+        assert [s.direct_model for s in specs] == ["claude-opus-4-6", "claude-opus-4-7"]
+
     def test_unknown_model_raises(self):
         with pytest.raises(ValueError, match="nonexistent"):
             resolve_model_specs("nonexistent")
@@ -124,6 +149,14 @@ class TestResolveModelSpecs:
     def test_mixed_valid_invalid_raises(self):
         with pytest.raises(ValueError, match="nonexistent"):
             resolve_model_specs(f"{OPENAI_DEFAULT},nonexistent")
+
+    def test_available_model_specs_includes_selectable_extras(self):
+        names = [spec.name for spec in available_model_specs()]
+
+        assert "claude-opus" in names
+        assert "claude-opus-4.6" in names
+        assert "claude-opus-4.6-1m" in names
+        assert "claude-opus-4.7" in names
 
 
 def _spec(
@@ -173,6 +206,15 @@ class TestCheckModelAvailability:
         result = check_model_availability([_spec("opus", proxy=None)])
         assert result[0].status == "unavailable"
         assert "ANTHROPIC_API_KEY" in result[0].reason
+
+    @patch(
+        "forge.core.auth.template_secrets.resolve_env_or_credential",
+        return_value="sk-test",
+    )
+    def test_explicit_direct_worker_ready_with_key(self, _mock_cred):
+        result = check_model_availability([AVAILABLE_MODELS["claude-opus-4.7"]])
+
+        assert result[0].status == "ready"
 
     @patch(
         "forge.core.reactive.proxy.check_proxy_reachable",

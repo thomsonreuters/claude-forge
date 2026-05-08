@@ -177,6 +177,22 @@ class TestOptionalFieldsValidation:
         spec = _parse_model_spec("test", data)
         assert spec.use_responses_api is True
 
+    def test_accepts_capability_profile_fields(self):
+        """New capability profile metadata is parsed correctly."""
+        data = _minimal_model_data()
+        data["thinking_modes"] = ["adaptive"]
+        data["supports_sampling_overrides"] = False
+        data["supports_1m_context"] = True
+        data["supports_top_p"] = False
+        data["token_estimate_multiplier"] = 1.35
+
+        spec = _parse_model_spec("test", data)
+        assert spec.thinking_modes == ("adaptive",)
+        assert spec.supports_sampling_overrides is False
+        assert spec.supports_1m_context is True
+        assert spec.supports_top_p is False
+        assert spec.token_estimate_multiplier == 1.35
+
 
 class TestAliasValidation:
     """Tests for alias validation."""
@@ -318,3 +334,28 @@ class TestCatalogEffortRankAlignment:
         assert len(values) == len(set(values)), (
             f"Duplicate rank values in _EFFORT_RANK (excluding aliases): " f"{non_alias}"
         )
+
+
+class TestClaude47CatalogProfile:
+    """Tests for the explicit Claude Opus 4.7 catalog profile."""
+
+    def test_opus_aliases_remain_stable_on_46(self):
+        catalog = load_model_catalog(force_reload=True)
+
+        assert catalog.resolve("opus") == "claude-opus-4-6"
+        assert catalog.resolve("claude-opus") == "claude-opus-4-6"
+
+    def test_opus_47_aliases_and_metadata(self):
+        catalog = load_model_catalog(force_reload=True)
+
+        assert catalog.resolve("opus-4-7") == "claude-opus-4-7"
+        assert catalog.resolve("claude-opus-4.7") == "claude-opus-4-7"
+        assert catalog.resolve("anthropic/claude-opus-4.7") == "claude-opus-4-7"
+
+        spec = catalog.get("claude-opus-4-7")
+        assert spec.thinking_modes == ("adaptive",)
+        assert spec.supports_sampling_overrides is False
+        assert spec.supports_1m_context is True
+        assert spec.litellm_reasoning_efforts is not None
+        assert "xhigh" in spec.litellm_reasoning_efforts
+        assert spec.token_estimate_multiplier == 1.35

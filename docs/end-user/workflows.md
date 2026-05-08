@@ -38,7 +38,14 @@ Unless you pass `-m`, the multi-model workflows use this built-in worker set:
 
 - `gpt-5.5` -> proxy id `litellm-openai`
 - `gemini-2.5-pro` -> proxy id `litellm-gemini`
-- `claude-opus` -> direct Anthropic
+- `claude-opus` -> direct Anthropic, pinned to stable Claude Opus 4.6
+
+Selectable direct Claude workers also include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Use
+`claude-opus-4.7` as an explicit bounded-review/quorum worker, for example:
+
+```bash
+forge workflow panel src/ --code -m claude-opus-4.6,claude-opus-4.7
+```
 
 Check which models are locally routable with `forge workflow list-models`. Models whose proxy isn't running or whose
 direct Anthropic API key isn't configured show as **unavailable**. This checks local proxy reachability, not upstream

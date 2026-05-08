@@ -9,6 +9,7 @@ Uses mock claude binary to test session lifecycle without launching real Claude.
 
 from __future__ import annotations
 
+import json
 from inspect import cleandoc
 
 import pytest
@@ -144,12 +145,27 @@ class TestSessionStart:
         assert result.returncode == 1
         assert "already exists" in result.stdout or "already exists" in result.stderr
 
-    def test_start_with_model_fails(self, mock_claude_workspace: ContainerLike) -> None:
-        """Model tier is not a session concept; CLI should not accept --model."""
-        result = mock_claude_workspace.exec("cd /workspace && forge session start model-test --model opus")
+    def test_start_with_direct_model_pins_claude_env(self, mock_claude_workspace: ContainerLike) -> None:
+        """--model is stored as direct intent and launched through Claude Code env pins."""
+        result = mock_claude_workspace.exec("cd /workspace && forge session start model-test --model opus-4-7")
 
-        assert result.returncode != 0
-        assert "--model" in result.stderr or "no such option" in result.stderr.lower()
+        assert result.returncode == 0, result.stderr
+        assert "Routing: direct" in result.stdout
+
+        manifest = json.loads(
+            mock_claude_workspace.read_file("/workspace/.forge/sessions/model-test/forge.session.json")
+        )
+        assert manifest["intent"]["launch"]["direct_model"] == "claude-opus-4-7"
+
+        invocations = mock_claude_workspace.read_file("/tmp/claude_invocations.log")
+        assert "--model" not in invocations
+
+        env_path = mock_claude_workspace.exec("ls -1 /tmp/claude_env_*.log | head -n 1").stdout.strip()
+        assert env_path
+        env_text = mock_claude_workspace.read_file(env_path)
+        assert "ANTHROPIC_MODEL=opus" in env_text
+        assert "ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-7" in env_text
+        assert "ANTHROPIC_BASE_URL=" not in env_text
 
 
 class TestSessionDelete:

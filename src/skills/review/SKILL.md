@@ -42,7 +42,8 @@ Never ask the user to clarify. If `$ARGUMENTS` contains anything, proceed immedi
 
 **Do NOT start the review until this step is complete.**
 
-Model family: !`forge session context "${CLAUDE_SESSION_ID}" --field model_family 2>/dev/null || true`
+Model family: !`forge session context "${CLAUDE_SESSION_ID}" --field model_family 2>/dev/null || true` Main model:
+!`forge session context "${CLAUDE_SESSION_ID}" --field main_model 2>/dev/null || true`
 
 Pick **one** instruction file (first match wins, read only one):
 
@@ -51,6 +52,10 @@ Pick **one** instruction file (first match wins, read only one):
 
 If model family lookup returns empty output or errors, treat it as "no family" and immediately select
 `${CLAUDE_SKILL_DIR}/resources/code.md`. Do not probe multiple variants.
+
+In v1, direct-session model pins such as `claude-opus-4-7` do not change this single-model resource selection: a 4.7
+direct session still uses the Anthropic/default review resource. Use `/forge:panel --code` with `claude-opus-4.7` in the
+model list when you want the 4.7 bounded-review worker hint.
 
 ### Tool-call hygiene (normative)
 
@@ -76,6 +81,7 @@ missing, report the path and stop.
 ```
 Reviewing {target} in code mode.
   model_family: {family or "(none -- using default)"}
+  main_model:   {main_model or "(none)"}
   instruction:  {instruction_file_name}
 ```
 

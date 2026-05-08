@@ -27,7 +27,7 @@ completed", or ask the user to run the commands manually unless a real prerequis
 | ---------- | -------- | ------------------------------------------------------------------------------------ |
 | `subject`  | Optional | File, directory, proposal, or instruction on what to evaluate (defaults to cwd)      |
 | `--code`   | Optional | Switch: use code evaluation framework (default: proposal)                            |
-| `--models` | Optional | Comma-separated model list (default: all available)                                  |
+| `--models` | Optional | Comma-separated model list (default: Forge workflow defaults)                        |
 | `--worker` | Optional | Repeatable: model:stance or model:"custom prompt" (mutually exclusive with --models) |
 | `--output` | Optional | Write result to file instead of conversation (e.g., `debate.md`)                     |
 
@@ -88,7 +88,7 @@ result in the conversation. If `--output` was not specified, print the result in
 
 ## Models and Roles
 
-Models are assigned stances cyclically. Default models (from `forge workflow list-models`):
+Models are assigned stances cyclically. Default models:
 
 | Order | Default Model  | Stance  | Role                     |
 | ----- | -------------- | ------- | ------------------------ |

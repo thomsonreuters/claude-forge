@@ -162,6 +162,8 @@ def run_consensus(
                 proxy=role_spec.model.proxy,
                 model_flag=role_spec.model.model_flag,
                 description=f"{label} role via {role_spec.model.name}",
+                direct=role_spec.model.direct,
+                direct_model=role_spec.model.direct_model,
                 prompt=filled,
                 worker_id=worker_id,
             )
@@ -191,6 +193,8 @@ def run_consensus(
                 proxy=spec_r1.proxy,
                 model_flag=spec_r1.model_flag,
                 description=f"{role_spec.effective_label} reconciliation via {spec_r1.name}",
+                direct=spec_r1.direct,
+                direct_model=spec_r1.direct_model,
                 prompt=reconciliation_prompt,
                 worker_id=spec_r1.effective_worker_id,
             )

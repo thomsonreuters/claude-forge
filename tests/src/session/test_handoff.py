@@ -171,6 +171,12 @@ class TestEstimateTranscriptTokens:
         expected = file_size // 4
         assert estimate_transcript_tokens(sample_transcript) == expected
 
+    def test_estimate_multiplier(self, sample_transcript: Path) -> None:
+        """Model-specific tokenizer multipliers adjust the heuristic estimate."""
+        file_size = sample_transcript.stat().st_size
+        expected = int((file_size // 4) * 1.35)
+        assert estimate_transcript_tokens(sample_transcript, multiplier=1.35) == expected
+
     def test_empty_file(self, empty_transcript: Path) -> None:
         """Empty file should return 0 tokens."""
         assert estimate_transcript_tokens(empty_transcript) == 0

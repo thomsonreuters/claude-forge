@@ -28,7 +28,7 @@ completed", or ask the user to run the commands manually unless a real prerequis
 | ---------- | -------- | ---------------------------------------------------------------------------------- |
 | `subject`  | Optional | File, directory, proposal, or instruction on what to evaluate (defaults to cwd)    |
 | `--code`   | Optional | Switch: use code evaluation framework (default: proposal)                          |
-| `--models` | Optional | Comma-separated model list (default: all available)                                |
+| `--models` | Optional | Comma-separated model list (default: Forge workflow defaults)                      |
 | `--worker` | Optional | Repeatable: model:role or model:"custom prompt" (mutually exclusive with --models) |
 | `--output` | Optional | Write result to file instead of conversation (e.g., `consensus.md`)                |
 

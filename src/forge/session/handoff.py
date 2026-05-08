@@ -114,13 +114,13 @@ class HandoffResult:
     warnings: list[str] = field(default_factory=list)  # Non-fatal issues
 
 
-def estimate_transcript_tokens(transcript_path: Path) -> int:
+def estimate_transcript_tokens(transcript_path: Path, *, multiplier: float = 1.0) -> int:
     """Estimate tokens using file size / 4 heuristic.
 
     Uses stat().st_size to avoid reading file content for fail-fast checks.
     This is a conservative estimate (~4 chars per token for English text).
     """
-    return transcript_path.stat().st_size // 4
+    return int((transcript_path.stat().st_size // 4) * multiplier)
 
 
 def _normalize_transcript_role(raw_role: Any) -> str | None:

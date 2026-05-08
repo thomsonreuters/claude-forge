@@ -557,3 +557,71 @@ class TestProxyInstanceConfigValidation:
                 tiers=TierModels(haiku="h", sonnet="s", opus="o"),
                 costs={"on_cap_hit": "explode"},
             )
+
+    def test_claude_47_rejects_static_temperature_override(self):
+        """Proxy config validation rejects Forge-owned unsupported 4.7 sampling overrides."""
+        from forge.config.schema import (
+            ProxyInstanceConfig,
+            TierModels,
+            TierOverride,
+            TierOverrides,
+        )
+
+        with pytest.raises(ValueError, match="tier_overrides.opus.temperature is not supported"):
+            ProxyInstanceConfig(
+                proxy_format=1,
+                template="test",
+                template_digest="sha256:test",
+                provider="litellm",
+                proxy_endpoint="http://localhost:8084",
+                port=8084,
+                upstream_base_url="https://litellm.test.example.com",
+                tiers=TierModels(haiku="h", sonnet="s", opus="claude-opus-4-7"),
+                tier_overrides=TierOverrides(opus=TierOverride(temperature=0.7)),
+            )
+
+    def test_claude_47_rejects_static_thinking_budget_override(self):
+        """Adaptive-only 4.7 rejects static thinking budgets at config validation time."""
+        from forge.config.schema import (
+            ProxyInstanceConfig,
+            TierModels,
+            TierOverride,
+            TierOverrides,
+        )
+
+        with pytest.raises(ValueError, match="only supports adaptive thinking"):
+            ProxyInstanceConfig(
+                proxy_format=1,
+                template="test",
+                template_digest="sha256:test",
+                provider="litellm",
+                proxy_endpoint="http://localhost:8084",
+                port=8084,
+                upstream_base_url="https://litellm.test.example.com",
+                tiers=TierModels(haiku="h", sonnet="s", opus="anthropic/claude-opus-4.7"),
+                tier_overrides=TierOverrides(opus=TierOverride(thinking_budget_tokens=4096)),
+            )
+
+    def test_claude_47_accepts_xhigh_reasoning_effort_override(self):
+        """4.7 supports xhigh effort as static proxy config metadata."""
+        from forge.config.schema import (
+            ProxyInstanceConfig,
+            TierModels,
+            TierOverride,
+            TierOverrides,
+        )
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="test",
+            template_digest="sha256:test",
+            provider="litellm",
+            proxy_endpoint="http://localhost:8084",
+            port=8084,
+            upstream_base_url="https://litellm.test.example.com",
+            tiers=TierModels(haiku="h", sonnet="s", opus="claude-opus-4-7"),
+            tier_overrides=TierOverrides(opus=TierOverride(reasoning_effort="xhigh")),
+        )
+
+        assert config.tier_overrides.opus is not None
+        assert config.tier_overrides.opus.reasoning_effort == "xhigh"

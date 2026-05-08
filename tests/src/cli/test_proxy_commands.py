@@ -395,6 +395,30 @@ tier_overrides:
         content = proxy_file.read_text()
         assert "reasoning_effort: high" in content
 
+    def test_set_rejects_claude_47_unsupported_static_temperature(self, runner: CliRunner, temp_env: Path) -> None:
+        """Set command validates unsupported 4.7 tier overrides before writing."""
+        proxy_yaml = """\
+template: litellm-anthropic
+provider: litellm
+proxy_endpoint: http://localhost:8085
+port: 8085
+upstream_base_url: https://litellm.test.example.com
+tiers:
+  haiku: claude-haiku-4-5-20251001
+  sonnet: claude-sonnet-4-6
+  opus: claude-opus-4-7
+"""
+        proxy_file = _create_proxy_file(temp_env, "opus-47-test", proxy_yaml)
+
+        result = runner.invoke(
+            main,
+            ["proxy", "set", "opus-47-test", "tier_overrides.opus.temperature=0.7"],
+        )
+
+        assert result.exit_code != 0
+        assert "not supported" in result.output
+        assert "temperature: 0.7" not in proxy_file.read_text()
+
     def test_set_cost_cap_coerces_to_float(self, runner: CliRunner, temp_env: Path) -> None:
         """Set command writes cost caps as numeric YAML values."""
         from ruamel.yaml import YAML

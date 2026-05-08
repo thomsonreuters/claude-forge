@@ -148,6 +148,7 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
     )
     verbosity_levels = _parse_tuple_or_none(model_id, "verbosity_levels", data.get("verbosity_levels"))
     thinking_levels = _parse_tuple_or_none(model_id, "thinking_levels", data.get("thinking_levels"))
+    thinking_modes = _parse_tuple_or_none(model_id, "thinking_modes", data.get("thinking_modes"))
 
     tags_raw = data.get("tags", [])
     if not isinstance(tags_raw, list):
@@ -169,6 +170,9 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
             supports_thinking=bool(data["supports_thinking"]),
             supports_images=bool(data["supports_images"]),
             supports_verbosity=bool(data.get("supports_verbosity", False)),
+            supports_top_p=bool(data.get("supports_top_p", True)),
+            supports_sampling_overrides=bool(data.get("supports_sampling_overrides", True)),
+            supports_1m_context=bool(data.get("supports_1m_context", False)),
             temperature_constraint=constraint,
             temperature=temperature,
             verbosity_levels=verbosity_levels,
@@ -176,8 +180,10 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
             native_thinking_param=data.get("native_thinking_param"),
             litellm_reasoning_efforts=litellm_reasoning_efforts,
             default_reasoning_effort=data.get("default_reasoning_effort"),
+            thinking_modes=thinking_modes,
             thinking_levels=thinking_levels,
             default_thinking_level=data.get("default_thinking_level"),
+            token_estimate_multiplier=float(data.get("token_estimate_multiplier", 1.0)),
             tags=tags,
         )
     except (TypeError, ValueError) as e:

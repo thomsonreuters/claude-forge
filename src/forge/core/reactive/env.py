@@ -67,7 +67,8 @@ def build_claude_env(
 
     Starts with the current process environment. Sets ANTHROPIC_BASE_URL
     if ``base_url`` is provided. When ``direct`` is True, removes any
-    inherited ANTHROPIC_BASE_URL so the child hits Anthropic directly.
+    inherited ANTHROPIC_BASE_URL and subprocess proxy so the child hits
+    Anthropic directly.
     Applies ``extra_vars`` before routing and depth handling so explicit
     function arguments remain authoritative.
 
@@ -87,6 +88,7 @@ def build_claude_env(
         env["ANTHROPIC_BASE_URL"] = base_url
     elif direct:
         env.pop("ANTHROPIC_BASE_URL", None)
+        env.pop(FORGE_SUBPROCESS_PROXY_VAR, None)
     else:
         # No explicit base_url and not forced direct: check subprocess proxy fallback.
         # FORGE_SUBPROCESS_PROXY is set by `forge session start --subprocess-proxy`

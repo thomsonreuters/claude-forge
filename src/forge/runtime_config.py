@@ -54,7 +54,8 @@ class RuntimeConfig:
     user_agent_claude_code_version: str = ""
 
     # Optional model override for direct (non-proxy) sessions.
-    # Passed as --model to Claude Code. Empty string = let Claude Code decide.
+    # Passed to Claude Code via ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_*_MODEL.
+    # Empty string = let Claude Code decide.
     default_direct_model: str = ""
 
     # Fallback auto-compact window for proxy mode when model lookup fails.
@@ -360,7 +361,8 @@ proxy_mode: host
 # Version string for User-Agent header to upstream LLM providers
 # user_agent_claude_code_version: "2.1.76"
 
-# Optional model override for direct (non-proxy) sessions (--model flag to Claude Code).
+# Optional model override for direct (non-proxy) sessions.
+# Forge pins this through Claude Code's ANTHROPIC_DEFAULT_*_MODEL env vars.
 # Set to "" to let Claude Code pick. Aliases like "opus" or "sonnet" also work.
 # default_direct_model: claude-opus-4-6
 

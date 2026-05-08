@@ -255,6 +255,7 @@ class SessionManager:
         launch_mode: str = LAUNCH_MODE_HOST,
         sidecar_mounts: list[str] | None = None,
         sidecar_image: str | None = None,
+        direct_model: str | None = None,
         claude_session_id: str | None = None,
     ) -> SessionState:
         """Create and register a new session.
@@ -275,6 +276,7 @@ class SessionManager:
             launch_mode: How Forge should relaunch this session later.
             sidecar_mounts: Raw sidecar mount specs to persist for relaunch.
             sidecar_image: Optional sidecar image override to persist for relaunch.
+            direct_model: Optional Claude Code env-ready direct model pin.
 
         Returns:
             The created session state with candidate UUID.
@@ -439,6 +441,7 @@ class SessionManager:
             launch_mode=launch_mode,
             sidecar_mounts=sidecar_mounts,
             sidecar_image=sidecar_image,
+            direct_model=direct_model,
         )
 
         if claude_session_id:
@@ -498,6 +501,7 @@ class SessionManager:
         strategy: str = "structured",
         depth: int = 1,
         context_limit: int | None = None,
+        token_estimate_multiplier: float = 1.0,
         resume_mode: str = "handoff",
         forge_root: str | None = None,
     ) -> tuple[SessionState, HandoffResult]:
@@ -519,6 +523,7 @@ class SessionManager:
             strategy: Context assembly strategy (minimal/structured/full).
             depth: How many ancestors to traverse (1 = parent only).
             context_limit: Context limit for budget check (required for full strategy).
+            token_estimate_multiplier: Optional model-specific multiplier for heuristic budget checks.
             resume_mode: "handoff" (assemble context file) or "native" (skip assembly).
 
         Returns:
@@ -633,7 +638,10 @@ class SessionManager:
                     if isinstance(copied_path, str):
                         transcript_path = resolve_artifact_path(parent_artifact_root, copied_path)
                         if transcript_path is not None and transcript_path.is_file():
-                            token_estimate = estimate_transcript_tokens(transcript_path)
+                            token_estimate = estimate_transcript_tokens(
+                                transcript_path,
+                                multiplier=token_estimate_multiplier,
+                            )
                             if token_estimate > context_limit:
                                 raise ContextBudgetExceededError(token_estimate, context_limit)
 

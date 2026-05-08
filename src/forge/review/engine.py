@@ -24,6 +24,7 @@ from forge.core.reactive.env import (
     should_spawn_subprocesses,
 )
 from forge.core.reactive.proxy import lookup_proxy_base_url
+from forge.session.direct_model import direct_model_env
 
 from .models import (
     DEFAULT_MODELS,
@@ -119,20 +120,12 @@ def run_multi_review(
     def _run_single(spec: ModelSpec) -> ReviewResult:
         """Run a single model review. Called from a worker thread."""
         start = time.monotonic()
-        worker_prompt = spec.prompt if spec.prompt is not None else prompt
-
-        try:
-            base_url = lookup_proxy_base_url(spec.proxy)
-        except Exception as e:
-            duration = time.monotonic() - start
-            return ReviewResult(
-                model_name=spec.effective_worker_id,
-                stdout="",
-                stderr="",
-                success=False,
-                duration_seconds=duration,
-                error=f"Proxy '{spec.proxy}' not found: {e}",
-            )
+        if spec.prompt is None:
+            worker_prompt = prompt
+        elif spec.prompt_mode == "prefix":
+            worker_prompt = f"{spec.prompt}\n\n{prompt}" if prompt else spec.prompt
+        else:
+            worker_prompt = spec.prompt
 
         extra_env: dict[str, str] = {}
         if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -140,32 +133,71 @@ def run_multi_review(
             if ak:
                 extra_env["ANTHROPIC_API_KEY"] = ak
 
-        env = build_claude_env(base_url=base_url, extra_vars=extra_env or None)
-        subprocess_proxy = env.get(FORGE_SUBPROCESS_PROXY_VAR)
-        if not base_url and subprocess_proxy and not env.get("ANTHROPIC_BASE_URL"):
-            duration = time.monotonic() - start
-            return ReviewResult(
-                model_name=spec.effective_worker_id,
-                stdout="",
-                stderr="",
-                success=False,
-                duration_seconds=duration,
-                error=(
-                    f"Subprocess proxy '{subprocess_proxy}' not available. "
-                    f"Start it with: forge proxy start {subprocess_proxy}"
-                ),
-            )
-        if not base_url and not subprocess_proxy:
-            # No explicit proxy or subprocess proxy. Scrub any inherited
-            # ANTHROPIC_BASE_URL to keep direct workers direct.
-            env.pop("ANTHROPIC_BASE_URL", None)
+        if spec.direct:
+            if not spec.direct_model:
+                duration = time.monotonic() - start
+                return ReviewResult(
+                    model_name=spec.effective_worker_id,
+                    stdout="",
+                    stderr="",
+                    success=False,
+                    duration_seconds=duration,
+                    error=f"Direct model spec '{spec.name}' is missing direct_model",
+                )
+            try:
+                extra_env.update(direct_model_env(spec.direct_model))
+            except ValueError as e:
+                duration = time.monotonic() - start
+                return ReviewResult(
+                    model_name=spec.effective_worker_id,
+                    stdout="",
+                    stderr="",
+                    success=False,
+                    duration_seconds=duration,
+                    error=str(e),
+                )
+            base_url = None
+            env = build_claude_env(direct=True, extra_vars=extra_env or None)
+        else:
+            try:
+                base_url = lookup_proxy_base_url(spec.proxy)
+            except Exception as e:
+                duration = time.monotonic() - start
+                return ReviewResult(
+                    model_name=spec.effective_worker_id,
+                    stdout="",
+                    stderr="",
+                    success=False,
+                    duration_seconds=duration,
+                    error=f"Proxy '{spec.proxy}' not found: {e}",
+                )
+
+            env = build_claude_env(base_url=base_url, extra_vars=extra_env or None)
+            subprocess_proxy = env.get(FORGE_SUBPROCESS_PROXY_VAR)
+            if not base_url and subprocess_proxy and not env.get("ANTHROPIC_BASE_URL"):
+                duration = time.monotonic() - start
+                return ReviewResult(
+                    model_name=spec.effective_worker_id,
+                    stdout="",
+                    stderr="",
+                    success=False,
+                    duration_seconds=duration,
+                    error=(
+                        f"Subprocess proxy '{subprocess_proxy}' not available. "
+                        f"Start it with: forge proxy start {subprocess_proxy}"
+                    ),
+                )
+            if not base_url and not subprocess_proxy:
+                # No explicit proxy or subprocess proxy. Scrub any inherited
+                # ANTHROPIC_BASE_URL to keep direct workers direct.
+                env.pop("ANTHROPIC_BASE_URL", None)
 
         cmd = ["claude", "-p"]
         if can_use_bare(env):
             cmd.append("--bare")
         if resume_id:
             cmd.extend(["--resume", resume_id])
-        if spec.model_flag:
+        if spec.model_flag and not spec.direct:
             cmd.extend(["--model", spec.model_flag])
 
         try:

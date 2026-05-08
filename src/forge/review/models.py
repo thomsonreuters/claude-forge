@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from typing import Literal
+
+PromptMode = Literal["override", "prefix"]
 
 
 @dataclass(frozen=True)
@@ -18,12 +21,16 @@ class ModelSpec:
     Attributes:
         name: Human-readable identifier (e.g., "gpt-5.1").
         proxy: Proxy (proxy_id or template name) for base_url resolution.
-            None means direct Anthropic (no ANTHROPIC_BASE_URL).
+            None means direct Anthropic or ambient subprocess proxy routing.
         model_flag: Value for ``claude -p --model <flag>``.
             None means use the proxy's default model.
+        direct: When True, bypass proxies and launch with Anthropic credentials.
+        direct_model: Claude Code env-ready model pin used for direct workers.
         description: What this model is good at.
         prompt: Per-worker prompt override. When set, this worker receives
-            this prompt instead of the global prompt passed to run_multi_review().
+            this prompt according to prompt_mode.
+        prompt_mode: "override" means prompt replaces the global prompt.
+            "prefix" means prompt is prepended to the global prompt as a hint.
         worker_id: Stable key for JSON output. Defaults to ``name`` when None.
             Use when the same model appears multiple times with different roles
             (e.g., ``gpt-5.5-security``, ``gpt-5.5-architecture``).
@@ -33,7 +40,10 @@ class ModelSpec:
     proxy: str | None
     model_flag: str | None
     description: str
+    direct: bool = False
+    direct_model: str | None = None
     prompt: str | None = None
+    prompt_mode: PromptMode = "override"
     worker_id: str | None = None
 
     @property
@@ -70,8 +80,19 @@ class MultiReviewOutput:
         return sum(1 for r in self.results if not r.success)
 
 
-def _build_default_models() -> dict[str, ModelSpec]:
-    """Build default review models from the model catalog's defaults section.
+_CLAUDE_47_BOUNDED_REVIEW_PROMPT = """\
+You are the Claude Opus 4.7 bounded-review worker in a Forge quorum.
+
+Use the provided target and prompt as the complete task scope. Prefer concrete
+evidence over broad narrative: cite file:line locations for every substantive
+finding, quote only the minimum necessary code, and separate confirmed issues
+from hypotheses. Do not rely on vague prior referents or unstated conversation
+history. If the prompt lacks a needed target, say exactly what is missing.
+"""
+
+
+def _build_available_models() -> dict[str, ModelSpec]:
+    """Build available review models from the model catalog.
 
     Model names and flags derive from model_catalog.yaml so updating
     defaults is a single YAML change. Dict keys use compact display names
@@ -104,13 +125,54 @@ def _build_default_models() -> dict[str, ModelSpec]:
             name="claude-opus",
             proxy=None,
             model_flag=anthropic_opus,
+            direct=True,
+            direct_model=anthropic_opus,
             description="Deep architectural analysis, complex reasoning",
+        ),
+        "claude-opus-4.6": ModelSpec(
+            name="claude-opus-4.6",
+            proxy=None,
+            model_flag="claude-opus-4-6",
+            direct=True,
+            direct_model="claude-opus-4-6",
+            description="Stable Claude Opus 4.6 direct worker",
+        ),
+        "claude-opus-4.6-1m": ModelSpec(
+            name="claude-opus-4.6-1m",
+            proxy=None,
+            model_flag="claude-opus-4-6[1m]",
+            direct=True,
+            direct_model="claude-opus-4-6[1m]",
+            description="Stable Claude Opus 4.6 direct worker with 1M context pin",
+        ),
+        "claude-opus-4.7": ModelSpec(
+            name="claude-opus-4.7",
+            proxy=None,
+            model_flag="claude-opus-4-7",
+            direct=True,
+            direct_model="claude-opus-4-7",
+            description="Bounded single-shot review and quorum dissent",
+            prompt=_CLAUDE_47_BOUNDED_REVIEW_PROMPT,
+            prompt_mode="prefix",
         ),
     }
 
 
+def _build_default_model_names() -> tuple[str, ...]:
+    """Return the semantically chosen default quorum model names."""
+    from forge.core.models.catalog import get_compact_name, get_default_model
+
+    return (
+        get_compact_name(get_default_model("openai", "opus")),
+        get_compact_name(get_default_model("gemini", "opus")),
+        "claude-opus",
+    )
+
+
 # Proxy_ids match Forge template names (forge proxy create <template>).
-DEFAULT_MODELS: dict[str, ModelSpec] = _build_default_models()
+AVAILABLE_MODELS: dict[str, ModelSpec] = _build_available_models()
+_DEFAULT_MODEL_NAMES: tuple[str, ...] = _build_default_model_names()
+DEFAULT_MODELS: dict[str, ModelSpec] = {name: AVAILABLE_MODELS[name] for name in _DEFAULT_MODEL_NAMES}
 
 
 def resolve_model_specs(names_str: str | None) -> list[ModelSpec]:
@@ -123,12 +185,17 @@ def resolve_model_specs(names_str: str | None) -> list[ModelSpec]:
         return list(DEFAULT_MODELS.values())
 
     names = [m.strip() for m in names_str.split(",")]
-    invalid = [m for m in names if m not in DEFAULT_MODELS]
+    invalid = [m for m in names if m not in AVAILABLE_MODELS]
     if invalid:
-        available = list(DEFAULT_MODELS.keys())
+        available = list(AVAILABLE_MODELS.keys())
         raise ValueError(f"Unknown models: {invalid}. Available: {available}")
 
-    return [DEFAULT_MODELS[m] for m in names]
+    return [AVAILABLE_MODELS[m] for m in names]
+
+
+def available_model_specs() -> list[ModelSpec]:
+    """Return every selectable workflow model spec."""
+    return list(AVAILABLE_MODELS.values())
 
 
 @dataclass(frozen=True)
@@ -160,6 +227,19 @@ def check_model_availability(
     results: list[ModelAvailability] = []
 
     for spec in specs:
+        if spec.direct:
+            if resolve_env_or_credential("ANTHROPIC_API_KEY"):
+                results.append(ModelAvailability(spec=spec, status="ready", reason=""))
+            else:
+                results.append(
+                    ModelAvailability(
+                        spec=spec,
+                        status="unavailable",
+                        reason="ANTHROPIC_API_KEY not configured",
+                    )
+                )
+            continue
+
         if spec.proxy is None:
             subprocess_proxy = os.environ.get(FORGE_SUBPROCESS_PROXY_VAR)
             if subprocess_proxy:

@@ -70,6 +70,8 @@ def run_adversarial(
                 proxy=stance.model.proxy,
                 model_flag=stance.model.model_flag,
                 description=f"{label} stance via {stance.model.name}",
+                direct=stance.model.direct,
+                direct_model=stance.model.direct_model,
                 prompt=filled,
                 worker_id=worker_id,
             )

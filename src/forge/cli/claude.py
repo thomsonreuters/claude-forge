@@ -25,6 +25,7 @@ from forge.proxy.proxies import (
     ProxyResolutionError,
     resolve_proxy,
 )
+from forge.session.direct_model import apply_direct_model_env
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -237,12 +238,14 @@ def start_cmd(
         context_limit=context_limit,
     )
 
-    # Direct mode: honor configured default model from runtime config
-    direct_model: str | None = None
     if direct:
         from forge.runtime_config import get_default_direct_model
 
         direct_model = get_default_direct_model()
+        error = apply_direct_model_env(env_vars, direct_model)
+        if error:
+            click.echo(f"Error: {error}")
+            sys.exit(1)
 
     if proxy_display:
         console.print(f"Starting Claude with proxy [green]{proxy_display}[/green] ({template})")
@@ -251,7 +254,7 @@ def start_cmd(
 
     sys.exit(
         invoke_claude(
-            model=direct_model,
+            model=None,
             env_vars=env_vars,
             unset_env_vars=unset_vars,
             extra_args=list(claude_args) if claude_args else None,

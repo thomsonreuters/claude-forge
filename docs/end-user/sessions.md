@@ -472,6 +472,20 @@ default to direct mode (Anthropic API).
 
 The invariant: choosing a proxy chooses routing defaults (model family, context limit).
 
+### Pin a direct Claude model
+
+Direct sessions can opt into a specific Claude model without remembering Claude Code environment variables:
+
+```bash
+forge session start review-pass --model claude-opus-4-7
+forge session start long-sonnet --model claude-sonnet-4-6[1m]
+```
+
+`--model` is only valid for direct main sessions. It is accepted with `--subprocess-proxy`, and rejected with `--proxy`,
+`--sidecar`, or `--host-proxy`. Forge stores the normalized model pin in the session intent and relaunches resume/fork
+children with the same Claude Code `ANTHROPIC_MODEL` and `ANTHROPIC_DEFAULT_*_MODEL` environment variables. The stable
+`claude-opus`/`opus` aliases still point at Claude Opus 4.6; use `claude-opus-4-7` explicitly for Opus 4.7.
+
 ### Resume with a routing override
 
 ```bash

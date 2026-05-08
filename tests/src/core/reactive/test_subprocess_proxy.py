@@ -42,6 +42,7 @@ class TestBuildClaudeEnvSubprocessProxy:
         monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://inherited:8000")
         env = build_claude_env(direct=True)
         assert "ANTHROPIC_BASE_URL" not in env
+        assert FORGE_SUBPROCESS_PROXY_VAR not in env
 
     def test_direct_mode_removes_extra_vars_base_url(self, monkeypatch: pytest.MonkeyPatch):
         """direct=True cannot be bypassed by extra_vars."""

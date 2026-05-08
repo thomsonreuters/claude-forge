@@ -361,6 +361,60 @@ class ProxyInstanceConfig:
             )
 
         self.costs = _coerce_cost_config(self.costs)
+        _validate_static_tier_override_constraints(self.tiers, self.tier_overrides)
+
+
+def _validate_static_tier_override_constraints(tiers: TierModels, overrides: TierOverrides) -> None:
+    """Reject Forge-owned config overrides that known models do not support."""
+    try:
+        from forge.core.models.catalog import (
+            ModelCatalogError,
+            get_model_spec,
+            resolve_model_id,
+        )
+    except Exception:
+        # Catalog import can fail during early bootstrap; provider APIs still
+        # reject unsupported overrides at request time as a safety net.
+        return
+
+    for tier in ("haiku", "sonnet", "opus"):
+        override = overrides.get(tier)
+        if override is None:
+            continue
+
+        model_name = tiers.get(tier)
+        if not model_name:
+            continue
+
+        lookup_name = model_name.removesuffix("[1m]")
+        try:
+            canonical_model = resolve_model_id(lookup_name)
+            spec = get_model_spec(canonical_model)
+        except ModelCatalogError:
+            continue
+
+        if spec.supports_sampling_overrides is False and override.temperature is not None:
+            raise ValueError(
+                f"tier_overrides.{tier}.temperature is not supported by {canonical_model}; "
+                "remove the override or choose a model that supports sampling overrides"
+            )
+
+        if spec.thinking_modes == ("adaptive",) and override.thinking_budget_tokens is not None:
+            raise ValueError(
+                f"tier_overrides.{tier}.thinking_budget_tokens is not supported by {canonical_model}; "
+                "this model only supports adaptive thinking"
+            )
+
+        if (
+            override.reasoning_effort is not None
+            and spec.litellm_reasoning_efforts is not None
+            and override.reasoning_effort not in spec.litellm_reasoning_efforts
+        ):
+            supported = ", ".join(spec.litellm_reasoning_efforts)
+            raise ValueError(
+                f"tier_overrides.{tier}.reasoning_effort={override.reasoning_effort!r} is not supported by "
+                f"{canonical_model}; supported values: {supported}"
+            )
 
 
 @dataclass

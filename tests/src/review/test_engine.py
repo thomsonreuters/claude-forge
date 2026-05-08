@@ -8,7 +8,7 @@ import pytest
 
 from forge.proxy.proxies import ProxyNotFoundError
 from forge.review.engine import preflight_check, run_multi_review
-from forge.review.models import DEFAULT_MODELS, ModelAvailability, ModelSpec
+from forge.review.models import DEFAULT_MODELS, ModelAvailability, ModelSpec, PromptMode
 
 
 @pytest.fixture(autouse=True)
@@ -22,13 +22,19 @@ def _spec(
     proxy: str | None = "test-proxy",
     model_flag: str | None = None,
     prompt: str | None = None,
+    prompt_mode: PromptMode = "override",
+    direct: bool = False,
+    direct_model: str | None = None,
 ) -> ModelSpec:
     return ModelSpec(
         name=name,
         proxy=proxy,
         model_flag=model_flag,
         description="Test",
+        direct=direct,
+        direct_model=direct_model,
         prompt=prompt,
+        prompt_mode=prompt_mode,
     )
 
 
@@ -189,6 +195,54 @@ class TestRunMultiReview:
         assert "--model" in cmd
         assert "opus-4-5" in cmd
 
+    @patch("forge.review.engine.lookup_proxy_base_url")
+    @patch("forge.review.engine.subprocess.Popen")
+    def test_direct_worker_uses_env_pin_not_model_flag(self, mock_popen_cls, mock_lookup, monkeypatch):
+        mock_popen_cls.return_value = _mock_popen("output")
+        monkeypatch.setenv("FORGE_SUBPROCESS_PROXY", "openrouter")
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://inherited:8080")
+
+        run_multi_review(
+            "review",
+            models=[
+                _spec(
+                    name="claude-opus-4.7",
+                    proxy=None,
+                    model_flag="claude-opus-4-7",
+                    direct=True,
+                    direct_model="claude-opus-4-7",
+                )
+            ],
+        )
+
+        mock_lookup.assert_not_called()
+        cmd = mock_popen_cls.call_args[0][0]
+        env = mock_popen_cls.call_args.kwargs["env"]
+        assert "--model" not in cmd
+        assert env["ANTHROPIC_MODEL"] == "opus"
+        assert env["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-4-7"
+        assert "ANTHROPIC_BASE_URL" not in env
+        assert "FORGE_SUBPROCESS_PROXY" not in env
+
+    def test_direct_worker_requires_direct_model(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+        output = run_multi_review(
+            "review",
+            models=[
+                _spec(
+                    name="bad-direct",
+                    proxy=None,
+                    model_flag="opus-4-5",
+                    direct=True,
+                    direct_model=None,
+                )
+            ],
+        )
+
+        assert output.failed == 1
+        assert output.results[0].error == "Direct model spec 'bad-direct' is missing direct_model"
+
     @patch(
         "forge.review.engine.lookup_proxy_base_url",
         return_value="http://localhost:8085",
@@ -268,6 +322,17 @@ class TestRunMultiReview:
         run_multi_review("global prompt", models=[_spec(prompt=None)])
         communicate_kwargs = mock_popen_cls.return_value.communicate.call_args[1]
         assert communicate_kwargs["input"] == "global prompt"
+
+    @patch(
+        "forge.review.engine.lookup_proxy_base_url",
+        return_value="http://localhost:8085",
+    )
+    @patch("forge.review.engine.subprocess.Popen")
+    def test_prompt_prefix_mode_prepends_hint_to_global_prompt(self, mock_popen_cls, mock_lookup):
+        mock_popen_cls.return_value = _mock_popen("output")
+        run_multi_review("global prompt", models=[_spec(prompt="worker hint", prompt_mode="prefix")])
+        communicate_kwargs = mock_popen_cls.return_value.communicate.call_args[1]
+        assert communicate_kwargs["input"] == "worker hint\n\nglobal prompt"
 
     @patch(
         "forge.review.engine.lookup_proxy_base_url",

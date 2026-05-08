@@ -10,6 +10,10 @@ updated_at: "2026-05-07"
 
 models:
   # --- Anthropic ---
+  claude-opus-4-7:
+    input: 5.00
+    output: 25.00
+    cached_input: 0.50
   claude-opus-4-6:
     input: 5.00
     output: 25.00

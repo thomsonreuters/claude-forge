@@ -495,6 +495,7 @@ design principles, skills-vs-policies relationship, and CLI surfaces remain in d
 - N workers, each with model/proxy via `ModelSpec`
 - Per-worker prompt via `ModelSpec.prompt`
 - Per-worker context: `--context resume:<id>` or `--context blind`
+- Direct Claude workers use `ANTHROPIC_MODEL` plus `ANTHROPIC_DEFAULT_*_MODEL`, not Claude CLI `--model`
 - Parallel via `ThreadPoolExecutor` + process group cleanup
 - `/forge:analyze`: single-model fan-out with an analyze resource
 

@@ -110,9 +110,9 @@ def workflow_cmd() -> None:
 @click.option("--available", "available_only", is_flag=True, help="Show only ready models")
 def list_models(json_output: bool, available_only: bool) -> None:
     """Show available model backends for workflow runners."""
-    from forge.review.models import check_model_availability
+    from forge.review.models import available_model_specs, check_model_availability
 
-    availabilities = check_model_availability()
+    availabilities = check_model_availability(available_model_specs())
 
     if available_only:
         availabilities = [a for a in availabilities if a.status == "ready"]
@@ -123,6 +123,8 @@ def list_models(json_output: bool, available_only: bool) -> None:
                 "name": a.spec.name,
                 "proxy": a.spec.proxy,
                 "model_flag": a.spec.model_flag,
+                "direct": a.spec.direct,
+                "direct_model": a.spec.direct_model,
                 "description": a.spec.description,
                 "status": a.status,
                 "reason": a.reason,
@@ -152,7 +154,7 @@ def list_models(json_output: bool, available_only: bool) -> None:
 
     for a in availabilities:
         proxy_display = a.spec.proxy or "(direct Anthropic)"
-        model_display = a.spec.model_flag or "(proxy default)"
+        model_display = a.spec.direct_model or a.spec.model_flag or "(proxy default)"
         desc = a.spec.description
         if a.reason:
             desc += f" [dim]({a.reason})[/dim]"
@@ -1075,7 +1077,7 @@ def _parse_worker_specs(worker_args: tuple[str, ...] | list[str], *, code_mode: 
 
     Raises ValueError for unknown models or missing colon.
     """
-    from forge.review.models import DEFAULT_MODELS
+    from forge.review.models import AVAILABLE_MODELS
 
     prompts = _DEFAULT_CODE_STANCE_PROMPTS if code_mode else _DEFAULT_PROPOSAL_STANCE_PROMPTS
     stances: list[StanceSpec] = []
@@ -1086,11 +1088,11 @@ def _parse_worker_specs(worker_args: tuple[str, ...] | list[str], *, code_mode: 
         model_name, rest = arg.split(":", 1)
         model_name = model_name.strip()
 
-        if model_name not in DEFAULT_MODELS:
-            available = list(DEFAULT_MODELS.keys())
+        if model_name not in AVAILABLE_MODELS:
+            available = list(AVAILABLE_MODELS.keys())
             raise ValueError(f"Unknown model '{model_name}'. Available: {available}")
 
-        spec = DEFAULT_MODELS[model_name]
+        spec = AVAILABLE_MODELS[model_name]
         rest = rest.strip()
 
         # Strip optional surrounding quotes (may survive in some shell contexts)
@@ -1396,7 +1398,7 @@ def _parse_consensus_worker_specs(
 
     Raises ValueError for unknown models or missing colon.
     """
-    from forge.review.models import DEFAULT_MODELS
+    from forge.review.models import AVAILABLE_MODELS
 
     role_specs: list[RoleSpec] = []
     for arg in worker_args:
@@ -1406,11 +1408,11 @@ def _parse_consensus_worker_specs(
         model_name, rest = arg.split(":", 1)
         model_name = model_name.strip()
 
-        if model_name not in DEFAULT_MODELS:
-            available = list(DEFAULT_MODELS.keys())
+        if model_name not in AVAILABLE_MODELS:
+            available = list(AVAILABLE_MODELS.keys())
             raise ValueError(f"Unknown model '{model_name}'. Available: {available}")
 
-        spec = DEFAULT_MODELS[model_name]
+        spec = AVAILABLE_MODELS[model_name]
         rest = rest.strip()
 
         # Strip optional surrounding quotes (may survive in some shell contexts)

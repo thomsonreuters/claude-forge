@@ -251,7 +251,7 @@ def test_direct_launch_prints_summary(tmp_path, monkeypatch):
 
 
 def test_direct_launch_honors_default_direct_model(tmp_path, monkeypatch):
-    """Direct mode passes default_direct_model from runtime config to invoke_claude."""
+    """Direct mode passes default_direct_model through Claude Code env vars."""
     from forge.runtime_config import reset_runtime_config
 
     project_root = tmp_path / "project"
@@ -267,8 +267,9 @@ def test_direct_launch_honors_default_direct_model(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_invoke(*, model=None, **_kw):
+    def fake_invoke(*, model=None, env_vars=None, **_kw):
         captured["model"] = model
+        captured["env_vars"] = env_vars or {}
         return 0
 
     with patch(_INVOKE, side_effect=fake_invoke):
@@ -276,7 +277,9 @@ def test_direct_launch_honors_default_direct_model(tmp_path, monkeypatch):
         result = runner.invoke(main, ["claude", "start", "--no-proxy"])
 
     assert result.exit_code == 0, result.output
-    assert captured["model"] == "claude-opus-4-6"
+    assert captured["model"] is None
+    assert captured["env_vars"]["ANTHROPIC_MODEL"] == "opus"
+    assert captured["env_vars"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-4-6"
 
 
 def test_direct_launch_no_model_when_unconfigured(tmp_path, monkeypatch):

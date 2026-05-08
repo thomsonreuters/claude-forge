@@ -28,6 +28,11 @@ from forge.session import (
     SessionStore,
 )
 from forge.session.claude import build_claude_args
+from forge.session.direct_model import (
+    apply_direct_model_env,
+    resolve_direct_model_pin,
+    token_estimate_multiplier_for_direct_model,
+)
 from forge.session.exceptions import (
     BranchExistsError,
     BranchInUseError,
@@ -484,13 +489,15 @@ def _launch_claude_for_session(
 
     store.update(timeout_s=5.0, mutate=lambda m: setattr(m.confirmed, "is_sandboxed", False))
 
-    # Direct sessions: pass configured model override when one is set
     if runtime_base_url is None:
         from forge.runtime_config import get_default_direct_model
 
-        direct_model = get_default_direct_model()
-    else:
-        direct_model = None
+        direct_model = manifest.intent.launch.direct_model if manifest.intent.launch else None
+        direct_model = direct_model or get_default_direct_model()
+        error = apply_direct_model_env(env_vars, direct_model)
+        if error:
+            console.print(f"[red]Error:[/red] {error}")
+            return 1
 
     exit_code = _sess().run_with_active_session(
         session_name=manifest.name,
@@ -503,7 +510,7 @@ def _launch_claude_for_session(
             resume_id=resume_id,
             fork_session=fork_session,
             name=name,
-            model=direct_model,
+            model=None,
             system_prompt_file=system_prompt_file,
             env_vars=env_vars,
             unset_env_vars=unset_env_vars,
@@ -566,6 +573,29 @@ def _print_branch_exists_tip(e: BranchExistsError) -> None:
         )
 
 
+def _resume_token_estimate_multiplier(
+    *,
+    parent_state: SessionState,
+    effective_proxy_ref: str | None,
+) -> float:
+    """Return a model-specific heuristic multiplier for fresh full-resume checks."""
+    if effective_proxy_ref is not None:
+        # v1 only applies tokenizer safety margins to direct Claude pins. Avoid
+        # proxy config I/O in the resume hot path until proxy-routed 4.7 needs it.
+        return 1.0
+
+    from forge.runtime_config import get_default_direct_model
+
+    direct_model = parent_state.intent.launch.direct_model if parent_state.intent.launch else None
+    direct_model = direct_model or get_default_direct_model()
+    if not direct_model:
+        return 1.0
+    try:
+        return token_estimate_multiplier_for_direct_model(direct_model)
+    except ValueError:
+        return 1.0
+
+
 # --- Shared session creation + launch ---
 
 
@@ -594,6 +624,7 @@ def launch_new_session(
     supervisor_proxy: str | None = None,
     supervisor_direct: bool = False,
     subprocess_proxy: str | None = None,
+    direct_model: str | None = None,
 ) -> int:
     """Create a new session and launch Claude.
 
@@ -619,6 +650,15 @@ def launch_new_session(
     if direct and host_proxy:
         console.print("[red]Error:[/red] --no-proxy cannot be combined with --host-proxy")
         return 1
+    if direct_model and (template or base_url):
+        console.print("[red]Error:[/red] --model is only valid for direct sessions; remove --proxy")
+        return 1
+    if direct_model and sidecar:
+        console.print("[red]Error:[/red] --model cannot be combined with --sidecar")
+        return 1
+    if direct_model and host_proxy:
+        console.print("[red]Error:[/red] --model cannot be combined with --host-proxy")
+        return 1
     if incognito and no_launch:
         console.print("[red]Error:[/red] --incognito and --no-launch are mutually exclusive")
         return 1
@@ -629,6 +669,17 @@ def launch_new_session(
     launch_mode = LAUNCH_MODE_HOST if direct else _resolve_launch_mode(sidecar=sidecar, host_proxy=host_proxy)
     use_sidecar = launch_mode == LAUNCH_MODE_SIDECAR
     manager = _sess().SessionManager()
+
+    normalized_direct_model: str | None = None
+    if direct_model:
+        if not direct:
+            console.print("[red]Error:[/red] --model is only valid for direct main sessions")
+            return 1
+        try:
+            normalized_direct_model = resolve_direct_model_pin(direct_model).env_model
+        except ValueError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            return 1
 
     # Resolve system prompt to absolute path BEFORE worktree creation
     # (worktree changes cwd so relative paths would break).
@@ -676,6 +727,7 @@ def launch_new_session(
             launch_mode=launch_mode,
             sidecar_mounts=list(mounts) if use_sidecar else None,
             sidecar_image=image if use_sidecar else None,
+            direct_model=normalized_direct_model,
             claude_session_id=pre_seeded_uuid,
         )
     except SessionExistsError as e:
@@ -858,6 +910,13 @@ def launch_new_session(
 )
 @click.option("--worktree", "-w", is_flag=True, help="Create git worktree for session isolation")
 @click.option("--branch", "-b", help="Override branch name (requires --worktree)")
+@click.option(
+    "--model",
+    "direct_model",
+    type=str,
+    default=None,
+    help="Pin the Claude model for direct sessions (for example: claude-opus-4-7 or claude-sonnet-4-6[1m])",
+)
 @click.option("--sidecar", is_flag=True, help="Run with bundled proxy in Docker container")
 @click.option("--host-proxy", is_flag=True, help="Use host proxy (overrides config)")
 @click.option("--mount", "mounts", multiple=True, help="Extra mounts (host:container[:ro|rw])")
@@ -903,6 +962,7 @@ def start(
     system_prompt_file: str | None,
     worktree: bool,
     branch: str | None,
+    direct_model: str | None,
     sidecar: bool,
     host_proxy: bool,
     mounts: tuple[str, ...],
@@ -956,7 +1016,12 @@ def start(
 
     routing: ResolvedRouting | None = None
     if proxy_name:
-        routing = _sess()._resolve_routing_from_cli(proxy_name=proxy_name, direct=False)
+        if direct_model:
+            # Defer --model/--proxy conflict reporting to launch_new_session(),
+            # the shared validation path for start/incognito-style launches.
+            routing = ResolvedRouting(template=proxy_name)
+        else:
+            routing = _sess()._resolve_routing_from_cli(proxy_name=proxy_name, direct=False)
 
     # CWD validation: must be at repo root; --worktree requires main repo
     from forge.cli.guards import require_main_repo_root, require_repo_root
@@ -995,6 +1060,7 @@ def start(
             supervisor_proxy=supervisor_proxy,
             supervisor_direct=supervisor_direct,
             subprocess_proxy=subprocess_proxy,
+            direct_model=direct_model,
         )
     )
 
@@ -1543,6 +1609,10 @@ def _resume_fresh(
         effective_proxy_ref = effective_proxy_id or effective_template
 
     context_limit = _sess()._resolve_context_limit(effective_proxy_ref)
+    token_multiplier = _resume_token_estimate_multiplier(
+        parent_state=parent_state,
+        effective_proxy_ref=effective_proxy_ref,
+    )
 
     try:
         child_manifest, handoff_result = manager.resume_session(
@@ -1551,6 +1621,7 @@ def _resume_fresh(
             strategy=strategy,
             depth=depth,
             context_limit=context_limit,
+            token_estimate_multiplier=token_multiplier,
             forge_root=parent_state.forge_root,
         )
     except ForgeSessionError as e:
@@ -2129,9 +2200,12 @@ def fork(
     if effective_url is None:
         from forge.runtime_config import get_default_direct_model
 
-        fork_direct_model = get_default_direct_model()
-    else:
-        fork_direct_model = None
+        fork_direct_model = fork_manifest.intent.launch.direct_model if fork_manifest.intent.launch else None
+        fork_direct_model = fork_direct_model or get_default_direct_model()
+        error = apply_direct_model_env(env_vars, fork_direct_model)
+        if error:
+            console.print(f"[red]Error:[/red] {error}")
+            sys.exit(1)
 
     # Warn about --strategy/--inline-plan on same-directory forks (only if user explicitly set them)
     if not is_worktree_fork and (_strategy_explicit or _inline_plan_explicit):
@@ -2215,7 +2289,7 @@ def fork(
             return _sess().invoke_claude(
                 session_id=_fork_uuid,
                 name=fork_manifest.name,
-                model=fork_direct_model,
+                model=None,
                 system_prompt_file=prompt_file,
                 env_vars=env_vars,
                 unset_env_vars=unset_env_vars,
@@ -2235,7 +2309,7 @@ def fork(
                 resume_id=parent_session_id,
                 fork_session=True,
                 name=fork_manifest.name,
-                model=fork_direct_model,
+                model=None,
                 env_vars=env_vars,
                 unset_env_vars=unset_env_vars,
                 cwd=_fork_cwd,

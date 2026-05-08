@@ -9,9 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from forge.proxy.cost_tracker import CapResult, CostTracker
-
-_MICROS = 1_000_000
+from forge.proxy.cost_tracker import CostTracker
 
 
 class TestCostTrackerBasic:
@@ -181,3 +179,16 @@ class TestDailyWindowRolling:
         t.record(100_000)
 
         assert t.daily_spend_micros() == 100_000
+
+
+class TestMonthlyWindow:
+    def test_month_rolls_during_preflight_check(self):
+        """A long-running proxy should not reject new-month requests on stale spend."""
+        t = CostTracker(monthly_cap_usd=1.00)
+        t._monthly_key = "1999-01"
+        t._monthly_total = 2_000_000
+
+        result = t.check_cap()
+
+        assert not result.exceeded
+        assert t.monthly_spend_micros() == 0

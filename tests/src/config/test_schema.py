@@ -293,6 +293,15 @@ class TestProxyInstanceConfig:
 
         assert config.provider_settings["openai_api_mode"] == "responses"
 
+    def test_cost_caps_coerce_numeric_strings(self):
+        """CostCaps accepts CLI/YAML numeric strings."""
+        from forge.config.schema import CostCaps
+
+        caps = CostCaps(per_day="20.00", per_month="100")
+
+        assert caps.per_day == 20.0
+        assert caps.per_month == 100.0
+
 
 class TestLeaseIdValidation:
     """Tests for proxy_id path traversal prevention."""
@@ -479,4 +488,38 @@ class TestProxyInstanceConfigValidation:
                 upstream_base_url="https://litellm.test.example.com",
                 tiers=TierModels(haiku="h", sonnet="s", opus="o"),
                 default_tier="invalid_tier",  # Invalid
+            )
+
+    def test_invalid_cost_cap_rejected(self):
+        """Non-positive cost caps should be rejected."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        with pytest.raises(ValueError, match="costs.caps.per_day"):
+            ProxyInstanceConfig(
+                proxy_format=1,
+                template="test",
+                template_digest="sha256:test",
+                provider="litellm",
+                proxy_endpoint="http://localhost:8084",
+                port=8084,
+                upstream_base_url="https://litellm.test.example.com",
+                tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+                costs={"caps": {"per_day": "free"}},
+            )
+
+    def test_invalid_cost_action_rejected(self):
+        """Invalid cost cap actions should be rejected."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        with pytest.raises(ValueError, match="Invalid on_cap_hit"):
+            ProxyInstanceConfig(
+                proxy_format=1,
+                template="test",
+                template_digest="sha256:test",
+                provider="litellm",
+                proxy_endpoint="http://localhost:8084",
+                port=8084,
+                upstream_base_url="https://litellm.test.example.com",
+                tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+                costs={"on_cap_hit": "explode"},
             )

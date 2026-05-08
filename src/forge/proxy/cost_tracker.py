@@ -50,8 +50,8 @@ class CostTracker:
         cap_mode: str = "post",
         on_cap_hit: str = "reject",
     ) -> None:
-        self.daily_cap_micros = int(daily_cap_usd * _MICROS_PER_DOLLAR) if daily_cap_usd else None
-        self.monthly_cap_micros = int(monthly_cap_usd * _MICROS_PER_DOLLAR) if monthly_cap_usd else None
+        self.daily_cap_micros = int(daily_cap_usd * _MICROS_PER_DOLLAR) if daily_cap_usd is not None else None
+        self.monthly_cap_micros = int(monthly_cap_usd * _MICROS_PER_DOLLAR) if monthly_cap_usd is not None else None
         self.cap_mode = cap_mode
         self.on_cap_hit = on_cap_hit
 
@@ -148,15 +148,17 @@ class CostTracker:
             return
 
         now = time.time()
-        now_dt = datetime.now(timezone.utc)
-        current_month = now_dt.strftime("%Y-%m")
-
-        if current_month != self._monthly_key:
-            self._monthly_total = 0
-            self._monthly_key = current_month
+        self._roll_month_if_needed()
 
         self._monthly_total += cost_micros
         self._daily_window.append((now, cost_micros))
+
+    def _roll_month_if_needed(self) -> None:
+        """Reset the calendar-month accumulator when UTC month changes."""
+        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+        if current_month != self._monthly_key:
+            self._monthly_total = 0
+            self._monthly_key = current_month
 
     def _prune_daily_window(self) -> None:
         """Remove entries older than 24 hours from the rolling window."""
@@ -171,6 +173,7 @@ class CostTracker:
 
     def monthly_spend_micros(self) -> int:
         """Current calendar month spend in microdollars."""
+        self._roll_month_if_needed()
         return self._monthly_total
 
     def check_cap(self, projected_cost_micros: int = 0) -> CapResult:

@@ -279,6 +279,49 @@ async def test_metrics_accumulate(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_strict_cap_counts_pydantic_message_content(monkeypatch):
+    """Strict cap preflight should count validated Message objects, not only dicts."""
+    from forge.proxy import server
+    from forge.proxy.cost_tracker import CostTracker
+    from forge.proxy.data_models import MessagesRequest
+
+    monkeypatch.setattr(server, "reload", lambda: None)
+    monkeypatch.setattr(
+        server,
+        "cost_tracker",
+        CostTracker(daily_cap_usd=0.0005, cap_mode="strict", on_cap_hit="reject"),
+    )
+
+    request_data = MessagesRequest(
+        model="claude-sonnet-4-6",
+        max_tokens=1,
+        messages=[{"role": "user", "content": "x" * 1000}],
+    )
+
+    resp = await server.create_message(request_data, _DummyRawRequest())
+
+    assert resp.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_warn_cap_adds_header_and_allows_request(monkeypatch):
+    """Warn mode should continue the request and surface a warning header."""
+    from forge.proxy import server
+    from forge.proxy.cost_tracker import CostTracker
+
+    _stub_server(monkeypatch, server)
+
+    tracker = CostTracker(daily_cap_usd=0.001, on_cap_hit="warn")
+    tracker.record(2_000)
+    monkeypatch.setattr(server, "cost_tracker", tracker)
+
+    resp = await server.create_message(_make_request_data(stream=False), _DummyRawRequest())
+
+    assert resp.status_code == 200
+    assert "daily spend cap reached" in resp.headers["X-Spend-Warning"]
+
+
+@pytest.mark.asyncio
 async def test_cached_tokens_in_metrics(monkeypatch):
     from forge.proxy import server
 

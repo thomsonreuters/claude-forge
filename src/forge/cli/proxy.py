@@ -37,6 +37,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
+from forge.cli.proxy_costs import costs_cmd
 from forge.config.loader import (
     get_proxy_file_path,
     get_template_path,
@@ -90,10 +91,6 @@ def proxy() -> None:
         forge proxy list                       # List all proxies
         forge proxy show my-proxy              # Show proxy details
     """
-
-
-# --- Costs (registered from proxy_costs.py) ---
-from forge.cli.proxy_costs import costs_cmd
 
 proxy.add_command(costs_cmd)
 
@@ -870,7 +867,7 @@ def set_cmd(proxy_id: str, key_value: str) -> None:
     try:
         if final_key in ("port", "proxy_format", "thinking_budget_tokens"):
             coerced_value = int(value)
-        elif final_key in ("temperature",):
+        elif final_key in ("temperature",) or key in ("costs.caps.per_day", "costs.caps.per_month"):
             coerced_value = float(value)
         elif value.lower() == "true":
             coerced_value = True

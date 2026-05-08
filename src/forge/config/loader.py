@@ -446,6 +446,7 @@ def load_proxy_instance_config_from_dict(data: dict) -> "ProxyInstanceConfig":
         provider_settings=data.get("provider_settings", {}),
         prompt_caching=data.get("prompt_caching", "passthrough"),
         auto_cache_min_tokens=data.get("auto_cache_min_tokens", 1024),
+        costs=data.get("costs", {}),
         created_at=data.get("created_at"),
         updated_at=data.get("updated_at"),
     )

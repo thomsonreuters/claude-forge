@@ -395,6 +395,31 @@ tier_overrides:
         content = proxy_file.read_text()
         assert "reasoning_effort: high" in content
 
+    def test_set_cost_cap_coerces_to_float(self, runner: CliRunner, temp_env: Path) -> None:
+        """Set command writes cost caps as numeric YAML values."""
+        from ruamel.yaml import YAML
+
+        proxy_yaml = """\
+template: litellm-openai
+provider: litellm
+proxy_endpoint: http://localhost:8085
+port: 8085
+upstream_base_url: https://litellm.test.example.com
+tiers:
+  haiku: gpt-4o-mini
+  sonnet: gpt-4o
+  opus: gpt-5
+"""
+        proxy_file = _create_proxy_file(temp_env, "cost-cap-test", proxy_yaml)
+
+        result = runner.invoke(main, ["proxy", "set", "cost-cap-test", "costs.caps.per_day=20.00"])
+
+        assert result.exit_code == 0
+        yaml = YAML()
+        with open(proxy_file) as f:
+            data = yaml.load(f)
+        assert data["costs"]["caps"]["per_day"] == 20.0
+
     def test_set_invalid_format_error(self, runner: CliRunner, temp_env: Path) -> None:
         """Set command errors on invalid format."""
         proxy_yaml = """\

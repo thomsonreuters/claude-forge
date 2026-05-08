@@ -258,6 +258,41 @@ class TestProxyFileIO:
         assert loaded.tiers.haiku == "gemini/gemini-3-flash-preview"
         assert loaded.default_tier == "opus"
 
+    def test_proxy_instance_config_round_trips_costs(self, tmp_path, monkeypatch):
+        """Cost cap config survives write/load of proxy.yaml."""
+        from forge.config.loader import (
+            load_proxy_instance_config,
+            write_proxy_instance_config,
+        )
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        monkeypatch.setenv("FORGE_HOME", str(tmp_path))
+
+        original = ProxyInstanceConfig(
+            proxy_format=1,
+            template="litellm-gemini",
+            template_digest="sha256:abc123def456",
+            provider="litellm",
+            proxy_endpoint="http://localhost:8085",
+            port=8085,
+            upstream_base_url="https://litellm.test.example.com",
+            tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+            costs={
+                "caps": {"per_day": 20.0, "per_month": 100.0},
+                "cap_mode": "strict",
+                "on_cap_hit": "warn",
+            },
+        )
+
+        write_proxy_instance_config("cost-proxy", original)
+        loaded = load_proxy_instance_config("cost-proxy")
+
+        assert loaded is not None
+        assert loaded.costs["caps"]["per_day"] == 20.0
+        assert loaded.costs["caps"]["per_month"] == 100.0
+        assert loaded.costs["cap_mode"] == "strict"
+        assert loaded.costs["on_cap_hit"] == "warn"
+
     def test_load_proxy_instance_config_not_found(self, tmp_path, monkeypatch):
         """load_proxy_instance_config returns None for missing file."""
         from forge.config.loader import load_proxy_instance_config
@@ -348,6 +383,38 @@ class TestLoadConfigWithProxy:
         assert config.proxy.litellm.tiers.haiku == "test-haiku"
         assert config.proxy.litellm.tiers.sonnet == "test-sonnet"
         assert config.proxy.litellm.tiers.opus == "test-opus"
+
+    def test_load_config_with_proxy_id_applies_costs(self, tmp_path, monkeypatch):
+        """Proxy-owned cost caps reach the runtime ProxyConfig."""
+        from forge.config import load_config
+        from forge.config.loader import write_proxy_instance_config
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        monkeypatch.setenv("FORGE_HOME", str(tmp_path))
+
+        proxy_config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="test-template",
+            template_digest="sha256:test123",
+            provider="litellm",
+            proxy_endpoint="http://localhost:9999",
+            port=9999,
+            upstream_base_url="https://litellm.test.example.com",
+            tiers=TierModels(haiku="test-haiku", sonnet="test-sonnet", opus="test-opus"),
+            costs={
+                "caps": {"per_day": "20.00", "per_month": "100.00"},
+                "cap_mode": "strict",
+                "on_cap_hit": "warn",
+            },
+        )
+        write_proxy_instance_config("cost-proxy", proxy_config)
+
+        config = load_config(proxy_id="cost-proxy")
+
+        assert config.proxy.costs.caps.per_day == 20.0
+        assert config.proxy.costs.caps.per_month == 100.0
+        assert config.proxy.costs.cap_mode == "strict"
+        assert config.proxy.costs.on_cap_hit == "warn"
 
     def test_load_config_with_nonexistent_lease_raises(self, tmp_path, monkeypatch):
         """Missing proxy_id raises ValueError (fail fast)."""

@@ -125,6 +125,55 @@ def _calc_and_log_cost(
         return 0
 
 
+def _cap_result_message(cap_result) -> str:
+    """Format a spend cap result for HTTP headers and errors."""
+    cap_type = cap_result.cap_type or "configured"
+    return (
+        f"{'Projected ' if cap_result.projected else ''}"
+        f"{cap_type} spend cap reached: "
+        f"${cap_result.current_micros / 1_000_000:.2f} / "
+        f"${cap_result.limit_micros / 1_000_000:.2f}. "
+        f"Adjust with: forge proxy set <id> costs.caps.per_{cap_type}=<amount>"
+    )
+
+
+def _with_spend_warning(headers: dict[str, str], warning: str | None) -> dict[str, str]:
+    """Attach the optional spend warning header to a response header dict."""
+    if warning:
+        headers["X-Spend-Warning"] = warning
+    return headers
+
+
+def _textish_chars(value: object) -> int:
+    """Approximate text-bearing request payload size for strict cap preflight."""
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, dict):
+        total = 0
+        for key in ("content", "text", "thinking", "input", "name", "description"):
+            if key in value:
+                total += _textish_chars(value[key])
+        return total
+    if isinstance(value, (list, tuple)):
+        return sum(_textish_chars(item) for item in value)
+
+    total = 0
+    for attr in ("content", "text", "thinking", "input", "name", "description"):
+        if hasattr(value, attr):
+            total += _textish_chars(getattr(value, attr))
+    return total
+
+
+def _estimate_input_tokens(request_data: MessagesRequest) -> int:
+    """Approximate request input tokens for strict cap preflight."""
+    chars = _textish_chars(getattr(request_data, "system", None))
+    chars += _textish_chars(getattr(request_data, "messages", None))
+    chars += _textish_chars(getattr(request_data, "tools", None))
+    return chars // 4
+
+
 def _get_tier_override(tier: str) -> TierOverride | None:
     """Get tier override from the active provider config.
 
@@ -242,6 +291,8 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
     if PROXY_ID is None:
         reload()
 
+    spend_warning: str | None = None
+
     # Spend cap check (before any model resolution or forwarding)
     if cost_tracker is not None and cost_tracker.has_caps:
         projected = 0
@@ -249,11 +300,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             from forge.core.models.pricing import calculate_cost as _est_cost
 
             _est_max_output = request_data.max_tokens or 4096
-            _est_input = sum(
-                len(str(m.get("content", ""))) // 4
-                for m in (request_data.messages or [])
-                if isinstance(m, dict)
-            )
+            _est_input = _estimate_input_tokens(request_data)
             try:
                 projected = _est_cost(
                     request_data.model or "claude-sonnet-4-6",
@@ -263,24 +310,21 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 projected = 0
 
         cap_result = cost_tracker.check_cap(projected_cost_micros=projected)
-        if cap_result.exceeded and cost_tracker.on_cap_hit == "reject":
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "type": "error",
-                    "error": {
-                        "type": "spend_cap_exceeded",
-                        "message": (
-                            f"{'Projected ' if cap_result.projected else ''}"
-                            f"{cap_result.cap_type} spend cap reached: "
-                            f"${cap_result.current_micros / 1_000_000:.2f} / "
-                            f"${cap_result.limit_micros / 1_000_000:.2f}. "
-                            f"Adjust with: forge proxy set <id> costs.caps.per_{cap_result.cap_type}=<amount>"
-                        ),
+        if cap_result.exceeded:
+            spend_warning = _cap_result_message(cap_result)
+            if cost_tracker.on_cap_hit == "reject":
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "type": "error",
+                        "error": {
+                            "type": "spend_cap_exceeded",
+                            "message": spend_warning,
+                        },
                     },
-                },
-                headers={"X-Request-ID": request_id},
-            )
+                    headers={"X-Request-ID": request_id},
+                )
+            logger.warning("[%s] %s", request_id, spend_warning)
 
     # Resolve effective tier (routing invariants):
     # Precedence: request explicit tier > config.proxy.default_tier
@@ -471,6 +515,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
             }
+            headers = _with_spend_warning(headers, spend_warning)
 
             # Log streaming request (no response body available)
             duration_ms = (time.time() - start_time) * 1000
@@ -617,13 +662,16 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 )
                 return JSONResponse(
                     content=response_dict,
-                    headers={
-                        "X-Request-ID": request_id,
-                        "X-Resolved-Tier": resolved_tier,
-                        "X-Resolved-Model": actual_model_id,
-                        "X-Request-Cost": f"{_cost / 1_000_000:.6f}",
-                        "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
-                    },
+                    headers=_with_spend_warning(
+                        {
+                            "X-Request-ID": request_id,
+                            "X-Resolved-Tier": resolved_tier,
+                            "X-Resolved-Model": actual_model_id,
+                            "X-Request-Cost": f"{_cost / 1_000_000:.6f}",
+                            "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
+                        },
+                        spend_warning,
+                    ),
                 )
 
             except ToolCallError as e:
@@ -736,13 +784,16 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 response_dict["_request_id"] = request_id
                 return JSONResponse(
                     content=response_dict,
-                    headers={
-                        "X-Request-ID": request_id,
-                        "X-Resolved-Tier": resolved_tier,
-                        "X-Resolved-Model": actual_model_id,
-                        "X-Request-Cost": f"{_rcost / 1_000_000:.6f}",
-                        "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
-                    },
+                    headers=_with_spend_warning(
+                        {
+                            "X-Request-ID": request_id,
+                            "X-Resolved-Tier": resolved_tier,
+                            "X-Resolved-Model": actual_model_id,
+                            "X-Request-Cost": f"{_rcost / 1_000_000:.6f}",
+                            "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
+                        },
+                        spend_warning,
+                    ),
                 )
 
     except HTTPException:

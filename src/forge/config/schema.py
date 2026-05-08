@@ -161,12 +161,31 @@ class ProviderConfig:
     error_hints: bool = False
 
 
+def _coerce_optional_usd_cap(name: str, value: Any) -> float | None:
+    """Coerce an optional USD cap to a positive float."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid {name}: must be a positive number of USD")
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid {name}: must be a positive number of USD") from None
+    if amount <= 0:
+        raise ValueError(f"Invalid {name}: must be greater than 0")
+    return amount
+
+
 @dataclass
 class CostCaps:
     """Spend cap configuration for a proxy."""
 
     per_day: float | None = None  # USD, rolling 24h window
     per_month: float | None = None  # USD, calendar month
+
+    def __post_init__(self) -> None:
+        self.per_day = _coerce_optional_usd_cap("costs.caps.per_day", self.per_day)
+        self.per_month = _coerce_optional_usd_cap("costs.caps.per_month", self.per_month)
 
 
 @dataclass
@@ -308,6 +327,23 @@ class ProxyInstanceConfig:
         if self.default_tier not in valid_tiers:
             raise ValueError(
                 f"Invalid default_tier: '{self.default_tier}' (must be one of: {', '.join(sorted(valid_tiers))})"
+            )
+
+        if self.costs is None:
+            self.costs = {}
+        if not isinstance(self.costs, dict):
+            raise ValueError("Invalid costs: must be a mapping")
+        if self.costs:
+            raw_caps = self.costs.get("caps", {}) or {}
+            if not isinstance(raw_caps, dict):
+                raise ValueError("Invalid costs.caps: must be a mapping")
+            CostConfig(
+                caps=CostCaps(
+                    per_day=raw_caps.get("per_day"),
+                    per_month=raw_caps.get("per_month"),
+                ),
+                cap_mode=self.costs.get("cap_mode", "post"),
+                on_cap_hit=self.costs.get("on_cap_hit", "reject"),
             )
 
 

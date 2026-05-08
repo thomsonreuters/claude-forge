@@ -74,4 +74,5 @@ config.yaml.runtime.*
 # Logs (proxy and general)
 logs/
 src/forge/logs/
-docker/certs/
+docker/certs/*.pem
+docker/certs/*.crt

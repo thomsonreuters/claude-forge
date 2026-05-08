@@ -60,7 +60,7 @@ class TestOpenRouterComplete:
         assert response.text.strip().upper() in ("YES", "NO", "YES.", "NO.")
 
     async def test_tool_call_roundtrip(self):
-        """Tool use works through OpenRouter (OpenAI-compatible tools)."""
+        """Tool use works through OpenRouter, including the tool-result follow-up."""
         _require_openrouter_key()
         client = get_client("anthropic/claude-haiku-4.5", provider="openrouter")
         tools = [
@@ -77,15 +77,46 @@ class TestOpenRouterComplete:
                 },
             }
         ]
-        response = await client.complete(
-            [Message(role="user", content="What's the weather in Paris? Use the tool.")],
+        opening_messages = [
+            Message(
+                role="system",
+                content=(
+                    "When asked about weather, call get_weather first. After receiving the tool result, "
+                    "answer with the city and condition exactly as supplied."
+                ),
+            ),
+            Message(role="user", content="What's the weather in Paris? Use the tool."),
+        ]
+
+        first = await client.complete(
+            opening_messages,
             tools=tools,
             hyperparams=ModelHyperparameters(max_tokens=200),
         )
-        assert response.tool_calls is not None
-        assert len(response.tool_calls) >= 1
-        assert response.tool_calls[0].name == "get_weather"
-        assert "paris" in response.tool_calls[0].arguments.get("city", "").lower()
+        assert first.tool_calls is not None
+        assert len(first.tool_calls) >= 1
+
+        tool_call = first.tool_calls[0]
+        assert tool_call.name == "get_weather"
+        assert "paris" in tool_call.arguments.get("city", "").lower()
+
+        follow_up_messages = opening_messages + [
+            Message(role="assistant", content=first.text, tool_calls=first.tool_calls),
+            Message(
+                role="tool",
+                tool_call_id=tool_call.id,
+                content='{"city":"Paris","temperature_c":18,"condition":"sunny"}',
+            ),
+        ]
+        second = await client.complete(
+            follow_up_messages,
+            hyperparams=ModelHyperparameters(max_tokens=100),
+        )
+
+        assert second.text
+        lowered = second.text.lower()
+        assert "paris" in lowered
+        assert "sunny" in lowered or "18" in lowered
 
 
 @pytest.mark.asyncio
@@ -97,6 +128,8 @@ class TestOpenRouterStream:
         _require_openrouter_key()
         client = get_client("anthropic/claude-haiku-4.5", provider="openrouter")
         chunks = []
+        errors = []
+        saw_response_end = False
 
         async for event in client.stream(
             [Message(role="user", content="Count from 1 to 3, one per line")],
@@ -104,9 +137,13 @@ class TestOpenRouterStream:
         ):
             if event.type == "text_delta":
                 chunks.append(event.text or "")
+            elif event.type == "error":
+                errors.append(event.error or "unknown stream error")
             elif event.type == "response_end":
-                pass
+                saw_response_end = True
 
+        assert errors == []
+        assert saw_response_end
         assert len(chunks) > 0
         full_text = "".join(chunks)
         assert "1" in full_text and "2" in full_text

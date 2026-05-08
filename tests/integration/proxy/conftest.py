@@ -363,3 +363,35 @@ def proxy_server_remote_gemini(module_forge_home: Path, tmp_path_factory) -> Gen
 
     yield proxy_base_url
     kill_process(proc.pid)
+
+
+@pytest.fixture(scope="module")
+def proxy_server_openrouter(module_forge_home: Path, tmp_path_factory) -> Generator[str, None, None]:
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        pytest.fail("OPENROUTER_API_KEY not set (required for OpenRouter proxy tests)")
+
+    port = allocate_ephemeral_port()
+    env = os.environ.copy()
+    env["FORGE_HOME"] = str(module_forge_home)
+
+    cwd = tmp_path_factory.mktemp("forge_proxy_cwd_")
+
+    proc = _start_proxy_subprocess(
+        template="openrouter",
+        port=port,
+        forge_home=module_forge_home,
+        env=env,
+        cwd=cwd,
+    )
+    proxy_base_url = f"http://localhost:{port}"
+
+    _preflight_proxy(
+        proxy_base_url=proxy_base_url,
+        request_model="claude-3-5-haiku-20241022",
+        max_tokens=8,
+        unreachable_fail_reason="OpenRouter proxy unreachable",
+        template="openrouter",
+    )
+
+    yield proxy_base_url
+    kill_process(proc.pid)

@@ -6,13 +6,18 @@ and ``FORGE_DEPTH`` helpers for recursion-guarding hook → subprocess chains.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
+
+logger = logging.getLogger(__name__)
 
 # Defense-in-depth: --bare prevents hook recursion in child processes,
 # but FORGE_DEPTH still guards against subprocess spawning at depth >= 2.
 FORGE_DEPTH_VAR = "FORGE_DEPTH"
 FORGE_MAX_DEPTH = 2
+
+FORGE_SUBPROCESS_PROXY_VAR = "FORGE_SUBPROCESS_PROXY"
 
 # --bare (Claude Code >= 2.1.81) disables OAuth/keychain auth, requiring
 # ANTHROPIC_API_KEY in the environment. Only safe when the key is present.
@@ -80,6 +85,17 @@ def build_claude_env(
         env["ANTHROPIC_BASE_URL"] = base_url
     elif direct:
         env.pop("ANTHROPIC_BASE_URL", None)
+    else:
+        # No explicit base_url and not forced direct: check subprocess proxy fallback.
+        # FORGE_SUBPROCESS_PROXY is set by `forge session start --subprocess-proxy`
+        # and inherited by all child processes.
+        subprocess_proxy = env.get(FORGE_SUBPROCESS_PROXY_VAR)
+        if subprocess_proxy:
+            resolved = _resolve_subprocess_proxy(subprocess_proxy)
+            if resolved:
+                env["ANTHROPIC_BASE_URL"] = resolved
+            else:
+                env.pop("ANTHROPIC_BASE_URL", None)
 
     # Increment FORGE_DEPTH so child subprocesses know their nesting level
     current_depth = get_forge_depth(env)
@@ -89,3 +105,17 @@ def build_claude_env(
         env.update(extra_vars)
 
     return env
+
+
+def _resolve_subprocess_proxy(proxy_id: str) -> str | None:
+    """Resolve subprocess proxy to a base URL, or None if unavailable."""
+    try:
+        from forge.core.reactive.proxy import lookup_proxy_base_url
+
+        url = lookup_proxy_base_url(proxy_id)
+        if url:
+            logger.debug("Subprocess proxy %r resolved to %s", proxy_id, url)
+        return url
+    except Exception as e:
+        logger.warning("Subprocess proxy %r unavailable: %s", proxy_id, e)
+        return None

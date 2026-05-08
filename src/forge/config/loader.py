@@ -610,6 +610,7 @@ def _load_template_config(template: str) -> "ForgeConfig":
     template_data = yaml.safe_load(content)
     if not isinstance(template_data, dict):
         raise ValueError(f"Template '{template}' must be a mapping (dict)")
+    template_data.pop("internal", None)
     secrets = env_to_dict()
     config_dict = deep_merge(template_data, secrets)
 

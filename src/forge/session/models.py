@@ -219,6 +219,7 @@ class SessionIntent:
 
     agent: str = "claude-code"
     proxy: ProxyIntent | None = None
+    subprocess_proxy: str | None = None  # proxy_id for routing subprocesses (supervisor, panel, etc.)
     launch: LaunchIntent | None = None
     system_prompt: SystemPromptIntent | None = None
     memory: MemoryIntent | None = None

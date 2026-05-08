@@ -708,7 +708,7 @@ class SessionManager:
             worktree_branch=parent_state.worktree.branch if parent_state.worktree else None,
         )
 
-        for field_name in ("policy", "memory", "system_prompt", "verification"):
+        for field_name in ("subprocess_proxy", "policy", "memory", "system_prompt", "verification"):
             parent_val = getattr(parent_state.intent, field_name, None)
             if parent_val is not None:
                 setattr(child_state.intent, field_name, deepcopy(parent_val))
@@ -1065,7 +1065,7 @@ class SessionManager:
             worktree_branch=fork_branch,
         )
 
-        for field_name in ("policy", "memory", "system_prompt", "verification"):
+        for field_name in ("subprocess_proxy", "policy", "memory", "system_prompt", "verification"):
             parent_val = getattr(parent.intent, field_name, None)
             if parent_val is not None:
                 setattr(fork_state.intent, field_name, deepcopy(parent_val))
@@ -1272,7 +1272,7 @@ class SessionManager:
             worktree_branch=parent.worktree.branch if parent.worktree else None,
         )
 
-        for field_name in ("policy", "memory", "system_prompt", "verification"):
+        for field_name in ("subprocess_proxy", "policy", "memory", "system_prompt", "verification"):
             parent_val = getattr(parent.intent, field_name, None)
             if parent_val is not None:
                 setattr(child_state.intent, field_name, deepcopy(parent_val))

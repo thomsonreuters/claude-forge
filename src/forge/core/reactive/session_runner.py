@@ -14,7 +14,7 @@ import logging
 import subprocess
 from dataclasses import dataclass
 
-from forge.core.reactive.env import build_claude_env, can_use_bare
+from forge.core.reactive.env import FORGE_SUBPROCESS_PROXY_VAR, build_claude_env, can_use_bare
 
 _log = logging.getLogger(__name__)
 
@@ -85,6 +85,17 @@ def run_claude_session(
             cmd.append("--fork-session")
 
     env = build_claude_env(base_url=base_url, extra_vars=extra_env, direct=direct)
+
+    # Guard: fail if subprocess proxy was configured but didn't resolve.
+    # Prevents silent fallback to direct mode (which would burn subscription quota).
+    subprocess_proxy = env.get(FORGE_SUBPROCESS_PROXY_VAR)
+    if subprocess_proxy and not base_url and not direct and not env.get("ANTHROPIC_BASE_URL"):
+        msg = (
+            f"Subprocess proxy '{subprocess_proxy}' not available. "
+            f"Start it with: forge proxy start {subprocess_proxy}"
+        )
+        _log.warning(msg)
+        return SessionResult(stdout="", stderr="", returncode=-1, error=msg)
 
     try:
         _log.debug(

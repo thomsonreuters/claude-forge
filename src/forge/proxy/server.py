@@ -20,6 +20,7 @@ see README.md in the project root.
 
 import asyncio
 import logging
+import os
 import socket
 import sys
 import time
@@ -75,9 +76,48 @@ PREFERRED_PROVIDER = None
 
 # When a proxy is started under a proxy id, its config should be stable for the
 # lifetime of the process (no hot reload).
-PROXY_ID: str | None = None
+PROXY_ID: str | None = os.environ.get("FORGE_PROXY_ID")
 
 cost_tracker: CostTracker | None = None
+
+
+def _initialize_cost_tracker_from_config() -> CostTracker:
+    """Initialize request cost tracking in the module serving FastAPI traffic.
+
+    ``python -m forge.proxy.server`` executes this file as ``__main__``, while
+    uvicorn imports ``forge.proxy.server:app`` for request handling. Module
+    globals therefore need to be initialized in the imported app module too.
+    """
+    global cost_tracker
+    if cost_tracker is not None:
+        return cost_tracker
+
+    from forge.config.schema import CostConfig
+
+    cost_cfg = getattr(config.proxy, "costs", None) or CostConfig()
+    if cost_cfg.caps.per_day is not None or cost_cfg.caps.per_month is not None:
+        from forge.core.paths import get_forge_home
+
+        cost_tracker = CostTracker(
+            daily_cap_usd=cost_cfg.caps.per_day,
+            monthly_cap_usd=cost_cfg.caps.per_month,
+            cap_mode=cost_cfg.cap_mode,
+            on_cap_hit=cost_cfg.on_cap_hit,
+        )
+        cost_tracker.bootstrap_from_logs(get_forge_home() / "costs" / "requests")
+    else:
+        cost_tracker = CostTracker()
+    return cost_tracker
+
+
+def _ensure_runtime_state() -> None:
+    """Ensure the imported app module has proxy config and runtime trackers."""
+    if PROXY_ID is None:
+        reload()
+    elif not config.proxy.active_template:
+        reload(proxy_id=PROXY_ID)
+
+    _initialize_cost_tracker_from_config()
 
 
 def _calc_and_log_cost(
@@ -288,8 +328,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
     request_id = raw_request.state.request_id
     start_time = time.time()
 
-    if PROXY_ID is None:
-        reload()
+    _ensure_runtime_state()
 
     spend_warning: str | None = None
 
@@ -864,8 +903,7 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
     """Count tokens using the appropriate client's token counter."""
     request_id = raw_request.state.request_id
 
-    if PROXY_ID is None:
-        reload()
+    _ensure_runtime_state()
 
     try:
         # Get model info — map AFTER reload() for fresh config
@@ -1378,24 +1416,16 @@ def main(
     os.environ["ACTIVE_PORT"] = str(actual_port)
     os.environ["PREFERRED_PROVIDER"] = provider
 
-    # Freeze proxy id for request handlers (no hot reload in proxy mode)
-    global PROXY_ID, cost_tracker
+    # Freeze proxy id for request handlers. Set in env so the uvicorn worker
+    # (which reimports the module when app is passed as a string) picks it up.
+    global PROXY_ID
     PROXY_ID = effective_proxy_id
+    if effective_proxy_id is not None:
+        os.environ["FORGE_PROXY_ID"] = effective_proxy_id
 
-    # Initialize cost tracker from proxy config + existing JSONL logs
-    cost_cfg = cfg.proxy.costs
-    if cost_cfg.caps.per_day is not None or cost_cfg.caps.per_month is not None:
-        from forge.core.paths import get_forge_home
-
-        cost_tracker = CostTracker(
-            daily_cap_usd=cost_cfg.caps.per_day,
-            monthly_cap_usd=cost_cfg.caps.per_month,
-            cap_mode=cost_cfg.cap_mode,
-            on_cap_hit=cost_cfg.on_cap_hit,
-        )
-        cost_tracker.bootstrap_from_logs(get_forge_home() / "costs" / "requests")
-    else:
-        cost_tracker = CostTracker()  # no caps, still records for tracking
+    # Initialize in this module for direct/app-object runs; the imported
+    # uvicorn app module initializes itself lazily via _ensure_runtime_state().
+    _initialize_cost_tracker_from_config()
 
     provider_cfg = cfg.proxy.get_provider(provider)
     tier_models = {

@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from forge.core.auth.template_secrets import resolve_env_or_credential
 from forge.core.reactive.env import (
+    FORGE_SUBPROCESS_PROXY_VAR,
     build_claude_env,
     can_use_bare,
     should_spawn_subprocesses,
@@ -44,12 +45,15 @@ def preflight_check(specs: list[ModelSpec]) -> list[str]:
     Returns a list of error strings (empty means all OK).
     """
     availabilities = check_model_availability(specs)
+    subprocess_proxy = os.environ.get(FORGE_SUBPROCESS_PROXY_VAR)
     errors: list[str] = []
     for avail in availabilities:
         if avail.status == "ready":
             continue
         if avail.spec.proxy:
             hint = f" Run 'forge proxy create {avail.spec.proxy}' to set it up."
+        elif subprocess_proxy:
+            hint = f" Run 'forge proxy start {subprocess_proxy}' to make the subprocess proxy available."
         else:
             hint = " Run 'forge auth login -p anthropic' or use --models to select only proxy-backed models."
         errors.append(f"{avail.spec.name}: {avail.reason}.{hint}")
@@ -137,7 +141,23 @@ def run_multi_review(
                 extra_env["ANTHROPIC_API_KEY"] = ak
 
         env = build_claude_env(base_url=base_url, extra_vars=extra_env or None)
-        if not base_url:
+        subprocess_proxy = env.get(FORGE_SUBPROCESS_PROXY_VAR)
+        if not base_url and subprocess_proxy and not env.get("ANTHROPIC_BASE_URL"):
+            duration = time.monotonic() - start
+            return ReviewResult(
+                model_name=spec.effective_worker_id,
+                stdout="",
+                stderr="",
+                success=False,
+                duration_seconds=duration,
+                error=(
+                    f"Subprocess proxy '{subprocess_proxy}' not available. "
+                    f"Start it with: forge proxy start {subprocess_proxy}"
+                ),
+            )
+        if not base_url and not subprocess_proxy:
+            # No explicit proxy or subprocess proxy. Scrub any inherited
+            # ANTHROPIC_BASE_URL to keep direct workers direct.
             env.pop("ANTHROPIC_BASE_URL", None)
 
         cmd = ["claude", "-p"]

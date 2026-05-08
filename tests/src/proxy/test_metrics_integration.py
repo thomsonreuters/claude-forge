@@ -10,6 +10,11 @@ pytestmark: integration (CIT level — requires server module + metrics module).
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -117,6 +122,147 @@ def _reset_metrics():
     proxy_metrics.reset()
     yield
     proxy_metrics.reset()
+
+
+def test_python_m_proxy_app_import_initializes_spend_caps(tmp_path: Path):
+    """Spend caps must survive the python -m server -> uvicorn import-string split."""
+    forge_home = tmp_path / "forge-home"
+    script = textwrap.dedent(
+        r"""
+        import asyncio
+        import importlib
+        import json
+        import os
+        import runpy
+        import socket
+        import sys
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        import uvicorn
+        import yaml
+
+        from forge.proxy.proxies import ProxyEntry, ProxyRegistryStore
+        from forge.proxy.proxy_orchestrator import create_proxy_file
+
+        forge_home = Path(os.environ["TEST_FORGE_HOME"])
+        os.environ["FORGE_HOME"] = str(forge_home)
+
+        proxy_id = "cap-reimport"
+        template = "litellm-gemini-test"
+        port = 12345
+        base_url = f"http://localhost:{port}"
+
+        create_proxy_file(proxy_id=proxy_id, template=template, base_url=base_url, port=port)
+        proxy_path = forge_home / "proxies" / proxy_id / "proxy.yaml"
+        proxy_data = yaml.safe_load(proxy_path.read_text())
+        proxy_data["costs"] = {
+            "caps": {"per_day": 0.000001},
+            "cap_mode": "post",
+            "on_cap_hit": "reject",
+        }
+        proxy_path.write_text(yaml.safe_dump(proxy_data), encoding="utf-8")
+
+        store = ProxyRegistryStore(registry_path=forge_home / "proxies" / "index.json")
+        registry = store.read()
+        registry.proxies[proxy_id] = ProxyEntry(
+            proxy_id=proxy_id,
+            template=template,
+            base_url=base_url,
+            port=port,
+            pid=None,
+            status="starting",
+        )
+        store.write(registry)
+
+        now = datetime.now(timezone.utc)
+        cost_dir = forge_home / "costs" / "requests"
+        cost_dir.mkdir(parents=True, exist_ok=True)
+        cost_file = cost_dir / f"{now.strftime('%Y-%m')}_9999.jsonl"
+        cost_file.write_text(
+            json.dumps({"ts": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "cost_micros": 2}) + "\n",
+            encoding="utf-8",
+        )
+
+        class FakeSocket:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def bind(self, *_args, **_kwargs):
+                return None
+
+            def close(self):
+                return None
+
+        real_socket = socket.socket
+        socket.socket = lambda *_args, **_kwargs: FakeSocket()
+
+        def fake_run(app_path, **_kwargs):
+            socket.socket = real_socket
+            mod = importlib.import_module("forge.proxy.server")
+            from forge.proxy.data_models import MessagesRequest
+
+            class State:
+                request_id = "req-cap"
+
+            class RawRequest:
+                state = State()
+
+            response = asyncio.run(
+                mod.create_message(
+                    MessagesRequest(
+                        model="claude-3-5-haiku-20241022",
+                        max_tokens=1,
+                        messages=[{"role": "user", "content": "hello"}],
+                    ),
+                    RawRequest(),
+                )
+            )
+            print(
+                json.dumps(
+                    {
+                        "app_path": app_path,
+                        "status_code": response.status_code,
+                        "cost_tracker_initialized": mod.cost_tracker is not None,
+                        "has_caps": bool(mod.cost_tracker and mod.cost_tracker.has_caps),
+                    }
+                )
+            )
+
+        uvicorn.run = fake_run
+        sys.argv = [
+            "forge.proxy.server",
+            "--template",
+            template,
+            "--port",
+            str(port),
+            "--proxy-id",
+            proxy_id,
+        ]
+        runpy.run_module("forge.proxy.server", run_name="__main__", alter_sys=True)
+        """
+    )
+    env = os.environ.copy()
+    env["TEST_FORGE_HOME"] = str(forge_home)
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[3],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload == {
+        "app_path": "forge.proxy.server:app",
+        "status_code": 429,
+        "cost_tracker_initialized": True,
+        "has_caps": True,
+    }
 
 
 # ---------------------------------------------------------------------------

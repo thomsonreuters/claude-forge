@@ -7,6 +7,7 @@ for proxy resolution via ``lookup_proxy_base_url()``.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 
@@ -149,6 +150,7 @@ def check_model_availability(
     unavailable models -- returns status for each.
     """
     from forge.core.auth.template_secrets import resolve_env_or_credential
+    from forge.core.reactive.env import FORGE_SUBPROCESS_PROXY_VAR
     from forge.core.reactive.proxy import check_proxy_reachable
 
     if specs is None:
@@ -159,6 +161,20 @@ def check_model_availability(
 
     for spec in specs:
         if spec.proxy is None:
+            subprocess_proxy = os.environ.get(FORGE_SUBPROCESS_PROXY_VAR)
+            if subprocess_proxy:
+                if subprocess_proxy in proxy_cache:
+                    status, reason, _url = proxy_cache[subprocess_proxy]
+                else:
+                    try:
+                        reachable, reason, _url = check_proxy_reachable(subprocess_proxy, timeout_s)
+                        status = "ready" if reachable else "unavailable"
+                    except Exception as e:
+                        status, reason, _url = "error", str(e), None
+                    proxy_cache[subprocess_proxy] = (status, reason, _url)
+                results.append(ModelAvailability(spec=spec, status=status, reason=reason))
+                continue
+
             if resolve_env_or_credential("ANTHROPIC_API_KEY"):
                 results.append(ModelAvailability(spec=spec, status="ready", reason=""))
             else:

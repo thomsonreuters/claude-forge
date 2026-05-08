@@ -46,6 +46,7 @@ from forge.proxy.converters import (
     convert_openai_to_anthropic_sse,
 )
 from forge.proxy.cost_logger import log_request_cost
+from forge.proxy.cost_tracker import CostTracker
 from forge.proxy.data_models import (
     MessagesRequest,
     TokenCountRequest,
@@ -75,6 +76,8 @@ PREFERRED_PROVIDER = None
 # When a proxy is started under a proxy id, its config should be stable for the
 # lifetime of the process (no hot reload).
 PROXY_ID: str | None = None
+
+cost_tracker: CostTracker | None = None
 
 
 def _calc_and_log_cost(
@@ -112,6 +115,10 @@ def _calc_and_log_cost(
             request_id=request_id,
             pricing_source=pricing.source,
         )
+
+        if cost_tracker is not None:
+            cost_tracker.record(cost_micros)
+
         return cost_micros
     except Exception as e:
         logger.warning("Cost calculation failed (non-fatal): %s", e)
@@ -234,6 +241,46 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
     if PROXY_ID is None:
         reload()
+
+    # Spend cap check (before any model resolution or forwarding)
+    if cost_tracker is not None and cost_tracker.has_caps:
+        projected = 0
+        if cost_tracker.cap_mode == "strict":
+            from forge.core.models.pricing import calculate_cost as _est_cost
+
+            _est_max_output = request_data.max_tokens or 4096
+            _est_input = sum(
+                len(str(m.get("content", ""))) // 4
+                for m in (request_data.messages or [])
+                if isinstance(m, dict)
+            )
+            try:
+                projected = _est_cost(
+                    request_data.model or "claude-sonnet-4-6",
+                    _est_input, _est_max_output, 0,
+                )
+            except Exception:
+                projected = 0
+
+        cap_result = cost_tracker.check_cap(projected_cost_micros=projected)
+        if cap_result.exceeded and cost_tracker.on_cap_hit == "reject":
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "type": "error",
+                    "error": {
+                        "type": "spend_cap_exceeded",
+                        "message": (
+                            f"{'Projected ' if cap_result.projected else ''}"
+                            f"{cap_result.cap_type} spend cap reached: "
+                            f"${cap_result.current_micros / 1_000_000:.2f} / "
+                            f"${cap_result.limit_micros / 1_000_000:.2f}. "
+                            f"Adjust with: forge proxy set <id> costs.caps.per_{cap_result.cap_type}=<amount>"
+                        ),
+                    },
+                },
+                headers={"X-Request-ID": request_id},
+            )
 
     # Resolve effective tier (routing invariants):
     # Precedence: request explicit tier > config.proxy.default_tier
@@ -1281,8 +1328,23 @@ def main(
     os.environ["PREFERRED_PROVIDER"] = provider
 
     # Freeze proxy id for request handlers (no hot reload in proxy mode)
-    global PROXY_ID
+    global PROXY_ID, cost_tracker
     PROXY_ID = effective_proxy_id
+
+    # Initialize cost tracker from proxy config + existing JSONL logs
+    cost_cfg = cfg.proxy.costs
+    if cost_cfg.caps.per_day is not None or cost_cfg.caps.per_month is not None:
+        from forge.core.paths import get_forge_home
+
+        cost_tracker = CostTracker(
+            daily_cap_usd=cost_cfg.caps.per_day,
+            monthly_cap_usd=cost_cfg.caps.per_month,
+            cap_mode=cost_cfg.cap_mode,
+            on_cap_hit=cost_cfg.on_cap_hit,
+        )
+        cost_tracker.bootstrap_from_logs(get_forge_home() / "costs" / "requests")
+    else:
+        cost_tracker = CostTracker()  # no caps, still records for tracking
 
     provider_cfg = cfg.proxy.get_provider(provider)
     tier_models = {

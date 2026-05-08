@@ -162,6 +162,33 @@ class ProviderConfig:
 
 
 @dataclass
+class CostCaps:
+    """Spend cap configuration for a proxy."""
+
+    per_day: float | None = None  # USD, rolling 24h window
+    per_month: float | None = None  # USD, calendar month
+
+
+@dataclass
+class CostConfig:
+    """Cost tracking and cap configuration for a proxy."""
+
+    caps: CostCaps = field(default_factory=CostCaps)
+    cap_mode: str = "post"  # "post" (block after exceeded) or "strict" (pre-flight estimate)
+    on_cap_hit: str = "reject"  # "reject" (HTTP 429) or "warn" (header only)
+
+    def __post_init__(self) -> None:
+        valid_modes = {"post", "strict"}
+        if self.cap_mode not in valid_modes:
+            raise ValueError(f"Invalid cap_mode: '{self.cap_mode}' (must be one of: {', '.join(sorted(valid_modes))})")
+        valid_actions = {"reject", "warn"}
+        if self.on_cap_hit not in valid_actions:
+            raise ValueError(
+                f"Invalid on_cap_hit: '{self.on_cap_hit}' (must be one of: {', '.join(sorted(valid_actions))})"
+            )
+
+
+@dataclass
 class BackendDependency:
     """Backend dependency declaration (proxy runtime requirement).
 
@@ -190,6 +217,7 @@ class ProxyConfig:
     default_port: int = 8082
     host: str = "0.0.0.0"
     tool_prefixes_to_ignore: list[str] = field(default_factory=list)
+    costs: CostConfig = field(default_factory=CostConfig)
 
     def get_provider(self, name: str | None = None) -> ProviderConfig:
         """Get provider config by name, defaulting to preferred_provider."""
@@ -248,6 +276,8 @@ class ProxyInstanceConfig:
     # Copied from template into proxy.yaml; controls Anthropic/Bedrock prompt caching via LiteLLM.
     prompt_caching: str = "passthrough"
     auto_cache_min_tokens: int = 1024
+
+    costs: dict[str, Any] = field(default_factory=dict)
 
     created_at: str | None = None
     updated_at: str | None = None

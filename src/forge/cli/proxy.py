@@ -92,6 +92,7 @@ def proxy() -> None:
         forge proxy show my-proxy              # Show proxy details
     """
 
+
 proxy.add_command(costs_cmd)
 
 

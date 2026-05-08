@@ -127,8 +127,7 @@ def _reset_metrics():
 def test_python_m_proxy_app_import_initializes_spend_caps(tmp_path: Path):
     """Spend caps must survive the python -m server -> uvicorn import-string split."""
     forge_home = tmp_path / "forge-home"
-    script = textwrap.dedent(
-        r"""
+    script = textwrap.dedent(r"""
         import asyncio
         import importlib
         import json
@@ -243,8 +242,7 @@ def test_python_m_proxy_app_import_initializes_spend_caps(tmp_path: Path):
             proxy_id,
         ]
         runpy.run_module("forge.proxy.server", run_name="__main__", alter_sys=True)
-        """
-    )
+        """)
     env = os.environ.copy()
     env["TEST_FORGE_HOME"] = str(forge_home)
     result = subprocess.run(

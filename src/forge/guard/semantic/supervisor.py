@@ -326,7 +326,10 @@ def invoke_supervisor(
             warnings=[f"Supervisor proxy '{config.proxy}' not found: {e}"],
         )
 
-    from forge.core.reactive.cost_tracking import resolve_subprocess_proxy_url, track_verb_cost
+    from forge.core.reactive.cost_tracking import (
+        resolve_subprocess_proxy_url,
+        track_verb_cost,
+    )
 
     tracking_url = base_url
     if tracking_url is None and not config.direct:

@@ -62,8 +62,7 @@ def _get_pricing_data() -> dict[str, Any]:
         version = raw.get("schema_version")
         if version not in SUPPORTED_SCHEMA_VERSIONS:
             raise ValueError(
-                f"Unsupported pricing schema_version: {version} "
-                f"(supported: {sorted(SUPPORTED_SCHEMA_VERSIONS)})"
+                f"Unsupported pricing schema_version: {version} " f"(supported: {sorted(SUPPORTED_SCHEMA_VERSIONS)})"
             )
         _pricing_data = raw
     return _pricing_data

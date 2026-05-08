@@ -343,7 +343,9 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             try:
                 projected = _est_cost(
                     request_data.model or "claude-sonnet-4-6",
-                    _est_input, _est_max_output, 0,
+                    _est_input,
+                    _est_max_output,
+                    0,
                 )
             except Exception:
                 projected = 0

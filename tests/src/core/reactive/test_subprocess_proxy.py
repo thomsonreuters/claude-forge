@@ -133,7 +133,9 @@ class TestRunClaudeSessionGuard:
         # This should NOT hit the guard (explicit base_url provided)
         # It will fail on the actual claude binary, but that's a different error
         result = run_claude_session("test", base_url="http://localhost:9999", timeout_seconds=1)
-        assert result.error != "Subprocess proxy 'dead-proxy' not available. Start it with: forge proxy start dead-proxy"
+        assert (
+            result.error != "Subprocess proxy 'dead-proxy' not available. Start it with: forge proxy start dead-proxy"
+        )
 
     def test_guard_skipped_when_direct(self, monkeypatch: pytest.MonkeyPatch):
         """direct=True bypasses the subprocess proxy guard."""

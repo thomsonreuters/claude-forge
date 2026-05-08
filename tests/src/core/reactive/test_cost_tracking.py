@@ -24,9 +24,7 @@ from forge.core.reactive.cost_tracking import (
 def verb_log_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point verb logger to a temp directory."""
     log_dir = tmp_path / "costs" / "verbs"
-    monkeypatch.setattr(
-        "forge.core.reactive.cost_tracking._verb_log_dir", lambda: log_dir
-    )
+    monkeypatch.setattr("forge.core.reactive.cost_tracking._verb_log_dir", lambda: log_dir)
     return log_dir
 
 
@@ -166,8 +164,10 @@ class TestTrackVerbCost:
             class MockResp:
                 def read(self):
                     return json.dumps(data).encode()
+
                 def __enter__(self):
                     return self
+
                 def __exit__(self, *a):
                     pass
 
@@ -244,11 +244,13 @@ class TestResolveProxyUrls:
 
         with patch("forge.core.reactive.proxy.lookup_proxy_base_url") as mock_lookup:
             mock_lookup.side_effect = lambda p: f"http://localhost:{next(port)}"
-            urls = resolve_proxy_urls([
-                FakeSpec(proxy="litellm-openai"),
-                FakeSpec(proxy=None),
-                FakeSpec(proxy="litellm-gemini"),
-            ])
+            urls = resolve_proxy_urls(
+                [
+                    FakeSpec(proxy="litellm-openai"),
+                    FakeSpec(proxy=None),
+                    FakeSpec(proxy="litellm-gemini"),
+                ]
+            )
             assert len(urls) == 2
             assert mock_lookup.call_count == 2
 
@@ -259,8 +261,10 @@ class TestResolveProxyUrls:
 
         with patch("forge.core.reactive.proxy.lookup_proxy_base_url") as mock_lookup:
             mock_lookup.return_value = "http://localhost:8084"
-            urls = resolve_proxy_urls([
-                FakeSpec(proxy="litellm-openai"),
-                FakeSpec(proxy="litellm-openai"),
-            ])
+            urls = resolve_proxy_urls(
+                [
+                    FakeSpec(proxy="litellm-openai"),
+                    FakeSpec(proxy="litellm-openai"),
+                ]
+            )
             assert len(urls) == 1

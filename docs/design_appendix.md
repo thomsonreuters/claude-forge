@@ -235,10 +235,10 @@ forge proxy set openrouter costs.on_cap_hit=warn
 
 Runtime logs:
 
-| Path                                 | Schema owner                    | Retention policy        |
-| ------------------------------------ | ------------------------------- | ----------------------- |
-| `~/.forge/costs/requests/*.jsonl`    | `forge.proxy.cost_logger`       | Append-only, user-prune |
-| `~/.forge/costs/verbs/*.jsonl`       | `forge.core.reactive.cost_tracking` | Append-only, user-prune |
+| Path                              | Schema owner                        | Retention policy        |
+| --------------------------------- | ----------------------------------- | ----------------------- |
+| `~/.forge/costs/requests/*.jsonl` | `forge.proxy.cost_logger`           | Append-only, user-prune |
+| `~/.forge/costs/verbs/*.jsonl`    | `forge.core.reactive.cost_tracking` | Append-only, user-prune |
 
 Request records contain timestamp, proxy ID, model/tier, token counts, cost in microdollars, request ID, latency, and
 pricing source. Verb records contain timestamp, verb name, proxy URL/ID when known, before/after snapshots, total cost

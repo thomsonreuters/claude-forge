@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from forge.core.models.pricing import (
-    ModelPricing,
     calculate_cost,
     get_pricing,
     micros_to_usd,

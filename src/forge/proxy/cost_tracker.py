@@ -133,9 +133,7 @@ class CostTracker:
             return None
 
         try:
-            ts = datetime.fromisoformat(
-                ts_str.rstrip("Z").removesuffix("+00:00") + "+00:00"
-            )
+            ts = datetime.fromisoformat(ts_str.rstrip("Z").removesuffix("+00:00") + "+00:00")
         except (ValueError, TypeError):
             return None
 

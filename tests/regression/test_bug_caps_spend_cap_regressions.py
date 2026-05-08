@@ -27,8 +27,7 @@ def test_bug_caps_config_load_flows_yaml_costs_to_runtime_proxy_config(tmp_path,
     proxy_dir = tmp_path / "proxies" / "cost-proxy"
     proxy_dir.mkdir(parents=True)
     (proxy_dir / "proxy.yaml").write_text(
-        textwrap.dedent(
-            """
+        textwrap.dedent("""
             proxy_format: 1
             template: litellm-openai
             template_digest: sha256:test
@@ -46,8 +45,7 @@ def test_bug_caps_config_load_flows_yaml_costs_to_runtime_proxy_config(tmp_path,
                 per_month: 100.00
               cap_mode: strict
               on_cap_hit: warn
-            """
-        ),
+            """),
         encoding="utf-8",
     )
 
@@ -159,7 +157,9 @@ def _stub_server(monkeypatch, server) -> None:
     monkeypatch.setattr(server, "map_model_name", lambda v: v)
     monkeypatch.setattr(server, "convert_anthropic_to_openai", lambda *a, **k: {"messages": []})
     monkeypatch.setattr(server, "convert_openai_to_anthropic", lambda *a, **k: _DummyAnthropicResponse())
-    monkeypatch.setattr(server.client_factory, "detect_provider_for_model", lambda *_: type("E", (), {"value": "openai"})())
+    monkeypatch.setattr(
+        server.client_factory, "detect_provider_for_model", lambda *_: type("E", (), {"value": "openai"})()
+    )
 
     class ProxyCfg:
         default_tier = "sonnet"

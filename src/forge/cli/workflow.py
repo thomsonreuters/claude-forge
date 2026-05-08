@@ -1016,7 +1016,10 @@ def debate(
 
         _run_preflight([s.model for s in stances], json_output=json_output)
 
-        from forge.core.reactive.cost_tracking import resolve_proxy_urls, track_verb_cost
+        from forge.core.reactive.cost_tracking import (
+            resolve_proxy_urls,
+            track_verb_cost,
+        )
 
         with track_verb_cost("debate", resolve_proxy_urls([s.model for s in stances])):
             output = run_adversarial(
@@ -1646,7 +1649,10 @@ def consensus(
 
         _run_preflight([r.model for r in role_specs], json_output=json_output)
 
-        from forge.core.reactive.cost_tracking import resolve_proxy_urls, track_verb_cost
+        from forge.core.reactive.cost_tracking import (
+            resolve_proxy_urls,
+            track_verb_cost,
+        )
 
         with track_verb_cost("consensus", resolve_proxy_urls([r.model for r in role_specs])):
             output = run_consensus(

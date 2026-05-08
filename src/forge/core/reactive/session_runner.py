@@ -14,7 +14,11 @@ import logging
 import subprocess
 from dataclasses import dataclass
 
-from forge.core.reactive.env import FORGE_SUBPROCESS_PROXY_VAR, build_claude_env, can_use_bare
+from forge.core.reactive.env import (
+    FORGE_SUBPROCESS_PROXY_VAR,
+    build_claude_env,
+    can_use_bare,
+)
 
 _log = logging.getLogger(__name__)
 

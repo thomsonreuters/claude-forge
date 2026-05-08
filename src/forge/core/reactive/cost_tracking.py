@@ -71,9 +71,7 @@ def _fetch_snapshot(base_url: str, timeout: float = 2.0) -> dict[str, Any] | Non
     return None
 
 
-def _compute_delta(
-    before: dict[str, Any], after: dict[str, Any], base_url: str
-) -> ProxyCostDelta:
+def _compute_delta(before: dict[str, Any], after: dict[str, Any], base_url: str) -> ProxyCostDelta:
     """Compute the difference between two proxy metric snapshots."""
     b_tokens = before.get("tokens", {})
     a_tokens = after.get("tokens", {})
@@ -253,9 +251,7 @@ def read_verb_logs(
                     if period_start or period_end:
                         ts_str = record.get("ts", "")
                         try:
-                            ts = datetime.fromisoformat(
-                                ts_str.rstrip("Z").removesuffix("+00:00") + "+00:00"
-                            )
+                            ts = datetime.fromisoformat(ts_str.rstrip("Z").removesuffix("+00:00") + "+00:00")
                         except (ValueError, TypeError):
                             continue
                         if period_start and ts < period_start:

@@ -129,9 +129,16 @@ class TestRoundtrip:
     def test_timestamp_format_is_valid_utc(self, cost_log_dir: Path):
         """Written timestamps parse correctly and don't have double suffixes."""
         log_request_cost(
-            proxy_id="test", model="m", tier="t",
-            input_tokens=0, output_tokens=0, cached_tokens=0,
-            cost_micros=0, latency_ms=0, failed=False, request_id="req_ts",
+            proxy_id="test",
+            model="m",
+            tier="t",
+            input_tokens=0,
+            output_tokens=0,
+            cached_tokens=0,
+            cost_micros=0,
+            latency_ms=0,
+            failed=False,
+            request_id="req_ts",
         )
 
         records = read_cost_logs()

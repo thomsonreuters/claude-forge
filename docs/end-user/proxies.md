@@ -383,8 +383,8 @@ forge proxy set openrouter costs.cap_mode=strict
 forge proxy set openrouter costs.on_cap_hit=warn
 ```
 
-`cap_mode=post` blocks only after logged spend reaches a cap. `cap_mode=strict` also estimates the pending request before
-forwarding it. `on_cap_hit=reject` returns HTTP 429 with `spend_cap_exceeded`; `on_cap_hit=warn` lets the request
+`cap_mode=post` blocks only after logged spend reaches a cap. `cap_mode=strict` also estimates the pending request
+before forwarding it. `on_cap_hit=reject` returns HTTP 429 with `spend_cap_exceeded`; `on_cap_hit=warn` lets the request
 continue and returns `X-Spend-Warning`.
 
 ---

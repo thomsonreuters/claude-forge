@@ -132,11 +132,13 @@ workspace.write_file("$HOME/.forge/config.yaml", content)
 
 ## Code Quality
 
+**Run `make pre-commit` before every commit**
+
 ```bash
-uv run ruff check src/        # Lint
-uv run ruff format src/       # Format
-uv run mypy src/              # Type check
-pre-commit run --all-files    # All checks
+make lint                     # Ruff linter only
+make format                   # Ruff formatter
+make type-check               # mypy only
+make pre-commit               # All pre-commit hooks (ruff, black, isort, mypy, mdformat, gitleaks)
 ```
 
 ## Architecture

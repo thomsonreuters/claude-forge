@@ -114,9 +114,7 @@ def read_cost_logs(
                     if period_start or period_end:
                         ts_str = record.get("ts", "")
                         try:
-                            ts = datetime.fromisoformat(
-                                ts_str.rstrip("Z").removesuffix("+00:00") + "+00:00"
-                            )
+                            ts = datetime.fromisoformat(ts_str.rstrip("Z").removesuffix("+00:00") + "+00:00")
                         except (ValueError, TypeError):
                             continue
                         if period_start and ts < period_start:

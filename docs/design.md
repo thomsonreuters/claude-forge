@@ -310,8 +310,8 @@ proxy-owned routing properties. (Proxy requests do not carry a stable session id
 - Records `intent.subprocess_proxy=<proxy_id>`
 - Sets `FORGE_SUBPROCESS_PROXY` so Forge-spawned subprocesses resolve the proxy and set `ANTHROPIC_BASE_URL`
 - Leaves the main Claude process on direct Anthropic routing
-- Is mutually exclusive with `--proxy`; `--proxy` routes the main session through the proxy, while
-  `--subprocess-proxy` is specifically dual-auth routing for direct sessions and their child jobs
+- Is mutually exclusive with `--proxy`; `--proxy` routes the main session through the proxy, while `--subprocess-proxy`
+  is specifically dual-auth routing for direct sessions and their child jobs
 
 Running `claude` directly bypasses both paths; neither proxy routing nor session integration will work.
 
@@ -770,10 +770,10 @@ handling deletes the marker; poison markers (5+ attempts) move to `pending-work/
 
 Forge records proxy cost telemetry in append-only JSONL files under `~/.forge/costs/`.
 
-| Path                                 | Writer                     | Purpose                                      |
-| ------------------------------------ | -------------------------- | -------------------------------------------- |
-| `costs/requests/<month>_<pid>.jsonl` | Proxy request handler      | Per-request token/cost records               |
-| `costs/verbs/<date>.jsonl`           | Forge verb cost wrapper    | Best-effort cost deltas for panels/workflows |
+| Path                                 | Writer                  | Purpose                                      |
+| ------------------------------------ | ----------------------- | -------------------------------------------- |
+| `costs/requests/<month>_<pid>.jsonl` | Proxy request handler   | Per-request token/cost records               |
+| `costs/verbs/<date>.jsonl`           | Forge verb cost wrapper | Best-effort cost deltas for panels/workflows |
 
 Request logs are the source of truth for proxy spend. The proxy bootstraps its in-memory `CostTracker` from current and
 previous month request logs on startup so cap enforcement survives restarts. Verb logs are attribution aids for CLI

@@ -107,7 +107,9 @@ def test_proxy_non_streaming_cost_smoke(
     assert float(resp.headers["X-Cumulative-Cost"]) > 0
 
     new_records = _wait_for_matching_records(
-        lambda: _request_records(module_forge_home), before_matching, proxy_id=proxy.proxy_id,
+        lambda: _request_records(module_forge_home),
+        before_matching,
+        proxy_id=proxy.proxy_id,
     )
     assert new_records, f"No cost records for proxy_id={proxy.proxy_id}"
 
@@ -142,7 +144,9 @@ def test_openrouter_streaming_cost_smoke(
 
     assert events
     new_records = _wait_for_matching_records(
-        lambda: _request_records(module_forge_home), before_matching, proxy_id=proxy.proxy_id,
+        lambda: _request_records(module_forge_home),
+        before_matching,
+        proxy_id=proxy.proxy_id,
     )
     assert new_records, f"No cost records for proxy_id={proxy.proxy_id}"
     assert new_records[-1]["cost_micros"] > 0
@@ -284,7 +288,9 @@ def test_panel_with_subprocess_proxy_records_verb_cost(
     assert capture_records[-1]["subprocess_proxy"] == proxy.proxy_id
 
     request_records = _wait_for_matching_records(
-        lambda: _request_records(module_forge_home), before_request_matching, proxy_id=proxy.proxy_id,
+        lambda: _request_records(module_forge_home),
+        before_request_matching,
+        proxy_id=proxy.proxy_id,
     )
     assert request_records, f"No cost records for proxy_id={proxy.proxy_id}"
     assert any(r.get("cost_micros", 0) > 0 for r in request_records)

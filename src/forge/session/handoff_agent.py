@@ -432,7 +432,10 @@ def run_handoff_agent(
 
     # Use forge_root as cwd so designated doc paths (relative) resolve
     # against the correct branch content. Transcript path is absolute.
-    from forge.core.reactive.cost_tracking import resolve_subprocess_proxy_url, track_verb_cost
+    from forge.core.reactive.cost_tracking import (
+        resolve_subprocess_proxy_url,
+        track_verb_cost,
+    )
 
     effective_timeout = timeout_seconds if timeout_seconds is not None else _default_timeout()
     tracking_url = base_url

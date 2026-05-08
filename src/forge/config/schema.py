@@ -232,7 +232,7 @@ def _coerce_cost_config(value: Any) -> CostConfig:
     if not isinstance(value, dict):
         raise ValueError("Invalid costs: must be a mapping")
     return CostConfig(
-        caps=value.get("caps", {}) or {},
+        caps=_coerce_cost_caps(value.get("caps", {}) or {}),
         cap_mode=value.get("cap_mode", "post"),
         on_cap_hit=value.get("on_cap_hit", "reject"),
     )

@@ -63,7 +63,8 @@
 - Added guarding for unavailable subprocess proxies.
 - Added E2E coverage for cost visibility.
 
-**Verification**: `uv run pytest tests/src/core/reactive/test_subprocess_proxy.py tests/src/session/test_subprocess_proxy_inheritance.py tests/src/cli/test_session_subprocess_proxy.py tests/src/proxy/test_metrics_integration.py -q`
+**Verification**:
+`uv run pytest tests/src/core/reactive/test_subprocess_proxy.py tests/src/session/test_subprocess_proxy_inheritance.py tests/src/cli/test_session_subprocess_proxy.py tests/src/proxy/test_metrics_integration.py -q`
 
 ### Follow-up: Document and pin cost/subprocess proxy contracts
 
@@ -75,4 +76,5 @@
 - Added bug-pinning spend cap coverage in `tests/regression/`.
 - Normalized `ProxyInstanceConfig.costs` to `CostConfig`.
 
-**Verification**: `uv run pytest tests/regression/test_bug_caps_spend_cap_regressions.py -q`; `uv run pytest tests/src/config/test_schema.py tests/src/config/test_loader.py tests/src/core/reactive/test_env.py tests/src/core/reactive/test_subprocess_proxy.py -q`
+**Verification**: `uv run pytest tests/regression/test_bug_caps_spend_cap_regressions.py -q`;
+`uv run pytest tests/src/config/test_schema.py tests/src/config/test_loader.py tests/src/core/reactive/test_env.py tests/src/core/reactive/test_subprocess_proxy.py -q`

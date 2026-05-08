@@ -12,7 +12,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 from rich.table import Table
@@ -32,6 +32,26 @@ from forge.session import (
 def _sess():  # type: ignore[return]
     """Access forge.cli.session at runtime to respect test patches."""
     return sys.modules["forge.cli.session"]
+
+
+from forge.cli.session import (  # noqa: E402
+    _cwd_forge_root,
+    _format_relative_time,
+    _get_active_session_entry,
+    _get_session_type,
+    _handle_error,
+    _hint_cross_project_session,
+    _print_active_delete_warning,
+    _session_list_location,
+    _session_scope_key,
+    _template_display_label,
+    console,
+    logger,
+)
+from forge.cli.session import session as _session_untyped  # noqa: E402
+
+session = cast(click.Group, _session_untyped)  # type: ignore[has-type]  # circular re-export
+
 from forge.session.exceptions import (  # noqa: E402
     AmbiguousSessionError,
     DirtyWorktreeError,
@@ -45,22 +65,6 @@ from forge.session.plan_resolution import (  # noqa: E402
     resolve_path_against,
     resolve_plan_info,
     resolve_plan_launch_root,
-)
-
-from forge.cli.session import (  # noqa: E402
-    console,
-    logger,
-    session,
-    _cwd_forge_root,
-    _format_relative_time,
-    _get_active_session_entry,
-    _get_session_type,
-    _handle_error,
-    _hint_cross_project_session,
-    _print_active_delete_warning,
-    _session_list_location,
-    _session_scope_key,
-    _template_display_label,
 )
 
 __all__ = [

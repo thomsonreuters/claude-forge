@@ -11,6 +11,7 @@ import shlex
 import sys
 import uuid as _uuid
 from pathlib import Path
+from typing import cast
 
 import click
 
@@ -37,6 +38,7 @@ from forge.session.exceptions import (
     WorktreePathExistsError,
 )
 
+
 # Names that tests patch on forge.cli.session (invoke_claude,
 # run_with_active_session, SessionManager, generate_unique_name) must be
 # accessed through the parent module at call time. We use _sess() to get
@@ -47,9 +49,6 @@ def _sess():  # type: ignore[return]
 
 from forge.cli.session import (  # noqa: E402
     ResolvedRouting,
-    console,
-    logger,
-    session,
     _apply_routing_override_to_state,
     _combine_prompt_files,
     _get_active_session_entry,
@@ -64,7 +63,12 @@ from forge.cli.session import (  # noqa: E402
     _resolve_launch_mode,
     _resolve_session_artifact_root,
     _resolve_worktree_extension_root,
-)  # noqa: E402
+    console,
+    logger,
+)
+from forge.cli.session import session as _session_untyped  # noqa: E402
+
+session = cast(click.Group, _session_untyped)  # type: ignore[has-type]  # circular re-export
 
 # Functions below are accessed through _sess() because tests patch them
 # on forge.cli.session. Direct imports would bypass those patches.
@@ -644,7 +648,9 @@ def launch_new_session(
         from forge.guard.semantic.supervisor import validate_supervisor_target
 
         try:
-            _supervisor_source_state = validate_supervisor_target(supervise_target, forge_root=_sess()._cwd_forge_root())
+            _supervisor_source_state = validate_supervisor_target(
+                supervise_target, forge_root=_sess()._cwd_forge_root()
+            )
         except ValueError as e:
             console.print(f"[red]Error:[/red] {e}")
             return 1
@@ -740,7 +746,9 @@ def launch_new_session(
     effective_url = manifest.intent.proxy.base_url if manifest.intent.proxy else None
 
     context_limit = (
-        context_limit_override if context_limit_override is not None else _sess()._resolve_context_limit(effective_template)
+        context_limit_override
+        if context_limit_override is not None
+        else _sess()._resolve_context_limit(effective_template)
     )
     runtime_base_url = _get_runtime_base_url(use_sidecar=use_sidecar, effective_url=effective_url)
 
@@ -936,7 +944,9 @@ def start(
         console.print("[red]Error:[/red] --supervisor-proxy/--no-supervisor-proxy require --supervise")
         sys.exit(1)
     if subprocess_proxy and proxy_name:
-        console.print("[red]Error:[/red] --subprocess-proxy is for direct-mode sessions; use --proxy alone for full proxy routing")
+        console.print(
+            "[red]Error:[/red] --subprocess-proxy is for direct-mode sessions; use --proxy alone for full proxy routing"
+        )
         sys.exit(1)
 
     # Default to direct mode when neither --proxy nor --no-proxy is given,

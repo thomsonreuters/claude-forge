@@ -26,8 +26,7 @@ Use `uv` for dependencies and `make` for the standard workflow:
 - `make test-unit` runs tests.
 - `make test-integration` builds Docker images, starts test infrastructure, and runs integration-marked tests.
 - `make test-regression` runs regression tests.
-- `make lint`, `make format`, `make type-check`, and `make pre-commit` run Ruff, formatting, mypy, and the full hook
-  suite.
+- `make lint`, `make format`, `make type-check`, and `make pre-commit` run individual checks or the full hook suite.
 
 ## OSS Release & UX Verification
 

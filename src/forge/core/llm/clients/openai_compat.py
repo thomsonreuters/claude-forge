@@ -11,7 +11,13 @@ from typing import Any
 from openai import APIError, APIStatusError, RateLimitError
 
 from ..errors import ProviderError
-from ..types import CompletionResponse, Message, ModelHyperparameters, ToolCall, ToolCallDelta
+from ..types import (
+    CompletionResponse,
+    Message,
+    ModelHyperparameters,
+    ToolCall,
+    ToolCallDelta,
+)
 
 logger = logging.getLogger(__name__)
 

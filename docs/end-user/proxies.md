@@ -37,17 +37,17 @@ require a proxy instance.
 
 Forge provides ready-to-use proxy configurations (internal templates):
 
-| Template                     | Use case                                        |
-| ---------------------------- | ----------------------------------------------- |
+| Template                     | Use case                                           |
+| ---------------------------- | -------------------------------------------------- |
 | `openrouter`                 | Multi-provider via OpenRouter (direct, no LiteLLM) |
-| `litellm-anthropic`          | Anthropic models via remote/shared LiteLLM      |
-| `litellm-anthropic-local`    | Local LiteLLM + Anthropic API key               |
-| `litellm-openai`             | OpenAI models via remote/shared LiteLLM         |
-| `litellm-gemini`             | Gemini models via remote/shared LiteLLM         |
-| `litellm-openai-local`       | Local LiteLLM + OpenAI API key                  |
-| `litellm-openai-codex-local` | Local LiteLLM + OpenAI Codex models             |
-| `litellm-gemini-local`       | Local LiteLLM + Gemini API key                  |
-| `litellm-gemini-flash-local` | Local LiteLLM + Gemini Flash (fast/cheap)       |
+| `litellm-anthropic`          | Anthropic models via remote/shared LiteLLM         |
+| `litellm-anthropic-local`    | Local LiteLLM + Anthropic API key                  |
+| `litellm-openai`             | OpenAI models via remote/shared LiteLLM            |
+| `litellm-gemini`             | Gemini models via remote/shared LiteLLM            |
+| `litellm-openai-local`       | Local LiteLLM + OpenAI API key                     |
+| `litellm-openai-codex-local` | Local LiteLLM + OpenAI Codex models                |
+| `litellm-gemini-local`       | Local LiteLLM + Gemini API key                     |
+| `litellm-gemini-flash-local` | Local LiteLLM + Gemini Flash (fast/cheap)          |
 
 `litellm-gemini-test` also exists internally, but it is hidden from normal end-user template lists.
 

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from forge.core.llm.clients.openrouter import OpenRouterClient, _UNSUPPORTED_PARAMS
+from forge.core.llm.clients.openrouter import _UNSUPPORTED_PARAMS, OpenRouterClient
 from forge.core.llm.types import CompletionResponse, Message, ModelHyperparameters
 
 
@@ -50,12 +50,8 @@ class TestOpenRouterClientComplete:
     async def test_calls_chat_completions(self, client):
         """Verify OpenRouter uses chat.completions, not responses API."""
         mock_response = MagicMock()
-        mock_response.choices = [
-            MagicMock(message=MagicMock(content="Hello", tool_calls=None))
-        ]
-        mock_response.usage = MagicMock(
-            prompt_tokens=10, completion_tokens=5, total_tokens=15
-        )
+        mock_response.choices = [MagicMock(message=MagicMock(content="Hello", tool_calls=None))]
+        mock_response.usage = MagicMock(prompt_tokens=10, completion_tokens=5, total_tokens=15)
         mock_response.usage.prompt_tokens_details = None
         mock_response.error = None
         mock_response.model_dump = MagicMock(return_value={})
@@ -118,14 +114,10 @@ class TestOpenRouterClientStream:
         """Verify streaming yields text_delta and response_end events."""
         mock_chunk1 = MagicMock()
         mock_chunk1.usage = None
-        mock_chunk1.choices = [
-            MagicMock(delta=MagicMock(content="Hi", tool_calls=None))
-        ]
+        mock_chunk1.choices = [MagicMock(delta=MagicMock(content="Hi", tool_calls=None))]
 
         mock_chunk2 = MagicMock()
-        mock_chunk2.usage = MagicMock(
-            prompt_tokens=10, completion_tokens=2, total_tokens=12
-        )
+        mock_chunk2.usage = MagicMock(prompt_tokens=10, completion_tokens=2, total_tokens=12)
         mock_chunk2.usage.prompt_tokens_details = None
         mock_chunk2.choices = []
 

@@ -312,11 +312,15 @@ class TestOpenRouterModelMapping:
         from forge.proxy.data_models import map_model_name
 
         class ORProvider:
-            tiers = type("T", (), {
-                "haiku": "anthropic/claude-haiku-4.5",
-                "sonnet": "anthropic/claude-sonnet-4.6",
-                "opus": "anthropic/claude-opus-4.6",
-            })()
+            tiers = type(
+                "T",
+                (),
+                {
+                    "haiku": "anthropic/claude-haiku-4.5",
+                    "sonnet": "anthropic/claude-sonnet-4.6",
+                    "opus": "anthropic/claude-opus-4.6",
+                },
+            )()
 
         class ProxyCfg:
             preferred_provider = "openrouter"
@@ -337,11 +341,15 @@ class TestOpenRouterModelMapping:
         from forge.proxy.data_models import map_model_name
 
         class ORProvider:
-            tiers = type("T", (), {
-                "haiku": "anthropic/claude-haiku-4.5",
-                "sonnet": "anthropic/claude-sonnet-4.6",
-                "opus": "anthropic/claude-opus-4.6",
-            })()
+            tiers = type(
+                "T",
+                (),
+                {
+                    "haiku": "anthropic/claude-haiku-4.5",
+                    "sonnet": "anthropic/claude-sonnet-4.6",
+                    "opus": "anthropic/claude-opus-4.6",
+                },
+            )()
 
         class ProxyCfg:
             preferred_provider = "openrouter"

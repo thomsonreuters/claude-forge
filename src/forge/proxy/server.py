@@ -228,10 +228,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
     # These should be passed through, not tier-resolved
     if config.proxy.preferred_provider == "openrouter":
         # OpenRouter: any provider/model format is explicit (google/, meta-llama/, etc.)
-        is_explicit_backend = (
-            original_model_name is not None
-            and "/" in original_model_name
-        )
+        is_explicit_backend = original_model_name is not None and "/" in original_model_name
     else:
         is_explicit_backend = (
             original_model_name is not None

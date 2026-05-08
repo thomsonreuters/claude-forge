@@ -270,7 +270,11 @@ class TestOpenRouterCredentials:
         from forge.core.llm import credentials
 
         with (
-            patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-test", "OPENROUTER_BASE_URL": "https://env.example.com"}, clear=True),
+            patch.dict(
+                os.environ,
+                {"OPENROUTER_API_KEY": "sk-or-test", "OPENROUTER_BASE_URL": "https://env.example.com"},
+                clear=True,
+            ),
             patch.object(credentials, "_get_openrouter_base_url", return_value="https://config.example.com/v1"),
         ):
             cm = CredentialManager()

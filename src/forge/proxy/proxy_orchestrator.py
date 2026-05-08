@@ -503,7 +503,10 @@ def start_proxy(
     store.update(timeout_s=5.0, mutate=_register_starting)
 
     proc, stderr_capture = _spawn_proxy_process(
-        template=template, host=host, port=spawn_port, proxy_id=actual_proxy_id,
+        template=template,
+        host=host,
+        port=spawn_port,
+        proxy_id=actual_proxy_id,
         provider=cfg.proxy.preferred_provider,
     )
     try:

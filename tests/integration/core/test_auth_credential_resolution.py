@@ -74,10 +74,14 @@ class TestCredentialManagerFileResolution:
         """LiteLLM remote credentials resolve from file."""
         test_key = "sk-litellm-integration-test"
         test_url = "http://localhost:4000"
-        _write_creds(isolated_creds, "default", {
-            "LITELLM_API_KEY": test_key,
-            "LITELLM_BASE_URL": test_url,
-        })
+        _write_creds(
+            isolated_creds,
+            "default",
+            {
+                "LITELLM_API_KEY": test_key,
+                "LITELLM_BASE_URL": test_url,
+            },
+        )
         # Set empty instead of delenv — load_dotenv(override=False) won't
         # override existing keys, but would re-insert deleted ones from .env
         monkeypatch.setenv("LITELLM_API_KEY", "")

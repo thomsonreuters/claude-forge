@@ -286,7 +286,9 @@ class TierClientFactory:
             if provider == ModelProvider.OPENROUTER:
                 core_provider = "openrouter"
             else:
-                from forge.core.llm.detection import detect_provider as core_detect_provider
+                from forge.core.llm.detection import (
+                    detect_provider as core_detect_provider,
+                )
 
                 core_provider = core_detect_provider(model_name)
 

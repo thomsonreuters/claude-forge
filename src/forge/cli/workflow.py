@@ -295,15 +295,17 @@ def panel(
 
     _run_preflight(specs, json_output=json_output)
 
+    from forge.core.reactive.cost_tracking import resolve_proxy_urls, track_verb_cost
     from forge.review.engine import run_multi_review
 
-    output = run_multi_review(
-        resolved_prompt,
-        models=specs,
-        timeout_seconds=timeout,
-        cwd=cwd or str(Path.cwd()),
-        resume_id=resume_id,
-    )
+    with track_verb_cost("panel", resolve_proxy_urls(specs)):
+        output = run_multi_review(
+            resolved_prompt,
+            models=specs,
+            timeout_seconds=timeout,
+            cwd=cwd or str(Path.cwd()),
+            resume_id=resume_id,
+        )
 
     _handle_review_output(ctx, output, check_mode=check_mode, json_output=json_output)
 
@@ -616,14 +618,16 @@ def analyze(
     framework = _load_workflow_resource("thinkdeep.md")
     combined_prompt = f"{framework}\n\n---\n\n## Topic to Analyze\n\n{resolved_topic}\n"
 
+    from forge.core.reactive.cost_tracking import resolve_proxy_urls, track_verb_cost
     from forge.review.engine import run_multi_review
 
-    output = run_multi_review(
-        combined_prompt,
-        models=specs,
-        timeout_seconds=timeout,
-        cwd=cwd or str(Path.cwd()),
-    )
+    with track_verb_cost("analyze", resolve_proxy_urls(specs)):
+        output = run_multi_review(
+            combined_prompt,
+            models=specs,
+            timeout_seconds=timeout,
+            cwd=cwd or str(Path.cwd()),
+        )
 
     _handle_review_output(ctx, output, check_mode=check_mode, json_output=json_output)
 
@@ -1012,12 +1016,15 @@ def debate(
 
         _run_preflight([s.model for s in stances], json_output=json_output)
 
-        output = run_adversarial(
-            resource_path,
-            stances,
-            timeout_seconds=timeout,
-            cwd=cwd or str(Path.cwd()),
-        )
+        from forge.core.reactive.cost_tracking import resolve_proxy_urls, track_verb_cost
+
+        with track_verb_cost("debate", resolve_proxy_urls([s.model for s in stances])):
+            output = run_adversarial(
+                resource_path,
+                stances,
+                timeout_seconds=timeout,
+                cwd=cwd or str(Path.cwd()),
+            )
     finally:
         if tmp_file is not None:
             Path(tmp_file.name).unlink(missing_ok=True)
@@ -1639,13 +1646,16 @@ def consensus(
 
         _run_preflight([r.model for r in role_specs], json_output=json_output)
 
-        output = run_consensus(
-            resource_path,
-            role_specs,
-            timeout_seconds=timeout,
-            cwd=cwd or str(Path.cwd()),
-            original_subject=raw_subject or "",
-        )
+        from forge.core.reactive.cost_tracking import resolve_proxy_urls, track_verb_cost
+
+        with track_verb_cost("consensus", resolve_proxy_urls([r.model for r in role_specs])):
+            output = run_consensus(
+                resource_path,
+                role_specs,
+                timeout_seconds=timeout,
+                cwd=cwd or str(Path.cwd()),
+                original_subject=raw_subject or "",
+            )
     finally:
         if tmp_file is not None:
             Path(tmp_file.name).unlink(missing_ok=True)

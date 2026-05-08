@@ -326,15 +326,18 @@ def invoke_supervisor(
             warnings=[f"Supervisor proxy '{config.proxy}' not found: {e}"],
         )
 
-    result = run_claude_session(
-        prompt,
-        resume_id=resolved.resume_id,
-        fork_session=config.fork_session,
-        base_url=base_url,
-        direct=config.direct,
-        timeout_seconds=config.timeout_seconds,
-        cwd=resolved.source_cwd,
-    )
+    from forge.core.reactive.cost_tracking import track_verb_cost
+
+    with track_verb_cost("supervisor", [base_url] if base_url else []):
+        result = run_claude_session(
+            prompt,
+            resume_id=resolved.resume_id,
+            fork_session=config.fork_session,
+            base_url=base_url,
+            direct=config.direct,
+            timeout_seconds=config.timeout_seconds,
+            cwd=resolved.source_cwd,
+        )
 
     if not result.success:
         _log.warning(

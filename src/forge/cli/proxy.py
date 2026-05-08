@@ -92,6 +92,12 @@ def proxy() -> None:
     """
 
 
+# --- Costs (registered from proxy_costs.py) ---
+from forge.cli.proxy_costs import costs_cmd
+
+proxy.add_command(costs_cmd)
+
+
 # --- List ---
 
 

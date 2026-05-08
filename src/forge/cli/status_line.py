@@ -161,6 +161,13 @@ class ProxyRuntimeTruth:
         tier_info = self.tiers.get(tier, {})
         return tier_info.get("context_window")
 
+    @property
+    def proxy_cost_usd(self) -> float:
+        """Total estimated proxy cost in USD from metrics snapshot."""
+        metrics = self.raw.get("metrics", {})
+        costs = metrics.get("costs", {})
+        return costs.get("total_usd", 0.0)
+
 
 def detect_proxy() -> tuple[bool, ProxyRuntimeTruth | None, bool]:
     """Detect if using a proxy and fetch its runtime truth.
@@ -612,16 +619,26 @@ def get_context_display(context_info: dict[str, Any] | None) -> str:
         return f"{color}{bar} {percent}%{BOLD}{alert_str}{RESET}"
 
 
-def get_session_metrics(cost_data: dict[str, Any], is_proxy: bool) -> str | None:
+def get_session_metrics(
+    cost_data: dict[str, Any],
+    is_proxy: bool,
+    proxy_cost_usd: float = 0.0,
+) -> str | None:
     """Get session metrics (cost, duration). Returns bare string or None."""
-    if not cost_data:
+    if not cost_data and proxy_cost_usd <= 0:
         return None
 
     metrics: list[str] = []
 
-    # Cost - only show when NOT using proxy
-    if not is_proxy:
-        cost_usd = cost_data.get("total_cost_usd", 0)
+    if is_proxy and proxy_cost_usd > 0:
+        cost_color = METRICS_COLOR
+        if proxy_cost_usd < 0.01:
+            cost_str = f"~{int(proxy_cost_usd * 10000) / 100}c"
+        else:
+            cost_str = f"~${proxy_cost_usd:.2f}"
+        metrics.append(f"{cost_color}{cost_str}{RESET}")
+    elif not is_proxy:
+        cost_usd = (cost_data or {}).get("total_cost_usd", 0)
         if cost_usd > 0:
             cost_color = METRICS_COLOR
 
@@ -1301,7 +1318,8 @@ def status_line() -> None:
     # === CATEGORY: Metrics ===
     metrics_cat: list[str] = []
 
-    session_metrics = get_session_metrics(cost_data, is_proxy)
+    _proxy_cost = runtime.proxy_cost_usd if runtime else 0.0
+    session_metrics = get_session_metrics(cost_data, is_proxy, proxy_cost_usd=_proxy_cost)
     if session_metrics:
         metrics_cat.append(session_metrics)
 

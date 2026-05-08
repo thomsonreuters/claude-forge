@@ -432,13 +432,16 @@ def run_handoff_agent(
 
     # Use forge_root as cwd so designated doc paths (relative) resolve
     # against the correct branch content. Transcript path is absolute.
+    from forge.core.reactive.cost_tracking import track_verb_cost
+
     effective_timeout = timeout_seconds if timeout_seconds is not None else _default_timeout()
-    result = run_claude_session(
-        prompt,
-        base_url=base_url,
-        timeout_seconds=effective_timeout,
-        cwd=str(forge_root),
-    )
+    with track_verb_cost("handoff", [base_url] if base_url else []):
+        result = run_claude_session(
+            prompt,
+            base_url=base_url,
+            timeout_seconds=effective_timeout,
+            cwd=str(forge_root),
+        )
 
     if not result.success:
         detail = result.error or (result.stderr[:500] if result.stderr else f"exit {result.returncode}")

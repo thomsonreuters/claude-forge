@@ -173,36 +173,41 @@ def track_verb_cost(verb: str, proxy_base_urls: list[str]):
             snapshots_before[url] = snap
 
     start = time.monotonic()
-    yield
-    elapsed = (time.monotonic() - start) * 1000
+    try:
+        yield
+    finally:
+        elapsed = (time.monotonic() - start) * 1000
 
-    deltas: list[ProxyCostDelta] = []
-    for url in unique_urls:
-        if url not in snapshots_before:
-            continue
-        after = _fetch_snapshot(url)
-        if after is None:
-            continue
-        deltas.append(_compute_delta(snapshots_before[url], after, url))
+        try:
+            deltas: list[ProxyCostDelta] = []
+            for url in unique_urls:
+                if url not in snapshots_before:
+                    continue
+                after = _fetch_snapshot(url)
+                if after is None:
+                    continue
+                deltas.append(_compute_delta(snapshots_before[url], after, url))
 
-    total_cost = sum(d.cost_micros for d in deltas)
-    total_input = sum(d.input_tokens for d in deltas)
-    total_output = sum(d.output_tokens for d in deltas)
-    total_cached = sum(d.cached_tokens for d in deltas)
-    total_requests = sum(d.request_count for d in deltas)
+            total_cost = sum(d.cost_micros for d in deltas)
+            total_input = sum(d.input_tokens for d in deltas)
+            total_output = sum(d.output_tokens for d in deltas)
+            total_cached = sum(d.cached_tokens for d in deltas)
+            total_requests = sum(d.request_count for d in deltas)
 
-    result = VerbCostResult(
-        verb=verb,
-        total_cost_micros=total_cost,
-        input_tokens=total_input,
-        output_tokens=total_output,
-        cached_tokens=total_cached,
-        request_count=total_requests,
-        duration_ms=elapsed,
-        estimated=True,
-        per_proxy=deltas,
-    )
-    _log_verb_cost(result)
+            result = VerbCostResult(
+                verb=verb,
+                total_cost_micros=total_cost,
+                input_tokens=total_input,
+                output_tokens=total_output,
+                cached_tokens=total_cached,
+                request_count=total_requests,
+                duration_ms=elapsed,
+                estimated=True,
+                per_proxy=deltas,
+            )
+            _log_verb_cost(result)
+        except Exception as e:
+            logger.warning("Failed to track verb cost for %s: %s", verb, e)
 
 
 def read_verb_logs(

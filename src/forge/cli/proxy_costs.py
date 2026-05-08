@@ -97,6 +97,7 @@ def costs_cmd(
 
     if proxy_id:
         request_records = [r for r in request_records if r.get("proxy_id") == proxy_id]
+        verb_records = _scope_verb_records_to_proxy(verb_records, _lookup_proxy_base_url(proxy_id))
 
     if as_json:
         _output_json(request_records, verb_records, period, proxy_id)
@@ -106,6 +107,63 @@ def costs_cmd(
         _display_by_model(request_records, period, proxy_id)
     else:
         _display_by_verb(request_records, verb_records, period, proxy_id)
+
+
+def _lookup_proxy_base_url(proxy_id: str) -> str | None:
+    """Resolve a proxy id for filtering verb cost records."""
+    try:
+        from forge.core.reactive.proxy import lookup_proxy_base_url
+
+        return lookup_proxy_base_url(proxy_id)
+    except Exception:
+        return None
+
+
+def _normalize_base_url(base_url: str | None) -> str | None:
+    if not base_url:
+        return None
+    normalized = base_url.strip()
+    if not normalized:
+        return None
+    if "://" not in normalized:
+        normalized = f"http://{normalized}"
+    return normalized.rstrip("/")
+
+
+def _sum_proxy_field(proxies: list[dict], field: str) -> int:
+    return sum(int(p.get(field, 0) or 0) for p in proxies)
+
+
+def _scope_verb_records_to_proxy(verb_records: list[dict], proxy_base_url: str | None) -> list[dict]:
+    """Keep only the per-proxy deltas matching the requested proxy base URL."""
+    target = _normalize_base_url(proxy_base_url)
+    if not target:
+        return []
+
+    scoped: list[dict] = []
+    for record in verb_records:
+        per_proxy = record.get("per_proxy", [])
+        if not isinstance(per_proxy, list):
+            continue
+
+        matching = [
+            proxy_delta
+            for proxy_delta in per_proxy
+            if isinstance(proxy_delta, dict) and _normalize_base_url(proxy_delta.get("base_url")) == target
+        ]
+        if not matching:
+            continue
+
+        scoped_record = dict(record)
+        scoped_record["per_proxy"] = matching
+        scoped_record["total_cost_micros"] = _sum_proxy_field(matching, "cost_micros")
+        scoped_record["input_tokens"] = _sum_proxy_field(matching, "input_tokens")
+        scoped_record["output_tokens"] = _sum_proxy_field(matching, "output_tokens")
+        scoped_record["cached_tokens"] = _sum_proxy_field(matching, "cached_tokens")
+        scoped_record["request_count"] = _sum_proxy_field(matching, "request_count")
+        scoped.append(scoped_record)
+
+    return scoped
 
 
 def _display_by_verb(

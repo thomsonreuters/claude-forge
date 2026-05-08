@@ -184,6 +184,55 @@ class TestTrackVerbCost:
         assert records[0]["request_count"] == 3
         assert records[0]["input_tokens"] == 3000
 
+    def test_snapshot_delta_logged_when_wrapped_code_raises(self, verb_log_dir: Path):
+        """Failed verb invocations should still attribute completed proxy work."""
+        before_snap = {
+            "is_proxy": True,
+            "metrics": {
+                "total_requests": 5,
+                "tokens": {"input": 1000, "output": 500, "cached": 100},
+                "costs": {"total_micros": 50_000},
+            },
+        }
+        after_snap = {
+            "is_proxy": True,
+            "metrics": {
+                "total_requests": 7,
+                "tokens": {"input": 2500, "output": 1300, "cached": 150},
+                "costs": {"total_micros": 125_000},
+            },
+        }
+        call_count = 0
+
+        def mock_urlopen(url, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            data = before_snap if call_count == 1 else after_snap
+
+            class MockResp:
+                def read(self):
+                    return json.dumps(data).encode()
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    pass
+
+            return MockResp()
+
+        with patch("forge.core.reactive.cost_tracking.urllib.request.urlopen", mock_urlopen):
+            with pytest.raises(RuntimeError, match="panel failed"):
+                with track_verb_cost("panel", ["http://localhost:8084"]):
+                    raise RuntimeError("panel failed")
+
+        records = read_verb_logs()
+        assert len(records) == 1
+        assert records[0]["verb"] == "panel"
+        assert records[0]["total_cost_micros"] == 75_000
+        assert records[0]["request_count"] == 2
+        assert records[0]["input_tokens"] == 1500
+
 
 class TestResolveProxyUrls:
     def test_skips_none_proxies(self):

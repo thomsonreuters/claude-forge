@@ -45,6 +45,7 @@ from forge.proxy.converters import (
     convert_openai_to_anthropic,
     convert_openai_to_anthropic_sse,
 )
+from forge.proxy.cost_logger import log_request_cost
 from forge.proxy.data_models import (
     MessagesRequest,
     TokenCountRequest,
@@ -74,6 +75,47 @@ PREFERRED_PROVIDER = None
 # When a proxy is started under a proxy id, its config should be stable for the
 # lifetime of the process (no hot reload).
 PROXY_ID: str | None = None
+
+
+def _calc_and_log_cost(
+    *,
+    model: str,
+    tier: str,
+    input_tokens: int,
+    output_tokens: int,
+    cached_tokens: int,
+    latency_ms: float,
+    failed: bool,
+    request_id: str,
+) -> int:
+    """Calculate cost in microdollars and write to the persistent cost log.
+
+    Best-effort: pricing/logging failures return 0 cost and warn.
+    Never raises — cost tracking must not break the proxy request path.
+    """
+    try:
+        from forge.core.models.pricing import calculate_cost, get_pricing
+
+        cost_micros = calculate_cost(model, input_tokens, output_tokens, cached_tokens)
+        pricing = get_pricing(model)
+
+        log_request_cost(
+            proxy_id=PROXY_ID or "unknown",
+            model=model,
+            tier=tier,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            cost_micros=cost_micros,
+            latency_ms=latency_ms,
+            failed=failed,
+            request_id=request_id,
+            pricing_source=pricing.source,
+        )
+        return cost_micros
+    except Exception as e:
+        logger.warning("Cost calculation failed (non-fatal): %s", e)
+        return 0
 
 
 def _get_tier_override(tier: str) -> TierOverride | None:
@@ -378,6 +420,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 "X-Request-ID": request_id,
                 "X-Resolved-Tier": resolved_tier,
                 "X-Resolved-Model": actual_model_id,
+                "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
             }
@@ -414,16 +457,31 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             )
 
             def _on_stream_complete(usage: dict[str, int], failed: bool, error_type: str | None) -> None:
+                elapsed = (time.time() - start_time) * 1000
+                in_tok = usage.get("input_tokens", 0)
+                out_tok = usage.get("output_tokens", 0)
+                cache_tok = usage.get("cached_tokens", 0)
+                cost = _calc_and_log_cost(
+                    model=actual_model_id,
+                    tier=resolved_tier,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    cached_tokens=cache_tok,
+                    latency_ms=elapsed,
+                    failed=failed,
+                    request_id=request_id,
+                )
                 proxy_metrics.record_request(
                     tier=resolved_tier,
                     model=actual_model_id,
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
-                    cached_tokens=usage.get("cached_tokens", 0),
-                    latency_ms=(time.time() - start_time) * 1000,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    cached_tokens=cache_tok,
+                    latency_ms=elapsed,
                     streaming=True,
                     failed=failed,
                     error_type=error_type,
+                    cost_micros=cost,
                 )
 
             return StreamingResponse(
@@ -455,18 +513,31 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
                 duration_ms = (time.time() - start_time) * 1000
 
-                # Record metrics (extract from openai_response which has cached_tokens)
                 _usage = openai_response.get("usage", {})
+                _in = _usage.get("prompt_tokens", 0)
+                _out = _usage.get("completion_tokens", 0)
+                _cached = _usage.get("cached_tokens", 0)
+                _cost = _calc_and_log_cost(
+                    model=actual_model_id,
+                    tier=resolved_tier,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cached_tokens=_cached,
+                    latency_ms=duration_ms,
+                    failed=False,
+                    request_id=request_id,
+                )
                 proxy_metrics.record_request(
                     tier=resolved_tier,
                     model=actual_model_id,
-                    input_tokens=_usage.get("prompt_tokens", 0),
-                    output_tokens=_usage.get("completion_tokens", 0),
-                    cached_tokens=_usage.get("cached_tokens", 0),
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cached_tokens=_cached,
                     latency_ms=duration_ms,
                     streaming=False,
                     failed=False,
                     error_type=None,
+                    cost_micros=_cost,
                 )
 
                 asyncio.create_task(
@@ -503,6 +574,8 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                         "X-Request-ID": request_id,
                         "X-Resolved-Tier": resolved_tier,
                         "X-Resolved-Model": actual_model_id,
+                        "X-Request-Cost": f"{_cost / 1_000_000:.6f}",
+                        "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
                     },
                 )
 
@@ -510,6 +583,16 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 duration_ms = (time.time() - start_time) * 1000
                 error_msg = str(e)
 
+                _tc_cost = _calc_and_log_cost(
+                    model=actual_model_id,
+                    tier=resolved_tier,
+                    input_tokens=0,
+                    output_tokens=0,
+                    cached_tokens=0,
+                    latency_ms=duration_ms,
+                    failed=True,
+                    request_id=request_id,
+                )
                 proxy_metrics.record_request(
                     tier=resolved_tier,
                     model=actual_model_id,
@@ -520,6 +603,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                     streaming=False,
                     failed=True,
                     error_type="tool_call_error",
+                    cost_micros=_tc_cost,
                 )
 
                 asyncio.create_task(
@@ -575,21 +659,44 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
                 retry_duration_ms = (time.time() - start_time) * 1000
                 _retry_usage = openai_response.get("usage", {})
+                _ri = _retry_usage.get("prompt_tokens", 0)
+                _ro = _retry_usage.get("completion_tokens", 0)
+                _rc = _retry_usage.get("cached_tokens", 0)
+                _rcost = _calc_and_log_cost(
+                    model=actual_model_id,
+                    tier=resolved_tier,
+                    input_tokens=_ri,
+                    output_tokens=_ro,
+                    cached_tokens=_rc,
+                    latency_ms=retry_duration_ms,
+                    failed=False,
+                    request_id=request_id,
+                )
                 proxy_metrics.record_request(
                     tier=resolved_tier,
                     model=actual_model_id,
-                    input_tokens=_retry_usage.get("prompt_tokens", 0),
-                    output_tokens=_retry_usage.get("completion_tokens", 0),
-                    cached_tokens=_retry_usage.get("cached_tokens", 0),
+                    input_tokens=_ri,
+                    output_tokens=_ro,
+                    cached_tokens=_rc,
                     latency_ms=retry_duration_ms,
                     streaming=False,
                     failed=False,
                     error_type=None,
+                    cost_micros=_rcost,
                 )
 
                 response_dict = anthropic_response.model_dump()
                 response_dict["_request_id"] = request_id
-                return JSONResponse(content=response_dict)
+                return JSONResponse(
+                    content=response_dict,
+                    headers={
+                        "X-Request-ID": request_id,
+                        "X-Resolved-Tier": resolved_tier,
+                        "X-Resolved-Model": actual_model_id,
+                        "X-Request-Cost": f"{_rcost / 1_000_000:.6f}",
+                        "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
+                    },
+                )
 
     except HTTPException:
         raise
@@ -597,6 +704,16 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
         duration_ms = (time.time() - start_time) * 1000
         error_msg = f"Internal error: {str(e)}"
 
+        _err_cost = _calc_and_log_cost(
+            model=actual_model_id,
+            tier=resolved_tier,
+            input_tokens=0,
+            output_tokens=0,
+            cached_tokens=0,
+            latency_ms=duration_ms,
+            failed=True,
+            request_id=request_id,
+        )
         proxy_metrics.record_request(
             tier=resolved_tier,
             model=actual_model_id,
@@ -607,6 +724,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             streaming=request_data.stream or False,
             failed=True,
             error_type="api_error",
+            cost_micros=_err_cost,
         )
 
         asyncio.create_task(

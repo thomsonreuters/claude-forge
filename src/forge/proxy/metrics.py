@@ -26,6 +26,7 @@ class TierTokens:
     cached_tokens: int = 0
     total_latency_ms: float = 0.0
     request_count: int = 0  # for avg latency (separate from requests_by_tier for reset clarity)
+    estimated_cost_micros: int = 0  # microdollars (1 USD = 1_000_000)
 
     def to_dict(self) -> dict[str, object]:
         avg = round(self.total_latency_ms / self.request_count, 1) if self.request_count > 0 else 0.0
@@ -34,6 +35,8 @@ class TierTokens:
             "output_tokens": self.output_tokens,
             "cached_tokens": self.cached_tokens,
             "avg_latency_ms": avg,
+            "estimated_cost_usd": round(self.estimated_cost_micros / 1_000_000, 6),
+            "estimated_cost_micros": self.estimated_cost_micros,
         }
 
 
@@ -64,6 +67,10 @@ class ProxyMetrics:
     failed_input_tokens: int = 0
     failed_output_tokens: int = 0
 
+    # Cost estimates (microdollars, 1 USD = 1_000_000)
+    total_cost_micros: int = 0
+    failed_cost_micros: int = 0
+
     # Per-tier breakdown
     requests_by_tier: dict[str, int] = field(default_factory=dict)
     tokens_by_tier: dict[str, TierTokens] = field(default_factory=dict)
@@ -93,6 +100,7 @@ class ProxyMetrics:
         streaming: bool,
         failed: bool,
         error_type: str | None = None,
+        cost_micros: int = 0,
     ) -> None:
         """Record a completed request. All fields updated atomically under lock."""
         with self._lock:
@@ -105,6 +113,9 @@ class ProxyMetrics:
             self.total_output_tokens += output_tokens
             self.total_cached_tokens += cached_tokens
 
+            # Cost
+            self.total_cost_micros += cost_micros
+
             # Per-tier
             self.requests_by_tier[tier] = self.requests_by_tier.get(tier, 0) + 1
             tier_tokens = self.tokens_by_tier.get(tier)
@@ -116,6 +127,7 @@ class ProxyMetrics:
             tier_tokens.cached_tokens += cached_tokens
             tier_tokens.total_latency_ms += latency_ms
             tier_tokens.request_count += 1
+            tier_tokens.estimated_cost_micros += cost_micros
 
             # Per-model
             self.requests_by_model[model] = self.requests_by_model.get(model, 0) + 1
@@ -128,12 +140,14 @@ class ProxyMetrics:
             model_tokens.cached_tokens += cached_tokens
             model_tokens.total_latency_ms += latency_ms
             model_tokens.request_count += 1
+            model_tokens.estimated_cost_micros += cost_micros
 
             # Failures
             if failed:
                 self.total_failures += 1
                 self.failed_input_tokens += input_tokens
                 self.failed_output_tokens += output_tokens
+                self.failed_cost_micros += cost_micros
                 if error_type:
                     self.failures_by_type[error_type] = self.failures_by_type.get(error_type, 0) + 1
 
@@ -173,6 +187,12 @@ class ProxyMetrics:
                     for model, tokens in self.tokens_by_model.items()
                 },
                 "failures_by_type": dict(self.failures_by_type),
+                "costs": {
+                    "total_usd": round(self.total_cost_micros / 1_000_000, 6),
+                    "failed_usd": round(self.failed_cost_micros / 1_000_000, 6),
+                    "total_micros": self.total_cost_micros,
+                    "failed_micros": self.failed_cost_micros,
+                },
                 "last_request_at": self.last_request_at,
             }
 
@@ -187,6 +207,8 @@ class ProxyMetrics:
             self.total_cached_tokens = 0
             self.failed_input_tokens = 0
             self.failed_output_tokens = 0
+            self.total_cost_micros = 0
+            self.failed_cost_micros = 0
             self.requests_by_tier.clear()
             self.tokens_by_tier.clear()
             self.requests_by_model.clear()

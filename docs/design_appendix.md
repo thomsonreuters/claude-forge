@@ -204,6 +204,49 @@ for `.forge/` directories.
 
 **Labeling:** Proxy info is authoritative for routing. Session info is authoritative for workflow.
 
+### A.9 Proxy cost configuration and logs (§3.14)
+
+Per-proxy cost controls live in the user-owned proxy file:
+
+```yaml
+# ~/.forge/proxies/<proxy_id>/proxy.yaml
+costs:
+  caps:
+    per_day: 20.00
+    per_month: 100.00
+  cap_mode: post
+  on_cap_hit: reject
+```
+
+| Field                  | Values           | Meaning                                                                 |
+| ---------------------- | ---------------- | ----------------------------------------------------------------------- |
+| `costs.caps.per_day`   | positive USD     | Rolling 24-hour cap                                                     |
+| `costs.caps.per_month` | positive USD     | Calendar-month cap                                                      |
+| `costs.cap_mode`       | `post`, `strict` | `post` checks accumulated spend; `strict` includes a preflight estimate |
+| `costs.on_cap_hit`     | `reject`, `warn` | `reject` returns 429; `warn` adds `X-Spend-Warning` and continues       |
+
+CLI updates use the normal proxy edit surface:
+
+```bash
+forge proxy set openrouter costs.caps.per_day=20.00
+forge proxy set openrouter costs.cap_mode=strict
+forge proxy set openrouter costs.on_cap_hit=warn
+```
+
+Runtime logs:
+
+| Path                                 | Schema owner                    | Retention policy        |
+| ------------------------------------ | ------------------------------- | ----------------------- |
+| `~/.forge/costs/requests/*.jsonl`    | `forge.proxy.cost_logger`       | Append-only, user-prune |
+| `~/.forge/costs/verbs/*.jsonl`       | `forge.core.reactive.cost_tracking` | Append-only, user-prune |
+
+Request records contain timestamp, proxy ID, model/tier, token counts, cost in microdollars, request ID, latency, and
+pricing source. Verb records contain timestamp, verb name, proxy URL/ID when known, before/after snapshots, total cost
+delta, request count delta, and `estimated=true`.
+
+The proxy `GET /` endpoint reports in-memory metrics and cost totals for live status. The JSONL request logs remain the
+bootstrap source for cap enforcement after restart.
+
 ---
 
 ## B. Direct Command Reference

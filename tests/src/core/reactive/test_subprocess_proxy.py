@@ -27,11 +27,29 @@ class TestBuildClaudeEnvSubprocessProxy:
         env = build_claude_env(base_url="http://explicit:8000")
         assert env["ANTHROPIC_BASE_URL"] == "http://explicit:8000"
 
+    def test_explicit_base_url_takes_precedence_over_extra_vars(self, monkeypatch: pytest.MonkeyPatch):
+        """extra_vars cannot override the selected proxy route."""
+        monkeypatch.setenv(FORGE_SUBPROCESS_PROXY_VAR, "some-proxy")
+        env = build_claude_env(
+            base_url="http://explicit:8000",
+            extra_vars={"ANTHROPIC_BASE_URL": "http://from-extra:9000"},
+        )
+        assert env["ANTHROPIC_BASE_URL"] == "http://explicit:8000"
+
     def test_direct_mode_ignores_subprocess_proxy(self, monkeypatch: pytest.MonkeyPatch):
         """direct=True removes ANTHROPIC_BASE_URL even when subprocess proxy is set."""
         monkeypatch.setenv(FORGE_SUBPROCESS_PROXY_VAR, "some-proxy")
         monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://inherited:8000")
         env = build_claude_env(direct=True)
+        assert "ANTHROPIC_BASE_URL" not in env
+
+    def test_direct_mode_removes_extra_vars_base_url(self, monkeypatch: pytest.MonkeyPatch):
+        """direct=True cannot be bypassed by extra_vars."""
+        monkeypatch.delenv(FORGE_SUBPROCESS_PROXY_VAR, raising=False)
+        env = build_claude_env(
+            direct=True,
+            extra_vars={"ANTHROPIC_BASE_URL": "http://from-extra:9000"},
+        )
         assert "ANTHROPIC_BASE_URL" not in env
 
     def test_subprocess_proxy_resolved_when_no_base_url(self, monkeypatch: pytest.MonkeyPatch):
@@ -43,6 +61,17 @@ class TestBuildClaudeEnvSubprocessProxy:
             lambda proxy_id: "http://localhost:8095",
         )
         env = build_claude_env()
+        assert env["ANTHROPIC_BASE_URL"] == "http://localhost:8095"
+
+    def test_subprocess_proxy_overrides_extra_vars_base_url(self, monkeypatch: pytest.MonkeyPatch):
+        """Subprocess proxy fallback cannot be silently bypassed by extra_vars."""
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.setenv(FORGE_SUBPROCESS_PROXY_VAR, "openrouter")
+        monkeypatch.setattr(
+            "forge.core.reactive.env._resolve_subprocess_proxy",
+            lambda proxy_id: "http://localhost:8095",
+        )
+        env = build_claude_env(extra_vars={"ANTHROPIC_BASE_URL": "http://from-extra:9000"})
         assert env["ANTHROPIC_BASE_URL"] == "http://localhost:8095"
 
     def test_subprocess_proxy_unresolvable_leaves_no_base_url(self, monkeypatch: pytest.MonkeyPatch):

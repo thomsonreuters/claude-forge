@@ -68,8 +68,8 @@ def build_claude_env(
     Starts with the current process environment. Sets ANTHROPIC_BASE_URL
     if ``base_url`` is provided. When ``direct`` is True, removes any
     inherited ANTHROPIC_BASE_URL so the child hits Anthropic directly.
-    Increments FORGE_DEPTH for the child process. Merges ``extra_vars``
-    last (highest priority).
+    Applies ``extra_vars`` before routing and depth handling so explicit
+    function arguments remain authoritative.
 
     Args:
         base_url: Proxy URL to route Claude requests through.
@@ -80,6 +80,8 @@ def build_claude_env(
         Complete environment dict ready for ``subprocess.run(env=...)``.
     """
     env = os.environ.copy()
+    if extra_vars:
+        env.update(extra_vars)
 
     if base_url:
         env["ANTHROPIC_BASE_URL"] = base_url
@@ -100,9 +102,6 @@ def build_claude_env(
     # Increment FORGE_DEPTH so child subprocesses know their nesting level
     current_depth = get_forge_depth(env)
     env[FORGE_DEPTH_VAR] = str(current_depth + 1)
-
-    if extra_vars:
-        env.update(extra_vars)
 
     return env
 

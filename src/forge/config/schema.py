@@ -188,6 +188,20 @@ class CostCaps:
         self.per_month = _coerce_optional_usd_cap("costs.caps.per_month", self.per_month)
 
 
+def _coerce_cost_caps(value: Any) -> CostCaps:
+    """Normalize raw cost cap mappings into ``CostCaps``."""
+    if value is None:
+        return CostCaps()
+    if isinstance(value, CostCaps):
+        return value
+    if not isinstance(value, dict):
+        raise ValueError("Invalid costs.caps: must be a mapping")
+    return CostCaps(
+        per_day=value.get("per_day"),
+        per_month=value.get("per_month"),
+    )
+
+
 @dataclass
 class CostConfig:
     """Cost tracking and cap configuration for a proxy."""
@@ -197,6 +211,8 @@ class CostConfig:
     on_cap_hit: str = "reject"  # "reject" (HTTP 429) or "warn" (header only)
 
     def __post_init__(self) -> None:
+        self.caps = _coerce_cost_caps(self.caps)
+
         valid_modes = {"post", "strict"}
         if self.cap_mode not in valid_modes:
             raise ValueError(f"Invalid cap_mode: '{self.cap_mode}' (must be one of: {', '.join(sorted(valid_modes))})")
@@ -205,6 +221,21 @@ class CostConfig:
             raise ValueError(
                 f"Invalid on_cap_hit: '{self.on_cap_hit}' (must be one of: {', '.join(sorted(valid_actions))})"
             )
+
+
+def _coerce_cost_config(value: Any) -> CostConfig:
+    """Normalize raw proxy.yaml cost config into ``CostConfig``."""
+    if value is None:
+        return CostConfig()
+    if isinstance(value, CostConfig):
+        return value
+    if not isinstance(value, dict):
+        raise ValueError("Invalid costs: must be a mapping")
+    return CostConfig(
+        caps=value.get("caps", {}) or {},
+        cap_mode=value.get("cap_mode", "post"),
+        on_cap_hit=value.get("on_cap_hit", "reject"),
+    )
 
 
 @dataclass
@@ -296,7 +327,7 @@ class ProxyInstanceConfig:
     prompt_caching: str = "passthrough"
     auto_cache_min_tokens: int = 1024
 
-    costs: dict[str, Any] = field(default_factory=dict)
+    costs: CostConfig = field(default_factory=CostConfig)
 
     created_at: str | None = None
     updated_at: str | None = None
@@ -329,22 +360,7 @@ class ProxyInstanceConfig:
                 f"Invalid default_tier: '{self.default_tier}' (must be one of: {', '.join(sorted(valid_tiers))})"
             )
 
-        if self.costs is None:
-            self.costs = {}
-        if not isinstance(self.costs, dict):
-            raise ValueError("Invalid costs: must be a mapping")
-        if self.costs:
-            raw_caps = self.costs.get("caps", {}) or {}
-            if not isinstance(raw_caps, dict):
-                raise ValueError("Invalid costs.caps: must be a mapping")
-            CostConfig(
-                caps=CostCaps(
-                    per_day=raw_caps.get("per_day"),
-                    per_month=raw_caps.get("per_month"),
-                ),
-                cap_mode=self.costs.get("cap_mode", "post"),
-                on_cap_hit=self.costs.get("on_cap_hit", "reject"),
-            )
+        self.costs = _coerce_cost_config(self.costs)
 
 
 @dataclass

@@ -483,6 +483,18 @@ routes the child session through the resolved proxy. It accepts both proxy IDs a
 
 `--no-proxy` forces direct Anthropic routing, bypassing any inherited proxy.
 
+### Route only subprocesses through a proxy
+
+Use `--subprocess-proxy` when the main session should use Claude Code's direct Anthropic auth, but Forge-spawned
+subprocesses such as supervisor, panel, or handoff jobs should use a proxy:
+
+```bash
+forge session start my-session --subprocess-proxy openrouter
+```
+
+This records `intent.subprocess_proxy` and sets `FORGE_SUBPROCESS_PROXY` for child jobs. It is mutually exclusive with
+`--proxy`: use `--proxy` when the main session itself should route through the proxy.
+
 ---
 
 ## Mid-session toggles (`set` / `reset`)

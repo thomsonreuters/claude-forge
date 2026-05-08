@@ -38,13 +38,13 @@ class TestBuildClaudeEnv:
         assert env["HOME"] == "/custom"
         assert env["FOO"] == "bar"
 
-    def test_extra_vars_take_precedence_over_base_url(self):
-        """extra_vars should win over base_url for ANTHROPIC_BASE_URL."""
+    def test_base_url_takes_precedence_over_extra_vars(self):
+        """Explicit base_url wins over extra_vars for ANTHROPIC_BASE_URL."""
         env = build_claude_env(
             base_url="http://from-base-url",
             extra_vars={"ANTHROPIC_BASE_URL": "http://from-extra"},
         )
-        assert env["ANTHROPIC_BASE_URL"] == "http://from-extra"
+        assert env["ANTHROPIC_BASE_URL"] == "http://from-base-url"
 
     def test_increments_forge_depth_from_zero(self):
         """Child env gets FORGE_DEPTH=1 when parent has no depth set."""
@@ -68,10 +68,10 @@ class TestBuildClaudeEnv:
             env = build_claude_env()
         assert env[FORGE_DEPTH_VAR] == "1"
 
-    def test_extra_vars_can_override_forge_depth(self):
-        """extra_vars wins because it's applied last."""
+    def test_extra_vars_forge_depth_is_incremented(self):
+        """extra_vars participate in depth calculation but cannot bypass the child increment."""
         env = build_claude_env(extra_vars={FORGE_DEPTH_VAR: "99"})
-        assert env[FORGE_DEPTH_VAR] == "99"
+        assert env[FORGE_DEPTH_VAR] == "100"
 
     def test_direct_unsets_inherited_proxy_url(self):
         """direct=True removes inherited ANTHROPIC_BASE_URL from parent env."""

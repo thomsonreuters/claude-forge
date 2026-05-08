@@ -288,10 +288,10 @@ class TestProxyFileIO:
         loaded = load_proxy_instance_config("cost-proxy")
 
         assert loaded is not None
-        assert loaded.costs["caps"]["per_day"] == 20.0
-        assert loaded.costs["caps"]["per_month"] == 100.0
-        assert loaded.costs["cap_mode"] == "strict"
-        assert loaded.costs["on_cap_hit"] == "warn"
+        assert loaded.costs.caps.per_day == 20.0
+        assert loaded.costs.caps.per_month == 100.0
+        assert loaded.costs.cap_mode == "strict"
+        assert loaded.costs.on_cap_hit == "warn"
 
     def test_load_proxy_instance_config_not_found(self, tmp_path, monkeypatch):
         """load_proxy_instance_config returns None for missing file."""

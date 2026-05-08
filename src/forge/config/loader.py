@@ -548,25 +548,12 @@ def _proxy_instance_to_forge_config(
         error_hints=proxy_config.provider_settings.get("error_hints", False),
     )
 
-    from forge.config.schema import CostCaps, CostConfig
-
-    raw_costs = proxy_config.costs or {}
-    raw_caps = raw_costs.get("caps", {})
-    cost_config = CostConfig(
-        caps=CostCaps(
-            per_day=raw_caps.get("per_day"),
-            per_month=raw_caps.get("per_month"),
-        ),
-        cap_mode=raw_costs.get("cap_mode", "post"),
-        on_cap_hit=raw_costs.get("on_cap_hit", "reject"),
-    )
-
     proxy_server_config = ProxyConfig(
         preferred_provider=proxy_config.provider,
         active_template=proxy_config.template,
         default_tier=proxy_config.default_tier,
         default_port=proxy_config.port,
-        costs=cost_config,
+        costs=proxy_config.costs,
     )
 
     if proxy_config.provider == "gemini":

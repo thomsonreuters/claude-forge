@@ -233,6 +233,16 @@ launch:
 This keeps `forge session resume <name>` honest for sidecar sessions without overloading `confirmed` with user-owned
 preferences.
 
+**`intent.subprocess_proxy`**: optional proxy ID used only by Forge-spawned subprocesses:
+
+```yaml
+subprocess_proxy: openrouter
+```
+
+This supports direct-mode main sessions that still need panel, supervisor, or handoff subprocesses routed through a
+proxy for API-key auth and cost visibility. It is session-owned launch intent, not a proxy-owned tier/model override.
+Resume, fork, and relaunch children inherit it unless the launch path explicitly chooses different routing.
+
 **`confirmed.started_with_proxy`**: the proxy this session is running with (set at start, immutable for the run):
 
 ```yaml
@@ -293,6 +303,15 @@ proxy-owned routing properties. (Proxy requests do not carry a stable session id
 - Does NOT set `FORGE_SESSION` -- session-specific hooks, status line session display, and artifacts are all no-ops
 - Does NOT require `.forge/` -- works from any directory
 - Only sets `ANTHROPIC_BASE_URL` (proxy mode) or nothing (direct mode)
+
+**Subprocess proxy launch variant** (`forge session start --subprocess-proxy <proxy_id>`):
+
+- Creates a normal direct-mode Forge session for the main Claude process
+- Records `intent.subprocess_proxy=<proxy_id>`
+- Sets `FORGE_SUBPROCESS_PROXY` so Forge-spawned subprocesses resolve the proxy and set `ANTHROPIC_BASE_URL`
+- Leaves the main Claude process on direct Anthropic routing
+- Is mutually exclusive with `--proxy`; `--proxy` routes the main session through the proxy, while
+  `--subprocess-proxy` is specifically dual-auth routing for direct sessions and their child jobs
 
 Running `claude` directly bypasses both paths; neither proxy routing nor session integration will work.
 
@@ -415,6 +434,8 @@ The proxy exposes runtime truth via `GET /`:
 - The proxy does **not** know about sessions (see §3.6.2)
 - Session info comes from the session file, not the proxy
 - Status line tools read both sources independently
+- Spend cap rejections return HTTP 429 with `error.type=spend_cap_exceeded`
+- Warn-mode spend caps allow the request and attach `X-Spend-Warning`
 
 **Tier selection precedence:**
 
@@ -744,6 +765,46 @@ handling deletes the marker; poison markers (5+ attempts) move to `pending-work/
 
 > Marker schema, processing contract, and known kinds in
 > [design_appendix.md §C](design_appendix.md#c-work-queue-internals).
+
+### 3.14 Cost tracking and spend caps
+
+Forge records proxy cost telemetry in append-only JSONL files under `~/.forge/costs/`.
+
+| Path                                 | Writer                     | Purpose                                      |
+| ------------------------------------ | -------------------------- | -------------------------------------------- |
+| `costs/requests/<month>_<pid>.jsonl` | Proxy request handler      | Per-request token/cost records               |
+| `costs/verbs/<date>.jsonl`           | Forge verb cost wrapper    | Best-effort cost deltas for panels/workflows |
+
+Request logs are the source of truth for proxy spend. The proxy bootstraps its in-memory `CostTracker` from current and
+previous month request logs on startup so cap enforcement survives restarts. Verb logs are attribution aids for CLI
+visibility; they are estimates because several Forge subprocesses can share a proxy concurrently.
+
+Each proxy may define:
+
+```yaml
+costs:
+  caps:
+    per_day: 20.00
+    per_month: 100.00
+  cap_mode: post      # post | strict
+  on_cap_hit: reject  # reject | warn
+```
+
+`post` mode blocks after accumulated spend reaches a configured cap. `strict` mode also estimates the pending request
+before forwarding it. `reject` returns HTTP 429 with:
+
+```json
+{
+  "type": "error",
+  "error": {
+    "type": "spend_cap_exceeded",
+    "message": "daily spend cap reached: ..."
+  }
+}
+```
+
+`warn` mode forwards the request and returns the same message in `X-Spend-Warning`. Cost tracking is best effort:
+pricing or log write failures must not break successful LLM responses.
 
 ## 4. Unified CLI (`forge`)
 

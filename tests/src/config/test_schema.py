@@ -302,6 +302,15 @@ class TestProxyInstanceConfig:
         assert caps.per_day == 20.0
         assert caps.per_month == 100.0
 
+    def test_cost_config_accepts_raw_caps_mapping(self):
+        """CostConfig normalizes raw YAML cap mappings."""
+        from forge.config.schema import CostConfig
+
+        config = CostConfig(caps={"per_day": "20.00", "per_month": "100.00"})
+
+        assert config.caps.per_day == 20.0
+        assert config.caps.per_month == 100.0
+
 
 class TestLeaseIdValidation:
     """Tests for proxy_id path traversal prevention."""
@@ -506,6 +515,31 @@ class TestProxyInstanceConfigValidation:
                 tiers=TierModels(haiku="h", sonnet="s", opus="o"),
                 costs={"caps": {"per_day": "free"}},
             )
+
+    def test_cost_config_normalized_to_structured_object(self):
+        """Raw proxy.yaml costs are stored as CostConfig after validation."""
+        from forge.config.schema import CostConfig, ProxyInstanceConfig, TierModels
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="test",
+            template_digest="sha256:test",
+            provider="litellm",
+            proxy_endpoint="http://localhost:8084",
+            port=8084,
+            upstream_base_url="https://litellm.test.example.com",
+            tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+            costs={
+                "caps": {"per_day": "20.00"},
+                "cap_mode": "strict",
+                "on_cap_hit": "warn",
+            },
+        )
+
+        assert isinstance(config.costs, CostConfig)
+        assert config.costs.caps.per_day == 20.0
+        assert config.costs.cap_mode == "strict"
+        assert config.costs.on_cap_hit == "warn"
 
     def test_invalid_cost_action_rejected(self):
         """Invalid cost cap actions should be rejected."""

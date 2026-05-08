@@ -275,6 +275,13 @@ tier_overrides:
 provider_settings: {}
 prompt_caching: passthrough
 auto_cache_min_tokens: 1024
+
+costs:
+  caps:
+    per_day: null
+    per_month: null
+  cap_mode: post
+  on_cap_hit: reject
 ```
 
 **What you'll typically edit:** `default_tier`, `tier_overrides`, and sometimes `provider_settings`. Leave
@@ -352,6 +359,33 @@ curl http://localhost:8085/ | jq .metrics
 - **Per-tier / per-model**: breakdown by routing tier and actual backend model
 - **Failure types**: categorized by error type (tool_call_error, api_error, stream_error)
 - **Latency**: average request duration
+
+---
+
+## Cost tracking and spend caps
+
+Proxy request costs are logged to `~/.forge/costs/requests/` as JSONL. Forge subprocess verb costs are logged to
+`~/.forge/costs/verbs/` as best-effort attribution records.
+
+```bash
+forge proxy costs                    # Today's costs, by verb
+forge proxy costs --by-model         # Today's costs, by model
+forge proxy costs --period week      # This week
+forge proxy costs openrouter         # Filter by proxy
+```
+
+Set caps on the proxy:
+
+```bash
+forge proxy set openrouter costs.caps.per_day=20.00
+forge proxy set openrouter costs.caps.per_month=100.00
+forge proxy set openrouter costs.cap_mode=strict
+forge proxy set openrouter costs.on_cap_hit=warn
+```
+
+`cap_mode=post` blocks only after logged spend reaches a cap. `cap_mode=strict` also estimates the pending request before
+forwarding it. `on_cap_hit=reject` returns HTTP 429 with `spend_cap_exceeded`; `on_cap_hit=warn` lets the request
+continue and returns `X-Spend-Warning`.
 
 ---
 

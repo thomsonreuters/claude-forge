@@ -13,8 +13,6 @@ Claude 4.5:
 - **1M token context window** at standard pricing (up from 200K standard / 1M beta)
 - **Adaptive thinking** — Claude dynamically decides when and how much to think
 - **Effort parameter** — `low` / `medium` / `high` / `max` (Opus only) replaces `budget_tokens`
-- **Agent Teams** — multi-agent orchestration natively in Claude Code (Opus 4.6)
-- **Fast mode** — 2.5x faster output for Opus at premium pricing
 - **Context compaction** — server-side automatic summarization (beta)
 - **76% on 8-needle MRCR v2** (vs 18.5% for Sonnet 4.5) — qualitative leap in long-context reasoning
 - **Prefilling removed** — assistant message prefilling returns 400 error on 4.6 models
@@ -25,14 +23,14 @@ effort parameter as the primary lever for reasoning depth.
 
 ### Model Selection
 
-| Model          | Best For                                                                                       |
-| -------------- | ---------------------------------------------------------------------------------------------- |
-| **Opus 4.6**   | Hardest problems: large-scale migrations, deep research, extended autonomous work, Agent Teams |
-| **Sonnet 4.6** | 80%+ of tasks: fast turnaround, cost-efficient, 98% of Opus coding quality at 1/5 the cost     |
-| **Haiku 4.5**  | Fast, cost-effective. Straightforward tools. (No 4.6 version yet)                              |
+| Model          | Best For                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| **Opus 4.6**   | Hardest problems: large-scale migrations, deep research, extended autonomous work          |
+| **Sonnet 4.6** | 80%+ of tasks: fast turnaround, cost-efficient, 98% of Opus coding quality at 1/5 the cost |
+| **Haiku 4.5**  | Fast, cost-effective. Straightforward tools. (No 4.6 version yet)                          |
 
-**Rule of thumb:** Use Sonnet 4.6 by default. Reach for Opus only for deepest reasoning, Agent Teams, or work across
-many interrelated files.
+**Rule of thumb:** Use Sonnet 4.6 by default. Reach for Opus only for deepest reasoning or work across many interrelated
+files.
 
 ---
 
@@ -126,11 +124,8 @@ Billing is unchanged — you still pay for thinking tokens even when omitted.
 | Instruction following  | Stronger; fewer false claims of success; fewer hallucinations                    |
 | Overengineering        | Significantly reduced; less "laziness"                                           |
 | Coding preference      | Sonnet 4.6 preferred over Sonnet 4.5 ~70% of the time in Claude Code testing     |
-| Computer use           | Major improvement — human-level on spreadsheet navigation, multi-step web forms  |
 | Safety                 | Better prompt injection resistance; lowest over-refusal rate                     |
 | Prefilling             | **Removed.** Returns 400 error. Use structured outputs instead.                  |
-| Agent Teams            | **New.** Multi-agent orchestration in Claude Code (Opus 4.6)                     |
-| Fast mode              | **New.** 2.5x faster output for Opus at premium pricing                          |
 | Context compaction     | **New.** Server-side automatic summarization (beta)                              |
 | Web search filtering   | **New.** Dynamic code-based filtering of search results before context injection |
 
@@ -214,41 +209,6 @@ Before calling any tool:
 3. Only proceed if all required parameters are present
 4. Otherwise, ask for the missing parameters
 ```
-
----
-
-## Agent Teams (New in Claude 4.6)
-
-Agent Teams let you coordinate multiple Claude Code instances working together. One session acts as team lead; teammates
-work independently in their own context windows.
-
-### Enabling
-
-```json
-// settings.json
-{ "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": true }
-```
-
-### Architecture
-
-No agent definition files or YAML schemas. Describe a team conversationally and Claude Code handles spawning, task
-management, and messaging:
-
-- **10 simultaneous sub-agents** maximum
-- **200 active tasks** in shared task list
-- No limit on total agents spawned across a session (orchestrator can spawn, retire, respawn)
-- Unlike subagents, you can interact with individual teammates directly
-
-### Best Practices
-
-- Start with **3-5 teammates** for most workflows (5-6 tasks per teammate)
-- Each teammate should **own different files** — two teammates editing the same file causes overwrites
-- Best for: research/review, new modules, debugging competing hypotheses, cross-layer coordination
-
-### Why Opus 4.6 for Teams
-
-Opus 4.6 is the best orchestration model — it tracks sub-agent progress, proactively steers them, and terminates when
-needed. This active management capability is new to the Opus line.
 
 ---
 
@@ -377,48 +337,6 @@ For guaranteed JSON schema compliance, use **Structured Outputs**:
 
 ---
 
-## Fast Mode (New)
-
-Fast mode (`speed: "fast"`) delivers up to **2.5x faster** output token generation for Opus 4.6.
-
-- Same model, same intelligence — just faster inference
-- Premium pricing: $30/$150 per MTok (6x standard)
-- Best for: latency-sensitive applications, interactive coding, real-time agents
-
----
-
-## Image Processing
-
-### Crop Tool Enhancement
-
-Giving Claude a crop tool provides consistent uplift on image evaluations — Claude can "zoom" in on relevant regions.
-
-### Computer Use (Major Improvement)
-
-Claude 4.6 shows major improvement in computer use — human-level capability on tasks like navigating complex
-spreadsheets and multi-step web forms.
-
----
-
-## Agentic Capabilities
-
-### Extended Autonomous Operation
-
-Sonnet 4.6 is less frustrating over long sessions — better at reading context before modifying code, consolidating
-shared logic rather than duplicating, and maintaining follow-through on multi-step tasks.
-
-### Interleaved Thinking
-
-Adaptive thinking automatically enables interleaved thinking — Claude reasons between tool calls, enabling sophisticated
-multi-step agentic workflows.
-
-### Cybersecurity
-
-Across 40 cybersecurity investigations, Opus 4.6 produced the best results 38/40 times in blind ranking against Claude
-4.5 models (9 subagents, 100+ tool calls each).
-
----
-
 ## Migration from Claude 4.5
 
 ### Breaking Changes
@@ -438,10 +356,8 @@ Across 40 cybersecurity investigations, Opus 4.6 produced the best results 38/40
 | Context window          | 200K (1M beta)             | 1M GA at standard pricing            |
 | Max output (Opus)       | 64K                        | 128K                                 |
 | Instruction following   | Precise                    | Stronger; fewer false claims         |
-| Multi-agent             | Subagents only             | Agent Teams (Opus 4.6)               |
 | Prefilling              | Supported                  | Removed (400 error)                  |
 | Default effort (Sonnet) | N/A (no effort param)      | `high` (set explicitly)              |
-| Computer use            | Supported                  | Major improvement                    |
 | Context compaction      | Manual (`/compact`)        | Server-side automatic (beta)         |
 
 ### Migration Checklist
@@ -498,49 +414,44 @@ For questions:
 
 ## Key Differences: Claude 4.6 vs GPT-5.5 vs Gemini 3.1 Pro
 
-| Aspect                    | Claude 4.6                        | GPT-5.5                            | Gemini 3.1 Pro                  |
-| ------------------------- | --------------------------------- | ---------------------------------- | ------------------------------- |
-| Default reasoning         | Adaptive (effort: high default)   | `none`                             | `high` (dynamic, 3 tiers)       |
-| Thinking control          | Effort: low/medium/high/max       | reasoning_effort: none to xhigh    | thinking_level: low/medium/high |
-| Tag preference            | XML strongly preferred            | XML preferred                      | XML or Markdown (not both)      |
-| System prompt sensitivity | High (dial back aggressive)       | Moderate                           | Moderate                        |
-| Temperature               | Use only temp OR top_p            | Flexible                           | Must stay at 1.0                |
-| Context window            | 1M (GA, standard pricing)         | 1M (2x pricing above 272K)         | 1M                              |
-| Max output                | 128K (Opus) / 64K (Sonnet)        | 128K                               | 65K                             |
-| Context extension         | Compaction (beta) + `/compact`    | Native compaction (server-side)    | Thought signatures              |
-| Computer use              | Major improvement                 | **Native (75% OSWorld)**           | No                              |
-| Tool Search               | No                                | **Yes (47% savings)**              | No                              |
-| Agent Teams               | **Yes (Opus 4.6)**                | No                                 | No                              |
-| Custom tools endpoint     | No                                | No                                 | **Yes**                         |
-| Multimodal                | Images + PDFs                     | Native                             | Native (text/image/video/audio) |
-| Fast mode                 | **Yes (2.5x, Opus)**              | No                                 | No                              |
-| Prefilling                | **Removed (400 error)**           | Supported                          | Supported                       |
-| Knowledge cutoff          | May 2025                          | August 2025                        | January 2025                    |
-| Best for                  | Coding, long-running, Agent Teams | Agentic, coding, professional work | Reasoning, multimodal, agentic  |
+| Aspect                    | Claude 4.6                      | GPT-5.5                            | Gemini 3.1 Pro                  |
+| ------------------------- | ------------------------------- | ---------------------------------- | ------------------------------- |
+| Default reasoning         | Adaptive (effort: high default) | `none`                             | `high` (dynamic, 3 tiers)       |
+| Thinking control          | Effort: low/medium/high/max     | reasoning_effort: none to xhigh    | thinking_level: low/medium/high |
+| Tag preference            | XML strongly preferred          | XML preferred                      | XML or Markdown (not both)      |
+| System prompt sensitivity | High (dial back aggressive)     | Moderate                           | Moderate                        |
+| Temperature               | Use only temp OR top_p          | Flexible                           | Must stay at 1.0                |
+| Context window            | 1M (GA, standard pricing)       | 1M (2x pricing above 272K)         | 1M                              |
+| Max output                | 128K (Opus) / 64K (Sonnet)      | 128K                               | 65K                             |
+| Context extension         | Compaction (beta) + `/compact`  | Native compaction (server-side)    | Thought signatures              |
+| Tool Search               | No                              | **Yes (47% savings)**              | No                              |
+| Custom tools endpoint     | No                              | No                                 | **Yes**                         |
+| Multimodal                | Images + PDFs                   | Native                             | Native (text/image/video/audio) |
+| Prefilling                | **Removed (400 error)**         | Supported                          | Supported                       |
+| Knowledge cutoff          | May 2025                        | August 2025                        | January 2025                    |
+| Best for                  | Coding, long-running work       | Agentic, coding, professional work | Reasoning, multimodal, agentic  |
 
 ---
 
 ## Pro Tips
 
-01. **Use Sonnet 4.6 for 80%+ of tasks** — 98% of Opus coding quality at 1/5 cost
+1. **Use Sonnet 4.6 for 80%+ of tasks** — 98% of Opus coding quality at 1/5 cost
 
-02. **Set effort explicitly** — Sonnet defaults to `high`; start with `medium` for balanced latency/quality
+2. **Set effort explicitly** — Sonnet defaults to `high`; start with `medium` for balanced latency/quality
 
-03. **Replace "think carefully" with effort parameter** — old prompt workarounds cause overthinking on 4.6
+3. **Replace "think carefully" with effort parameter** — old prompt workarounds cause overthinking on 4.6
 
-04. **Remove prefilling** — use structured outputs or system prompt instructions for format control
+4. **Remove prefilling** — use structured outputs or system prompt instructions for format control
 
-05. **Set `max_tokens` to 32K** — thinking and output share the budget; low limits cause mid-reasoning cutoff
+5. **Set `max_tokens` to 32K** — thinking and output share the budget; low limits cause mid-reasoning cutoff
 
-06. **Dial back aggressive language** — "Use this tool when..." not "CRITICAL: You MUST use..."
+6. **Dial back aggressive language** — "Use this tool when..." not "CRITICAL: You MUST use..."
 
-07. **Use decision rules, not prohibitions** — Claude 4.6 reasons about logical necessity
+7. **Use decision rules, not prohibitions** — Claude 4.6 reasons about logical necessity
 
-08. **Documents at top, query at end** — up to 30% improvement on long-context tasks
+8. **Documents at top, query at end** — up to 30% improvement on long-context tasks
 
-09. **Try Agent Teams for complex work** — 3-5 teammates, each owning different files
-
-10. **Constrain overengineering explicitly** — still worth including even though 4.6 is better at this
+9. **Constrain overengineering explicitly** — still worth including even though 4.6 is better at this
 
 ---
 
@@ -558,7 +469,6 @@ For questions:
 - [Anthropic: Extended Thinking Tips](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/extended-thinking-tips)
 - [Anthropic: Context Windows](https://platform.claude.com/docs/en/build-with-claude/context-windows)
 - [Anthropic: Models Overview](https://platform.claude.com/docs/en/about-claude/models/overview)
-- [Claude Code: Agent Teams](https://code.claude.com/docs/en/agent-teams)
 - [Resolve AI: Testing Sonnet 4.6 Adaptive Thinking](https://resolve.ai/blog/Our-early-impressions-of-Claude-Sonnet-4.6)
 - [NxCode: Sonnet 4.6 vs 4.5 Migration Guide](https://www.nxcode.io/resources/news/claude-sonnet-4-6-vs-4-5-upgrade-guide-2026)
 - [NxCode: Sonnet 4.6 vs Opus 4.6 Comparison](https://www.nxcode.io/resources/news/claude-sonnet-4-6-vs-opus-4-6-complete-comparison-2026)

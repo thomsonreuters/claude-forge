@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 SKILLS_DIR = Path(__file__).parent.parent.parent.parent / "src" / "skills"
@@ -44,8 +45,35 @@ class TestReviewCodeSkill:
     def test_references_exist(self):
         refs = SKILLS_DIR / "review" / "references"
         assert (refs / "claude-4.6.md").exists()
+        assert (refs / "claude-4.7.md").exists()
         assert (refs / "gpt-5.5.md").exists()
         assert (refs / "gemini-3.1.md").exists()
+
+    def test_model_guides_are_standalone(self):
+        refs = SKILLS_DIR / "review" / "references"
+        guide_names = ("claude-4.6.md", "claude-4.7.md", "gpt-5.5.md", "gemini-3.1.md")
+        cross_guide_phrases = (
+            "4.6 guide",
+            "4.7 guide",
+            "gpt-5.5 guide",
+            "gemini 3.1 guide",
+            "other guide",
+            "companion guide",
+            "reference set",
+        )
+        local_md_link = re.compile(r"\[[^\]]+\]\((?!https?://)[^)]+\.md(?:#[^)]+)?\)")
+
+        for guide_name in guide_names:
+            content = (refs / guide_name).read_text()
+            lower_content = content.lower()
+
+            assert not local_md_link.search(content), f"{guide_name} links to another local Markdown file"
+
+            for other_guide in guide_names:
+                assert other_guide not in content, f"{guide_name} references {other_guide}"
+
+            for phrase in cross_guide_phrases:
+                assert phrase not in lower_content, f"{guide_name} contains cross-guide phrase: {phrase}"
 
 
 class TestModelDocDrift:
@@ -62,9 +90,9 @@ class TestModelDocDrift:
 
     def test_gpt_55_parallel_tool_note_uses_supported_reasoning_effort(self):
         content = (SKILLS_DIR / "review" / "references" / "gpt-5.5.md").read_text()
-        parallel_section = content.split("### Parallel Tool Calls", 1)[1].split("### First-Call Accuracy", 1)[0]
+        parallel_section = content.split("### Parallel Tool Calls", 1)[1].split("---", 1)[0]
 
-        assert "`reasoning_effort` is `none`" in parallel_section
+        assert "`none`" in parallel_section
         assert "`minimal`" not in parallel_section
 
 

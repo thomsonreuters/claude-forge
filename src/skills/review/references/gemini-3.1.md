@@ -1,23 +1,19 @@
 # Gemini 3.1 Pro Prompting Guide
 
 > Synthesized from [Google AI Developer Docs](https://ai.google.dev/gemini-api/docs/gemini-3),
-> [Google Cloud Vertex AI](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-1-pro),
-> [Google DeepMind Model Card](https://deepmind.google/models/model-cards/gemini-3-1-pro/),
-> [Phil Schmid's guide](https://www.philschmid.de/gemini-3-prompt-practices), and web research. February 2026.
+> [Google Cloud Vertex AI](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-1-pro), and
+> [Google DeepMind Model Card](https://deepmind.google/models/model-cards/gemini-3-1-pro/). May 2026.
 
 ## Overview
 
-Gemini 3.1 Pro is Google's frontier reasoning model, released February 2026. It is a focused intelligence upgrade over
-Gemini 3 Pro — the first ".1" increment in the Gemini line, signaling deeper reasoning rather than broad feature
-expansion. Key advances:
+Gemini 3.1 Pro is Google's frontier reasoning model, released in public preview on February 19, 2026. For prompting and
+integration, the important changes are:
 
-- **2.5x reasoning leap** — ARC-AGI-2 jumped from 31.1% to 77.1%, unmatched by competing models
-- **Three-tier thinking** — new MEDIUM level plus Deep Think Mini at HIGH
-- **65K max output tokens** (up from Gemini 3 Pro's default 8K)
-- **100MB file upload** (up from 20MB)
-- **Custom tools endpoint** — dedicated `customtools` variant for agentic coding
-- **~15% higher output quality at lower token consumption** (JetBrains measurement)
-- Long-horizon stability — significantly less likely to "lose the thread" on multi-step tasks
+- **Three-tier thinking** - `low`, `medium`, and `high`; `medium` is new in 3.1 Pro
+- **1,048,576 token context window** and **65,536 max output tokens**
+- **Custom tools endpoint** - `gemini-3.1-pro-preview-customtools` for agents that mix bash with custom tools
+- **Thought signatures** - important for multi-turn and strict function-calling workflows
+- **Media resolution control** - use `media_resolution_*` levels to trade detail for token cost
 
 **Key characteristic:** Gemini 3.1 Pro favors **directness over persuasion** and **logic over verbosity**. It is
 intentionally slower on complex tasks — taking time to reason rather than rushing to a plausible-sounding answer. It
@@ -36,27 +32,23 @@ identical pricing.
 Controls the depth of internal reasoning. Replaces `thinking_budget` from Gemini 2.5 (still accepted for backward
 compatibility, but do not use both in the same request).
 
-| Level    | Behavior                                                                      | Thinking Tokens | Response Time |
-| -------- | ----------------------------------------------------------------------------- | --------------- | ------------- |
-| `low`    | Basic reasoning. Minimizes latency and cost. Saves 70%+ on thinking tokens.   | 200-500/request | 1-3s          |
-| `medium` | **Recommended default.** Equivalent to Gemini 3 Pro's HIGH quality.           | 1,000-3,000     | 3-8s          |
-| `high`   | **Deep Think Mini.** Qualitatively different reasoning, not just more tokens. | 5,000-20,000+   | 10-60s+       |
+| Level    | Behavior                                                      | Use when                                      |
+| -------- | ------------------------------------------------------------- | --------------------------------------------- |
+| `low`    | Constrains reasoning for lower latency and cost.              | Extraction, classification, simple tool calls |
+| `medium` | Balanced setting introduced in 3.1 Pro.                       | Everyday coding, analysis, and research       |
+| `high`   | Highest reasoning setting; default dynamic mode for Gemini 3. | Hard reasoning, math, debugging, planning     |
 
-**Key insight:** Gemini 3.1 Pro's MEDIUM delivers the same quality as Gemini 3 Pro's HIGH, but faster. If you ran
-everything on HIGH in 3.0, switch to MEDIUM in 3.1 without sacrificing quality.
+**Key insight:** If you omit `thinking_level`, Gemini 3 models use high/dynamic thinking. Use `medium` or `low` only
+after evals show the lower setting preserves quality for the task.
 
-**Deep Think Mini (HIGH):** Not just more tokens — activates a qualitatively different reasoning approach that excels at
-complex multi-step problems. Reserve for mathematical reasoning, complex debugging, and architectural planning. Can
-consume 30x more thinking tokens than LOW (~$0.36 vs ~$0.012 per complex request).
-
-**Cost optimization:** Set 80% of daily tasks to LOW or MEDIUM; reserve HIGH for the 20% that genuinely need it. This
-can reduce API spend by 50-70%.
+**Cost optimization:** Lowering `thinking_level` can reduce latency and billed thinking tokens, but it can also reduce
+instruction-following quality on multi-step tasks. Tune against evals rather than setting one global level.
 
 **Important:** Thinking cannot be turned off. The lowest setting is LOW, which still performs basic reasoning. Thinking
-tokens are billed at output token rates ($12.00/1M tokens).
+tokens are billed as output tokens.
 
-**OpenAI compatibility layer:** `reasoning_effort` maps to `thinking_level`. Note: `reasoning_effort: medium` maps to
-`thinking_level: high`.
+**OpenAI compatibility layer:** OpenAI-style `reasoning_effort` maps to Gemini `thinking_level`; verify the exact
+mapping in the SDK or gateway you use.
 
 ### Temperature
 
@@ -74,11 +66,10 @@ generation_config = {}  # temperature defaults to 1.0
 ### Context Window & Output
 
 - **1,048,576 tokens** input (~1,500 A4 pages)
-- **65,536 tokens** max output (up from previous default of 8,192 — must be explicitly configured)
-- **100MB** file upload limit (up from 20MB)
+- **65,536 tokens** max output
 
-**Important:** The default `maxOutputTokens` is only 8,192. You must explicitly set it higher to use the full 65K
-capacity.
+**Important:** Configure `maxOutputTokens` explicitly when you need long output. A high limit does not force a long
+answer; the prompt still needs a section plan, target depth, or completeness criteria.
 
 ### Knowledge Cutoff
 
@@ -88,20 +79,14 @@ capacity.
 
 ## Key Behavioral Differences from Gemini 3 Pro
 
-| Aspect                 | Gemini 3.1 Pro Behavior                                          |
-| ---------------------- | ---------------------------------------------------------------- |
-| Reasoning depth        | 2.5x improvement (ARC-AGI-2: 77.1% vs 31.1%)                     |
-| Thinking levels        | Three tiers (LOW/MEDIUM/HIGH) vs two (LOW/HIGH)                  |
-| Long-horizon stability | Significantly less likely to lose the thread on multi-step tasks |
-| Token efficiency       | ~15% higher output quality at lower token consumption            |
-| Coding                 | 80.6% SWE-Bench Verified; near-parity with Claude Opus 4.6       |
-| Agentic search         | 85.9% BrowseComp (up from 59.2%)                                 |
-| Terminal usage         | 68.5% Terminal-Bench 2.0 — much better at command-line debugging |
-| Output truncation      | Fixed — long responses no longer cut off mid-generation          |
-| Custom tools           | Dedicated `customtools` endpoint for agentic coding              |
-| Max output             | 65K tokens (vs 8K default in 3 Pro)                              |
-| File upload            | 100MB (vs 20MB)                                                  |
-| SVG generation         | Native ability to write and animate SVG code                     |
+| Aspect            | Gemini 3.1 Pro Behavior                                                          |
+| ----------------- | -------------------------------------------------------------------------------- |
+| Thinking control  | Adds `medium`; omit the parameter for the default high/dynamic behavior          |
+| Prompt shape      | Direct, concise prompts work better than verbose legacy scaffolding              |
+| Output style      | Concise by default; ask explicitly for conversational tone or detailed rationale |
+| Long context      | Put the specific question after large context and anchor answers to that context |
+| Tool routing      | Use `customtools` only for agents that mix bash with custom file/search tools    |
+| Multimodal inputs | Use `media_resolution_*`, named references, and timestamps deliberately          |
 
 ---
 
@@ -364,21 +349,20 @@ custom tools, the standard version performs better.
 
 ## Multimodal Prompting
 
-Gemini 3.1 Pro treats text, images, audio, and video as equal-class inputs. This remains a differentiator — Claude
-accepts images and PDFs but not video or audio natively.
+For multimodal prompts, treat each media input as a named source with an explicit resolution choice and task-specific
+reference. Avoid vague "look at this" prompts when there are multiple media parts.
 
 ### Media Resolution Control
 
-Use the `media_resolution` parameter to balance quality vs token cost:
+Use the `media_resolution` parameter to balance quality vs token cost. It can be set per media part or globally; global
+`ultra_high` is not supported.
 
-| Level        | Use Case                                       |
-| ------------ | ---------------------------------------------- |
-| `low`        | Rough understanding, low token cost            |
-| `medium`     | Default. Good for most visual tasks            |
-| `high`       | Fine text reading, small detail identification |
-| `ultra_high` | Maximum fidelity, highest token cost           |
-
-Can be set per individual media part or globally.
+| Level                         | Use Case                                                    |
+| ----------------------------- | ----------------------------------------------------------- |
+| `media_resolution_low`        | General video/action understanding, lowest token cost       |
+| `media_resolution_medium`     | PDFs and documents where quality usually saturates          |
+| `media_resolution_high`       | Images, fine text, dense visual details, text-heavy video   |
+| `media_resolution_ultra_high` | Per-part maximum fidelity for unusually detail-heavy inputs |
 
 ### Be Explicit with References
 
@@ -401,7 +385,7 @@ Analyze the user reaction in the video from 1:30 to 2:00.
 
 For single-media prompts, add your video/media first, then your question.
 
-### Multimodal Function Responses (New)
+### Multimodal Function Responses
 
 Function responses can now include multimodal objects like images and PDFs in addition to text.
 
@@ -429,26 +413,19 @@ response = model.generate_content(
 )
 ```
 
-Available built-in tools for grounding:
+Choose grounding tools explicitly. Common choices include:
 
 - Google Search
 - URL Context
 - Code Execution
+- File Search
+- Maps grounding, when the target API surface supports it
 
 ---
 
-## Coding Best Practices
+## Coding Prompting
 
-### Capabilities
-
-- Reads and understands codebase logic, not just syntax
-- Generates multi-file projects
-- Runs terminal-like operations via agents
-- 80.6% SWE-Bench Verified (near-parity with Claude Opus 4.6)
-- 68.5% Terminal-Bench 2.0 (strong command-line debugging)
-- Native SVG generation and animation
-
-### Limitations
+### Practical Limits
 
 - Higher latency for small iterative edits (intentional — reasoning over speed)
 - Verify outputs, especially dependency versions and commands
@@ -457,8 +434,8 @@ Available built-in tools for grounding:
 ### Recommended Approach
 
 1. Be direct with requirements
-2. Use `thinking_level: medium` for most coding tasks (equivalent to old HIGH quality)
-3. Reserve `thinking_level: high` (Deep Think Mini) for complex refactors and debugging
+2. Start with the default/high reasoning baseline, then evaluate `medium` for routine coding tasks
+3. Keep `thinking_level: high` for complex refactors, debugging, and architectural planning
 4. Break large tasks into sub-tasks
 5. Ask for validation/testing steps
 
@@ -468,31 +445,21 @@ Available built-in tools for grounding:
 
 ### What Changed
 
-| Aspect           | Gemini 3 Pro          | Gemini 3.1 Pro                         |
-| ---------------- | --------------------- | -------------------------------------- |
-| Thinking levels  | LOW, HIGH             | LOW, MEDIUM, HIGH (Deep Think Mini)    |
-| Reasoning (ARC)  | 31.1%                 | 77.1% (2.5x)                           |
-| Max output       | 8K default            | 65K (must configure `maxOutputTokens`) |
-| File upload      | 20MB                  | 100MB                                  |
-| Tool calling     | Standard only         | Standard + customtools endpoint        |
-| Long-horizon     | May lose thread       | Significantly more stable              |
-| Truncation       | Could cut off mid-gen | Fixed                                  |
-| Token efficiency | Baseline              | ~15% better (JetBrains measurement)    |
+| Aspect          | Gemini 3 Pro | Gemini 3.1 Pro                      |
+| --------------- | ------------ | ----------------------------------- |
+| Thinking levels | LOW, HIGH    | LOW, MEDIUM, HIGH                   |
+| Max output      | Lower limit  | 65,536 max output tokens            |
+| Tool routing    | Standard     | Standard + `customtools` variant    |
+| Prompting style | Direct       | Direct, concise, less scaffolding   |
+| Multimodal cost | Less control | `media_resolution_*` per media part |
 
 ### Migration Strategy
 
-1. **Drop-in upgrade** — API is backward-compatible, same pricing, just change model name
-2. **Remap thinking levels** — If you used HIGH in 3.0, start with MEDIUM in 3.1
-3. **Set `maxOutputTokens`** — Default is still 8K; explicitly configure for longer output
+1. **Change the model name** — Start with the standard `gemini-3.1-pro-preview` endpoint
+2. **Retune thinking levels** — Keep default/high for baseline quality, then evaluate `medium` or `low`
+3. **Set `maxOutputTokens`** — Configure it explicitly for longer output
 4. **Try customtools** — If building coding agents with custom file/search tools
 5. **Simplify prompts** — 3.1 Pro reasons better; you may be able to remove chain-of-thought scaffolding
-
-### What's Not Supported
-
-- Image segmentation (pixel-level masks) — use Gemini Flash
-- Maps grounding
-- Computer use tools (GPT-5.5 has this; Gemini does not)
-- Combining built-in tools with function calling in some configurations
 
 ---
 
@@ -528,36 +495,31 @@ You are precise, analytical, and persistent.
 
 ---
 
-## Key Differences: Gemini 3.1 Pro vs GPT-5.5 vs Claude 4.5
+## Key Differences: Gemini 3.1 Pro vs GPT-5.5 vs Claude 4.7
 
-| Aspect                | Gemini 3.1 Pro                     | GPT-5.5                            | Claude 4.5 (Opus)              |
-| --------------------- | ---------------------------------- | ---------------------------------- | ------------------------------ |
-| Default reasoning     | `high` (dynamic, 3 tiers)          | `none`                             | Off (enable extended thinking) |
-| Thinking control      | `thinking_level` (low/medium/high) | `reasoning_effort` (none to xhigh) | Thinking budget (phrases)      |
-| Temperature           | Must stay at 1.0                   | Flexible                           | Use only temp OR top_p         |
-| Context window        | 1M tokens                          | 1M tokens                          | 200K (up to 1M beta)           |
-| Max output            | 65K tokens                         | 128K tokens                        | —                              |
-| Context extension     | Thought signatures                 | Native compaction (server-side)    | `/compact`, summarization      |
-| Computer use          | No                                 | **Native (75% OSWorld)**           | No                             |
-| Tool Search           | No                                 | **Yes (47% savings)**              | No                             |
-| Custom tools endpoint | **Yes**                            | No                                 | No                             |
-| Multimodal            | Native (text/image/video/audio)    | Native                             | Images + PDFs only             |
-| Structured tags       | XML or Markdown (not both)         | XML preferred                      | XML strongly preferred         |
-| Multi-turn state      | Thought signatures (required)      | `previous_response_id`             | Session-based                  |
-| Knowledge cutoff      | January 2025                       | August 2025                        | May 2025                       |
-| Best for              | Reasoning, multimodal, agentic     | Agentic, coding, professional work | Coding, long-running tasks     |
+| Aspect            | Gemini 3.1 Pro                       | GPT-5.5                                  | Claude Opus 4.7                           |
+| ----------------- | ------------------------------------ | ---------------------------------------- | ----------------------------------------- |
+| Default reasoning | `high` (dynamic, 3 tiers)            | `medium`                                 | Thinking off unless `adaptive` set        |
+| Thinking control  | `thinking_level` (low/medium/high)   | `reasoning.effort` (none to xhigh)       | `thinking: {"type": "adaptive"}` + effort |
+| Temperature       | Keep at 1.0                          | Flexible                                 | Omit non-default sampling params          |
+| Context window    | 1M tokens                            | 1.05M tokens                             | 1M tokens                                 |
+| Max output        | 65K tokens                           | 128K tokens                              | 128K sync; 300K batch beta                |
+| Structured tags   | XML or Markdown, not both            | XML preferred                            | XML strongly preferred                    |
+| Multi-turn state  | Thought signatures                   | `previous_response_id` / reasoning items | Conversation state + compaction beta      |
+| Knowledge cutoff  | January 2025                         | Dec 1, 2025                              | January 2026                              |
+| Best for          | Direct reasoning, multimodal prompts | Agentic, coding, professional work       | Hard coding, review, long agents          |
 
 ---
 
 ## Pro Tips
 
-01. **Use MEDIUM as your default** — Same quality as Gemini 3 Pro's HIGH, faster and cheaper
+01. **Baseline with default/high thinking** — Lower to `medium` or `low` only after evals preserve quality
 
-02. **Reserve HIGH (Deep Think Mini) for 20% of tasks** — Complex reasoning, math, debugging only
+02. **Use `medium` for balanced throughput** — Good candidate for routine coding, research, and analysis
 
 03. **Keep temperature at 1.0** — Seriously, don't change it
 
-04. **Configure `maxOutputTokens` explicitly** — Default is 8K; you have 65K available
+04. **Configure `maxOutputTokens` explicitly** — You have up to 65K available
 
 05. **Try customtools for coding agents** — If the model bypasses your tools for raw bash
 
@@ -582,10 +544,3 @@ You are precise, analytical, and persistent.
 - [Google DeepMind: Gemini 3.1 Pro Model Card](https://deepmind.google/models/model-cards/gemini-3-1-pro/)
 - [Google Blog: Gemini 3.1 Pro Announcement](https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-3-1-pro/)
 - [Google Cloud Blog: Gemini 3.1 Pro on CLI, Enterprise, Vertex AI](https://cloud.google.com/blog/products/ai-machine-learning/gemini-3-1-pro-on-gemini-cli-gemini-enterprise-and-vertex-ai)
-- [Phil Schmid: Gemini 3 Prompting Best Practices](https://www.philschmid.de/gemini-3-prompt-practices)
-- [VentureBeat: Gemini 3.1 Pro Deep Think Mini First Impressions](https://venturebeat.com/technology/google-gemini-3-1-pro-first-impressions-a-deep-think-mini-with-adjustable/)
-- [NxCode: Gemini 3.1 Pro vs 3.0 Pro Comparison](https://www.nxcode.io/resources/news/gpt-5-4-vs-gpt-5-2-comparison-upgrade-guide-2026)
-- [DataCamp: Gemini 3.1 Features and Benchmarks](https://www.datacamp.com/blog/gemini-3-1)
-- [Apiyi: Gemini 3.1 Pro Thinking Level Guide](https://help.apiyi.com/en/gemini-3-1-pro-preview-thinking-level-control-guide-en.html)
-- [Apiyi: Gemini 3.1 Pro Customtools Guide](https://help.apiyi.com/en/gemini-3-1-pro-preview-customtools-agent-guide-en.html)
-- [OpenRouter: Gemini 3.1 Pro Preview](https://openrouter.ai/google/gemini-3.1-pro-preview)

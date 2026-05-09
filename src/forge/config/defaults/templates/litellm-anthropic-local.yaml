@@ -25,5 +25,8 @@ proxy:
       haiku: anthropic/claude-haiku-4-5
       sonnet: anthropic/claude-sonnet-4-6
       opus: anthropic/claude-opus-4-6
+    model_alternatives:
+      opus:
+        claude-opus-4-7: anthropic/claude-opus-4-7
     prompt_caching: passthrough
     error_hints: true

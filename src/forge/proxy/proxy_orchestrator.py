@@ -190,6 +190,7 @@ def create_proxy_file(
         upstream_base_url=resolved_upstream,
         tiers=tiers,
         tier_overrides=tier_overrides,
+        model_alternatives=provider.model_alternatives,
         default_tier=cfg.proxy.default_tier or "sonnet",
         provider_settings=provider_settings,
         created_at=now_iso(),

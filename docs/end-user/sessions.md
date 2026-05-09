@@ -472,19 +472,30 @@ default to direct mode (Anthropic API).
 
 The invariant: choosing a proxy chooses routing defaults (model family, context limit).
 
-### Pin a direct Claude model
-
-Direct sessions can opt into a specific Claude model without remembering Claude Code environment variables:
+### Pin a Claude model (`--model`)
 
 ```bash
 forge session start review-pass --model claude-opus-4-7
 forge session start long-sonnet --model claude-sonnet-4-6[1m]
+forge session start review-pass --proxy openrouter-anthropic --model claude-opus-4-7
 ```
 
-`--model` is only valid for direct main sessions. It is accepted with `--subprocess-proxy`, and rejected with `--proxy`,
-`--sidecar`, or `--host-proxy`. Forge stores the normalized model pin in the session intent and relaunches resume/fork
-children with the same Claude Code `ANTHROPIC_MODEL` and `ANTHROPIC_DEFAULT_*_MODEL` environment variables. The stable
-`claude-opus`/`opus` aliases still point at Claude Opus 4.6; use `claude-opus-4-7` explicitly for Opus 4.7.
+`--model` behavior depends on the session routing mode:
+
+| Mode                                    | What `--model` does                                                 | `[1m]` support                 |
+| --------------------------------------- | ------------------------------------------------------------------- | ------------------------------ |
+| Direct (no `--proxy`)                   | Pins Claude Code's `ANTHROPIC_MODEL` directly                       | Yes                            |
+| Proxy + alternative configured          | Selects a `model_alternatives` entry; proxy routes to backend model | Yes (stripped at proxy lookup) |
+| Proxy + no alternative                  | Errors: "does not configure model alternative for ..."              | N/A                            |
+| Subprocess proxy (`--subprocess-proxy`) | Pins Claude Code env vars (main is direct; subprocesses inherit)    | Yes                            |
+
+Rejected with `--sidecar` or `--host-proxy`.
+
+Forge stores the normalized model pin in the session intent and relaunches resume/fork children with the same
+`ANTHROPIC_MODEL` and `ANTHROPIC_DEFAULT_*_MODEL` environment variables. The stable `claude-opus`/`opus` aliases point
+at Claude Opus 4.6; use `claude-opus-4-7` explicitly for Opus 4.7.
+
+For proxy-mode `model_alternatives` configuration, see [proxies.md](proxies.md#model-alternatives).
 
 ### Resume with a routing override
 

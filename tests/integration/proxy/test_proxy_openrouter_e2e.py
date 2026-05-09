@@ -34,7 +34,7 @@ class TestProxyWithOpenRouter:
         assert resp.status_code == 200
         data = resp.json()
         assert data["is_proxy"] is True
-        assert data["template"] == "openrouter"
+        assert data["template"] == "openrouter-anthropic"
         assert data["provider"] == "openrouter"
         assert data["runtime"]["tier_mappings"]["haiku"] == "anthropic/claude-haiku-4.5"
 

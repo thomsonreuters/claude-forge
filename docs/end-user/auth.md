@@ -74,7 +74,7 @@ If you see authentication errors in workflow output, run `forge auth login -p an
 | `forge session start` (direct)               | Claude Code login/subscription is enough                         |
 | `forge workflow analyze` (default)           | `ANTHROPIC_API_KEY`                                              |
 | `forge workflow panel` (default)             | `ANTHROPIC_API_KEY` + active `litellm-openai` + `litellm-gemini` |
-| OpenRouter proxy (`openrouter`)              | `OPENROUTER_API_KEY`                                             |
+| OpenRouter proxy (`openrouter-*`)            | `OPENROUTER_API_KEY`                                             |
 | Remote LiteLLM proxy (`litellm-openai`)      | `LITELLM_API_KEY` + `LITELLM_BASE_URL`                           |
 | Local LiteLLM proxy (`litellm-openai-local`) | `OPENAI_API_KEY`                                                 |
 | Local LiteLLM proxy (`litellm-gemini-local`) | `GEMINI_API_KEY`                                                 |

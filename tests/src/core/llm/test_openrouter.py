@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from forge.core.llm.clients.openrouter import _UNSUPPORTED_PARAMS, OpenRouterClient
+from forge.core.llm.clients.openrouter import OpenRouterClient
 from forge.core.llm.types import CompletionResponse, Message, ModelHyperparameters
 
 
@@ -24,23 +24,50 @@ class TestOpenRouterClientInit:
     def test_model_property(self, client):
         assert client.model == "anthropic/claude-sonnet-4.6"
 
-    def test_strips_reasoning_effort(self):
+    def test_translates_reasoning_effort_to_extra_body(self):
         kwargs = {
             "model": "test",
             "messages": [],
             "max_tokens": 100,
             "reasoning_effort": "high",
-            "verbosity": "medium",
             "temperature": 0.7,
         }
-        result = OpenRouterClient._strip_unsupported_params(kwargs)
+        result = OpenRouterClient._translate_params(kwargs)
         assert "reasoning_effort" not in result
-        assert "verbosity" not in result
+        assert result["extra_body"] == {"reasoning": {"effort": "high"}}
         assert result["temperature"] == 0.7
 
-    def test_unsupported_params_set(self):
-        assert "reasoning_effort" in _UNSUPPORTED_PARAMS
-        assert "verbosity" in _UNSUPPORTED_PARAMS
+    def test_translates_verbosity_to_extra_body(self):
+        kwargs = {"model": "test", "messages": [], "verbosity": "medium"}
+        result = OpenRouterClient._translate_params(kwargs)
+        assert "verbosity" not in result
+        assert result["extra_body"] == {"verbosity": "medium"}
+
+    def test_translates_both_params(self):
+        kwargs = {
+            "model": "test",
+            "messages": [],
+            "reasoning_effort": "high",
+            "verbosity": "low",
+        }
+        result = OpenRouterClient._translate_params(kwargs)
+        assert result["extra_body"] == {"reasoning": {"effort": "high"}, "verbosity": "low"}
+
+    def test_no_extra_body_when_no_params(self):
+        kwargs = {"model": "test", "messages": [], "temperature": 0.5}
+        result = OpenRouterClient._translate_params(kwargs)
+        assert "extra_body" not in result
+
+    def test_preserves_existing_extra_body(self):
+        kwargs = {
+            "model": "test",
+            "messages": [],
+            "reasoning_effort": "medium",
+            "extra_body": {"transforms": ["middle-out"]},
+        }
+        result = OpenRouterClient._translate_params(kwargs)
+        assert result["extra_body"]["reasoning"] == {"effort": "medium"}
+        assert result["extra_body"]["transforms"] == ["middle-out"]
 
 
 class TestOpenRouterClientComplete:

@@ -489,7 +489,21 @@ def _launch_claude_for_session(
 
     store.update(timeout_s=5.0, mutate=lambda m: setattr(m.confirmed, "is_sandboxed", False))
 
+    # Best-effort: recover proxy_id from base_url for host launches (resume/reconnect
+    # paths don't pass proxy_id explicitly). Falls back to no proxy_id, which means
+    # model_alternatives won't apply on this launch.
+    if proxy_id is None and runtime_base_url is not None:
+        try:
+            from forge.proxy.proxies import ProxyRegistryStore as _PRS
+
+            _entry = _PRS().find_by_base_url(runtime_base_url)
+            if _entry is not None:
+                proxy_id = _entry.proxy_id
+        except Exception:
+            logger.debug("proxy_id recovery from base_url failed", exc_info=True)
+
     if runtime_base_url is None:
+        # Direct mode: apply explicit --model or fall back to default_direct_model
         from forge.runtime_config import get_default_direct_model
 
         direct_model = manifest.intent.launch.direct_model if manifest.intent.launch else None
@@ -498,6 +512,22 @@ def _launch_claude_for_session(
         if error:
             console.print(f"[red]Error:[/red] {error}")
             return 1
+    elif manifest.intent.launch and manifest.intent.launch.direct_model and proxy_id:
+        # Proxy mode with explicit --model: apply model pin so Claude Code sends
+        # the right model name in requests (proxy resolves via model_alternatives).
+        # Only apply if the proxy actually configures alternatives for this model.
+        from forge.config.loader import load_proxy_instance_config
+
+        proxy_cfg = load_proxy_instance_config(proxy_id)
+        if proxy_cfg and proxy_cfg.model_alternatives:
+            dm = manifest.intent.launch.direct_model
+            pin = resolve_direct_model_pin(dm)
+            alt_models = proxy_cfg.model_alternatives.get(pin.tier, {})
+            if pin.canonical_model in alt_models:
+                error = apply_direct_model_env(env_vars, dm)
+                if error:
+                    console.print(f"[red]Error:[/red] {error}")
+                    return 1
 
     exit_code = _sess().run_with_active_session(
         session_name=manifest.name,
@@ -650,9 +680,6 @@ def launch_new_session(
     if direct and host_proxy:
         console.print("[red]Error:[/red] --no-proxy cannot be combined with --host-proxy")
         return 1
-    if direct_model and (template or base_url):
-        console.print("[red]Error:[/red] --model is only valid for direct sessions; remove --proxy")
-        return 1
     if direct_model and sidecar:
         console.print("[red]Error:[/red] --model cannot be combined with --sidecar")
         return 1
@@ -671,14 +698,36 @@ def launch_new_session(
     manager = _sess().SessionManager()
 
     normalized_direct_model: str | None = None
+    direct_model_pin = None
     if direct_model:
-        if not direct:
-            console.print("[red]Error:[/red] --model is only valid for direct main sessions")
-            return 1
         try:
-            normalized_direct_model = resolve_direct_model_pin(direct_model).env_model
+            direct_model_pin = resolve_direct_model_pin(direct_model)
+            normalized_direct_model = direct_model_pin.env_model
         except ValueError as e:
             console.print(f"[red]Error:[/red] {e}")
+            return 1
+
+    # Validate --model against proxy model_alternatives when in proxy mode
+    if direct_model_pin and proxy_id and not direct:
+        from forge.config.loader import load_proxy_instance_config
+
+        try:
+            proxy_cfg = load_proxy_instance_config(proxy_id)
+            if proxy_cfg is None:
+                raise FileNotFoundError(proxy_id)
+        except Exception:
+            console.print(f"[red]Error:[/red] Could not load proxy config for '{proxy_id}'")
+            return 1
+        tier = direct_model_pin.tier
+        # Strip [1m] suffix for alternative lookup (context pinning, not routing)
+        lookup_model = direct_model_pin.canonical_model
+        alt_models = proxy_cfg.model_alternatives.get(tier, {})
+        if lookup_model not in alt_models:
+            available = ", ".join(sorted(alt_models.keys())) if alt_models else "(none configured)"
+            console.print(
+                f"[red]Error:[/red] Proxy '{proxy_id}' does not configure model alternative "
+                f"for '{lookup_model}' in tier '{tier}'. Available alternatives: {available}"
+            )
             return 1
 
     # Resolve system prompt to absolute path BEFORE worktree creation
@@ -1016,12 +1065,7 @@ def start(
 
     routing: ResolvedRouting | None = None
     if proxy_name:
-        if direct_model:
-            # Defer --model/--proxy conflict reporting to launch_new_session(),
-            # the shared validation path for start/incognito-style launches.
-            routing = ResolvedRouting(template=proxy_name)
-        else:
-            routing = _sess()._resolve_routing_from_cli(proxy_name=proxy_name, direct=False)
+        routing = _sess()._resolve_routing_from_cli(proxy_name=proxy_name, direct=False)
 
     # CWD validation: must be at repo root; --worktree requires main repo
     from forge.cli.guards import require_main_repo_root, require_repo_root

@@ -442,6 +442,7 @@ def load_proxy_instance_config_from_dict(data: dict) -> "ProxyInstanceConfig":
         upstream_base_url=data.get("upstream_base_url", ""),
         tiers=tiers,
         tier_overrides=tier_overrides,
+        model_alternatives=data.get("model_alternatives", {}),
         default_tier=data.get("default_tier", "sonnet"),
         provider_settings=data.get("provider_settings", {}),
         prompt_caching=data.get("prompt_caching", "passthrough"),
@@ -540,6 +541,7 @@ def _proxy_instance_to_forge_config(
     provider_config = ProviderConfig(
         tiers=proxy_config.tiers,
         tier_overrides=proxy_config.tier_overrides,
+        model_alternatives=proxy_config.model_alternatives,
         base_url=proxy_config.upstream_base_url,
         auth_url=auth_url or "",  # Empty string if no secret set
         openai_api_mode=proxy_config.provider_settings.get("openai_api_mode", "auto"),

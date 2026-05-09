@@ -37,17 +37,21 @@ require a proxy instance.
 
 Forge provides ready-to-use proxy configurations (internal templates):
 
-| Template                     | Use case                                           |
-| ---------------------------- | -------------------------------------------------- |
-| `openrouter`                 | Multi-provider via OpenRouter (direct, no LiteLLM) |
-| `litellm-anthropic`          | Anthropic models via remote/shared LiteLLM         |
-| `litellm-anthropic-local`    | Local LiteLLM + Anthropic API key                  |
-| `litellm-openai`             | OpenAI models via remote/shared LiteLLM            |
-| `litellm-gemini`             | Gemini models via remote/shared LiteLLM            |
-| `litellm-openai-local`       | Local LiteLLM + OpenAI API key                     |
-| `litellm-openai-codex-local` | Local LiteLLM + OpenAI Codex models                |
-| `litellm-gemini-local`       | Local LiteLLM + Gemini API key                     |
-| `litellm-gemini-flash-local` | Local LiteLLM + Gemini Flash (fast/cheap)          |
+| Template                     | Use case                                    |
+| ---------------------------- | ------------------------------------------- |
+| `openrouter-anthropic`       | Claude models via OpenRouter (direct)       |
+| `openrouter-openai`          | GPT models via OpenRouter (direct)          |
+| `openrouter-gemini`          | Gemini models via OpenRouter (direct)       |
+| `openrouter-openai-codex`    | OpenAI Codex models via OpenRouter (direct) |
+| `openrouter-gemini-flash`    | Gemini Flash via OpenRouter (cheap, direct) |
+| `litellm-anthropic`          | Anthropic models via remote/shared LiteLLM  |
+| `litellm-anthropic-local`    | Local LiteLLM + Anthropic API key           |
+| `litellm-openai`             | OpenAI models via remote/shared LiteLLM     |
+| `litellm-gemini`             | Gemini models via remote/shared LiteLLM     |
+| `litellm-openai-local`       | Local LiteLLM + OpenAI API key              |
+| `litellm-openai-codex-local` | Local LiteLLM + OpenAI Codex models         |
+| `litellm-gemini-local`       | Local LiteLLM + Gemini API key              |
+| `litellm-gemini-flash-local` | Local LiteLLM + Gemini Flash (fast/cheap)   |
 
 `litellm-gemini-test` also exists internally, but it is hidden from normal end-user template lists.
 
@@ -92,14 +96,15 @@ forge proxy validate <proxy_id>  # Validate config
 
 ## OpenRouter (direct, no LiteLLM)
 
-The `openrouter` template calls the OpenRouter API directly -- no LiteLLM subprocess needed.
+OpenRouter templates (`openrouter-anthropic`, `openrouter-openai`, `openrouter-gemini`, `openrouter-openai-codex`,
+`openrouter-gemini-flash`) call the OpenRouter API directly -- no LiteLLM subprocess needed.
 
 ```bash
 # Store your key
 forge authentication login -p openrouter
 
-# Create and start
-forge proxy create openrouter
+# Create and start (pick a model family)
+forge proxy create openrouter-anthropic
 
 # Launch Claude Code through OpenRouter
 forge claude start --proxy <proxy_id>
@@ -117,6 +122,34 @@ forge proxy edit <proxy_id>
 
 Models not in Forge's catalog (e.g., `meta-llama/llama-3.1-70b`) work -- the proxy uses safe defaults for
 `max_output_tokens` and `context_window` when catalog data is unavailable.
+
+---
+
+## Model alternatives
+
+Anthropic proxy templates (`openrouter-anthropic`, `litellm-anthropic`, `litellm-anthropic-local`) configure
+`model_alternatives` to support multiple model versions at the same tier. The default opus model is Claude Opus 4.6; use
+`--model` to select an alternative:
+
+```bash
+# Default: opus tier routes to Claude Opus 4.6
+forge session start my-session --proxy openrouter-anthropic
+
+# Select Opus 4.7 instead
+forge session start my-session --proxy openrouter-anthropic --model claude-opus-4-7
+```
+
+The proxy resolves the alternative at request time -- Claude Code sends the model name, the proxy looks up
+`model_alternatives[tier][model]` and routes to the configured backend model. Tier-level hyperparameters
+(reasoning_effort, etc.) still apply regardless of which alternative is selected.
+
+To add or edit alternatives, use `forge proxy edit <proxy_id>`:
+
+```yaml
+model_alternatives:
+  opus:
+    claude-opus-4-7: anthropic/claude-opus-4.7
+```
 
 ---
 
@@ -371,16 +404,16 @@ Proxy request costs are logged to `~/.forge/costs/requests/` as JSONL. Forge sub
 forge proxy costs                    # Today's costs, by verb
 forge proxy costs --by-model         # Today's costs, by model
 forge proxy costs --period week      # This week
-forge proxy costs openrouter         # Filter by proxy
+forge proxy costs openrouter-anthropic         # Filter by proxy
 ```
 
 Set caps on the proxy:
 
 ```bash
-forge proxy set openrouter costs.caps.per_day=20.00
-forge proxy set openrouter costs.caps.per_month=100.00
-forge proxy set openrouter costs.cap_mode=strict
-forge proxy set openrouter costs.on_cap_hit=warn
+forge proxy set openrouter-anthropic costs.caps.per_day=20.00
+forge proxy set openrouter-anthropic costs.caps.per_month=100.00
+forge proxy set openrouter-anthropic costs.cap_mode=strict
+forge proxy set openrouter-anthropic costs.on_cap_hit=warn
 ```
 
 `cap_mode=post` blocks only after logged spend reaches a cap. `cap_mode=strict` also estimates the pending request

@@ -9,7 +9,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, Field, model_validator
 
 ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh"]
-Verbosity = Literal["low", "medium", "high"]
+Verbosity = Literal["low", "medium", "high", "xhigh", "max"]
 MessageRole = Literal["system", "user", "assistant", "tool"]
 StreamEventType = Literal["text_delta", "tool_call_delta", "response_end", "usage", "error"]
 # Client-side prompt caching policy (NOT provider mechanism)

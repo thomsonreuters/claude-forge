@@ -505,7 +505,7 @@ def proxy_server_openrouter(module_forge_home: Path, tmp_path_factory) -> Genera
     cwd = tmp_path_factory.mktemp("forge_proxy_cwd_")
 
     proc = _start_proxy_subprocess(
-        template="openrouter",
+        template="openrouter-anthropic",
         port=port,
         forge_home=module_forge_home,
         env=env,
@@ -518,7 +518,7 @@ def proxy_server_openrouter(module_forge_home: Path, tmp_path_factory) -> Genera
         request_model="claude-3-5-haiku-20241022",
         max_tokens=8,
         unreachable_fail_reason="OpenRouter proxy unreachable",
-        template="openrouter",
+        template="openrouter-anthropic",
     )
 
     yield proxy_base_url
@@ -531,7 +531,7 @@ def registered_proxy_server_openrouter(
 ) -> Generator[RegisteredProxyServer, None, None]:
     yield from _start_registered_proxy(
         proxy_id="openrouter-paid-e2e",
-        template="openrouter",
+        template="openrouter-anthropic",
         module_forge_home=module_forge_home,
         tmp_path_factory=tmp_path_factory,
         required_env_var="OPENROUTER_API_KEY",

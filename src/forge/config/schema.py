@@ -141,6 +141,7 @@ class ProviderConfig:
 
     tiers: TierModels = field(default_factory=TierModels)
     tier_overrides: TierOverrides = field(default_factory=TierOverrides)
+    model_alternatives: dict[str, dict[str, str]] = field(default_factory=dict)
     auth_url: str = ""
     base_url: str = ""
     cache_ttl: float = 3600.0
@@ -319,6 +320,7 @@ class ProxyInstanceConfig:
 
     tiers: TierModels
     tier_overrides: TierOverrides = field(default_factory=TierOverrides)
+    model_alternatives: dict[str, dict[str, str]] = field(default_factory=dict)
     default_tier: str = "sonnet"
 
     provider_settings: dict[str, Any] = field(default_factory=dict)

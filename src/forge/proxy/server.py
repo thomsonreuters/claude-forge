@@ -228,6 +228,26 @@ def _get_tier_override(tier: str) -> TierOverride | None:
         return None
 
 
+def _resolve_model_with_alternatives(tier: str, original_model_name: str | None, fallback_model: str) -> str:
+    """Resolve backend model, checking per-tier alternatives before the tier default.
+
+    Used by both message routing and token counting so model resolution is
+    consistent across both paths.  Strips ``[1m]`` context-window suffix before
+    lookup since it is a Claude Code hint, not a routing decision.
+    """
+    try:
+        provider_cfg = config.proxy.get_provider()
+        alt_models = provider_cfg.model_alternatives.get(tier, {})
+        if original_model_name and alt_models:
+            lookup = original_model_name.removesuffix("[1m]")
+            if lookup in alt_models:
+                return alt_models[lookup]
+    except Exception:
+        # Best-effort: degrade to fallback_model if provider config is unavailable
+        logger.debug("model_alternatives lookup failed, using tier default", exc_info=True)
+    return fallback_model
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
@@ -430,8 +450,9 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             f"[{request_id}] Explicit backend model '{original_model_name}' - preserving as '{actual_model_id}'"
         )
     else:
-        # Anthropic-style or ambiguous - use tier-resolved model from unified config
-        actual_model_id = config.proxy.get_model_for_tier(resolved_tier)
+        # Anthropic-style or ambiguous — check alternatives, then fall back to tier default
+        tier_default = config.proxy.get_model_for_tier(resolved_tier)
+        actual_model_id = _resolve_model_with_alternatives(resolved_tier, original_model_name, tier_default)
         logger.debug(f"[{request_id}] Tier-resolved model: tier={resolved_tier} -> '{actual_model_id}'")
 
     try:
@@ -908,26 +929,9 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
     _ensure_runtime_state()
 
     try:
-        # Get model info — map AFTER reload() for fresh config
         original_model_name = request_data.original_model_name
-        actual_model_id = map_model_name(request_data.model)
 
-        logger.info(f"[{request_id}] Token counting: original='{original_model_name}', target='{actual_model_id}'")
-
-        # Detect provider for token counting (schema normalization doesn't affect token count much, but consistency is good)
-        detected_provider = client_factory.detect_provider_for_model(actual_model_id)
-        provider_name = detected_provider.value
-
-        simulated_request = MessagesRequest(
-            model=actual_model_id,
-            messages=request_data.messages,
-            system=request_data.system,
-            max_tokens=1,
-        )
-        openai_dict = convert_anthropic_to_openai(simulated_request, provider=provider_name)
-        messages = openai_dict.get("messages", [])
-
-        # Resolve effective tier for token counting (match routing invariants)
+        # Resolve tier FIRST (same precedence as message routing)
         if request_data.has_explicit_tier and request_data.tier:
             resolved_tier: str = request_data.tier
             resolved_tier_source = "request"
@@ -944,10 +948,52 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
             )
 
         request_data.tier = resolved_tier
+
+        # Match the /v1/messages model resolution: explicit backend models are
+        # preserved; Anthropic-style or ambiguous models go through tier + alternatives.
+        mapped_model = map_model_name(request_data.model)
+
+        if config.proxy.preferred_provider == "openrouter":
+            is_explicit_backend = original_model_name is not None and "/" in original_model_name
+        else:
+            is_explicit_backend = (
+                original_model_name is not None
+                and "/" in original_model_name
+                and any(
+                    original_model_name.startswith(p)
+                    for p in [
+                        "openai/",
+                        "anthropic/",
+                        "vertex_ai/",
+                        "bedrock/",
+                        "gemini/",
+                        "together_ai/",
+                        "replicate/",
+                    ]
+                )
+            )
+
+        if is_explicit_backend:
+            actual_model_id = mapped_model
+        else:
+            tier_default = config.proxy.get_model_for_tier(resolved_tier)
+            actual_model_id = _resolve_model_with_alternatives(resolved_tier, original_model_name, tier_default)
+
+        logger.info(f"[{request_id}] Token counting: original='{original_model_name}', target='{actual_model_id}'")
         logger.debug(f"[{request_id}] Token count resolved tier: {resolved_tier} (source={resolved_tier_source})")
 
-        # Note: system message is already included in messages from convert_anthropic_to_openai
-        # Get client and count tokens (pass tier for tier-specific hyperparameters)
+        detected_provider = client_factory.detect_provider_for_model(actual_model_id)
+        provider_name = detected_provider.value
+
+        simulated_request = MessagesRequest(
+            model=actual_model_id,
+            messages=request_data.messages,
+            system=request_data.system,
+            max_tokens=1,
+        )
+        openai_dict = convert_anthropic_to_openai(simulated_request, provider=provider_name)
+        messages = openai_dict.get("messages", [])
+
         client = await client_factory.get_client(actual_model_id, tier=resolved_tier)
         token_count = await client.count_tokens(messages)
 

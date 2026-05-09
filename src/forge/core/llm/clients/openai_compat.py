@@ -102,6 +102,9 @@ def build_chat_completion_kwargs(
     if hyperparams.reasoning_effort is not None:
         kwargs["reasoning_effort"] = hyperparams.reasoning_effort
 
+    if hyperparams.verbosity is not None:
+        kwargs["verbosity"] = hyperparams.verbosity
+
     if tools:
         kwargs["tools"] = tools
 

@@ -1,0 +1,27 @@
+# Template: openrouter-openai
+# OpenAI models via OpenRouter (direct, no LiteLLM)
+#
+# Access to GPT-5.5 and GPT-5.4-mini.
+# Requires OPENROUTER_API_KEY in .env (or environment).
+#
+# Haiku uses gpt-5.4-mini; sonnet and opus both use gpt-5.5,
+# differentiated by tier_overrides (reasoning_effort and verbosity).
+
+proxy:
+  preferred_provider: openrouter
+  default_port: 8096
+
+  openrouter:
+    tiers:
+      haiku: openai/gpt-5.4-mini
+      sonnet: openai/gpt-5.5
+      opus: openai/gpt-5.5
+    tier_overrides:
+      sonnet:
+        reasoning_effort: medium
+        verbosity: high
+      opus:
+        reasoning_effort: high
+        verbosity: high
+    base_url: "https://openrouter.ai/api/v1"
+    error_hints: true

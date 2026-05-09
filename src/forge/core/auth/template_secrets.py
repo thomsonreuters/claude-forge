@@ -25,7 +25,11 @@ TEMPLATE_SECRETS: dict[str, list[str]] = {
     "litellm-openai-local": ["OPENAI_API_KEY"],
     "litellm-openai-codex-local": ["OPENAI_API_KEY"],
     "litellm-anthropic-local": ["ANTHROPIC_API_KEY"],
-    "openrouter": ["OPENROUTER_API_KEY"],
+    "openrouter-anthropic": ["OPENROUTER_API_KEY"],
+    "openrouter-openai": ["OPENROUTER_API_KEY"],
+    "openrouter-gemini": ["OPENROUTER_API_KEY"],
+    "openrouter-openai-codex": ["OPENROUTER_API_KEY"],
+    "openrouter-gemini-flash": ["OPENROUTER_API_KEY"],
 }
 
 

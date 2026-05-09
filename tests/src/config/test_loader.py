@@ -181,21 +181,22 @@ class TestLoadConfig:
         assert config.proxy.get_model_for_tier("sonnet") == "gemini/gemini-3.1-pro-preview"
         assert config.proxy.get_model_for_tier("haiku") == "gemini/gemini-3-flash-preview"
 
-    def test_template_loading_openrouter(self):
-        """OpenRouter template loads with correct provider and tiers."""
-        config = load_config(template="openrouter")
+    def test_template_loading_openrouter_anthropic(self):
+        """OpenRouter anthropic template loads with correct provider and tiers."""
+        config = load_config(template="openrouter-anthropic")
 
-        assert config.proxy.active_template == "openrouter"
+        assert config.proxy.active_template == "openrouter-anthropic"
         assert config.proxy.preferred_provider == "openrouter"
         assert config.proxy.default_port == 8095
         assert config.proxy.openrouter.tiers.haiku == "anthropic/claude-haiku-4.5"
         assert config.proxy.openrouter.tiers.sonnet == "anthropic/claude-sonnet-4.6"
         assert config.proxy.openrouter.tiers.opus == "anthropic/claude-opus-4.6"
         assert config.proxy.openrouter.base_url == "https://openrouter.ai/api/v1"
+        assert config.proxy.openrouter.model_alternatives == {"opus": {"claude-opus-4-7": "anthropic/claude-opus-4.7"}}
 
     def test_openrouter_config_placed_on_correct_field(self):
         """OpenRouter config should land on proxy.openrouter, not proxy.litellm."""
-        config = load_config(template="openrouter")
+        config = load_config(template="openrouter-anthropic")
 
         assert config.proxy.openrouter.tiers.sonnet != ""
         assert config.proxy.litellm.tiers.sonnet == ""
@@ -503,13 +504,17 @@ class TestTemplateResolution:
 
     def test_shipped_template_exists(self, user_templates_dir: Path) -> None:
         assert shipped_template_exists("litellm-openai")
-        assert shipped_template_exists("openrouter")
+        assert shipped_template_exists("openrouter-anthropic")
         assert not shipped_template_exists("nonexistent-xyz")
 
-    def test_openrouter_in_template_list(self, user_templates_dir: Path) -> None:
-        """OpenRouter template appears in shipped template list."""
+    def test_openrouter_templates_in_template_list(self, user_templates_dir: Path) -> None:
+        """OpenRouter family templates appear in shipped template list."""
         names = list_template_names()
-        assert "openrouter" in names
+        assert "openrouter-anthropic" in names
+        assert "openrouter-openai" in names
+        assert "openrouter-gemini" in names
+        assert "openrouter-openai-codex" in names
+        assert "openrouter-gemini-flash" in names
 
     def test_read_shipped_template_ignores_user(self, user_templates_dir: Path) -> None:
         """read_shipped_template always returns the built-in content."""

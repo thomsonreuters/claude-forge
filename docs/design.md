@@ -236,7 +236,7 @@ preferences.
 **`intent.subprocess_proxy`**: optional proxy ID used only by Forge-spawned subprocesses:
 
 ```yaml
-subprocess_proxy: openrouter
+subprocess_proxy: openrouter-anthropic
 ```
 
 This supports direct-mode main sessions that still need panel, supervisor, or handoff subprocesses routed through a

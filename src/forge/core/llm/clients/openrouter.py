@@ -2,7 +2,7 @@
 
 Uses OpenAI SDK to call OpenRouter's API directly (no LiteLLM).
 OpenRouter is OpenAI-compatible, so this is a thin wrapper that adds
-OpenRouter-specific headers and strips unsupported parameters.
+OpenRouter-specific headers and translates parameters to OpenRouter's format.
 """
 
 import json
@@ -33,11 +33,6 @@ from .openai_compat import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Params that OpenRouter's Chat Completions API does not support.
-# OpenRouter has its own `reasoning` object, but Forge's reasoning_effort
-# values (none/low/medium/high/xhigh) don't map 1:1. Strip for MVP.
-_UNSUPPORTED_PARAMS = frozenset({"reasoning_effort", "verbosity"})
 
 
 class OpenRouterClient:
@@ -78,12 +73,22 @@ class OpenRouterClient:
         return self._client
 
     @staticmethod
-    def _strip_unsupported_params(kwargs: dict[str, Any]) -> dict[str, Any]:
-        """Remove params that OpenRouter doesn't support in Chat Completions."""
-        for param in _UNSUPPORTED_PARAMS:
-            if param in kwargs:
-                dropped = kwargs.pop(param)
-                logger.debug(f"Stripped {param}={dropped} (not supported by OpenRouter Chat Completions)")
+    def _translate_params(kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Translate Forge params to OpenRouter's API format.
+
+        OpenRouter uses ``reasoning: {effort: ...}`` (object) and top-level
+        ``verbosity``, passed via ``extra_body`` since the OpenAI SDK does not
+        accept them as direct kwargs.
+        """
+        extra_body: dict[str, Any] = kwargs.pop("extra_body", None) or {}
+        effort = kwargs.pop("reasoning_effort", None)
+        if effort is not None:
+            extra_body["reasoning"] = {"effort": effort}
+        verbosity = kwargs.pop("verbosity", None)
+        if verbosity is not None:
+            extra_body["verbosity"] = verbosity
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         return kwargs
 
     _is_retryable_error = staticmethod(is_retryable_error)
@@ -102,7 +107,7 @@ class OpenRouterClient:
         merged_params: ModelHyperparameters,
     ) -> CompletionResponse:
         kwargs = build_chat_completion_kwargs(self._model, messages, tools, merged_params)
-        kwargs = self._strip_unsupported_params(kwargs)
+        kwargs = self._translate_params(kwargs)
         response = await client.chat.completions.create(**kwargs)
         return openai_response_to_completion(response, self._provider)
 
@@ -142,7 +147,7 @@ class OpenRouterClient:
 
         try:
             kwargs = build_chat_completion_kwargs(self._model, messages, tools, merged_params)
-            kwargs = self._strip_unsupported_params(kwargs)
+            kwargs = self._translate_params(kwargs)
             kwargs["stream"] = True
             kwargs["stream_options"] = {"include_usage": True}
 

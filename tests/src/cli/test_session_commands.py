@@ -1049,24 +1049,30 @@ class TestSessionStart:
         with patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke:
             result = runner.invoke(
                 main,
-                ["session", "start", "model-subprocess", "--model", "opus-4-7", "--subprocess-proxy", "openrouter"],
+                [
+                    "session",
+                    "start",
+                    "model-subprocess",
+                    "--model",
+                    "opus-4-7",
+                    "--subprocess-proxy",
+                    "openrouter-anthropic",
+                ],
             )
 
         assert result.exit_code == 0
         kwargs = mock_invoke.call_args.kwargs
-        assert kwargs["env_vars"]["FORGE_SUBPROCESS_PROXY"] == "openrouter"
+        assert kwargs["env_vars"]["FORGE_SUBPROCESS_PROXY"] == "openrouter-anthropic"
         assert kwargs["env_vars"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-4-7"
 
-    @pytest.mark.parametrize("flag", ["--proxy", "--sidecar", "--host-proxy"])
-    def test_start_with_model_rejects_proxy_routing_flags(
+    @pytest.mark.parametrize("flag", ["--sidecar", "--host-proxy"])
+    def test_start_with_model_rejects_sidecar_and_host_proxy(
         self,
         runner: CliRunner,
         temp_env: Path,
         flag: str,
     ) -> None:
         args = ["session", "start", "bad-model", "--model", "opus-4-7", flag]
-        if flag == "--proxy":
-            args.append("litellm-openai")
 
         result = runner.invoke(main, args)
 
@@ -1079,6 +1085,73 @@ class TestSessionStart:
         assert result.exit_code == 1
         assert "Unknown direct Claude model" in result.output
         assert not SessionStore(str(temp_env), "bad-model").exists()
+
+    def test_start_with_model_and_proxy_validates_alternatives(self, runner: CliRunner, temp_env: Path) -> None:
+        """--model + --proxy should validate that the proxy has model_alternatives for the model."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        proxy_cfg = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter-anthropic",
+            template_digest="abc",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8095",
+            port=8095,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+            model_alternatives={"opus": {"claude-opus-4-7": "anthropic/claude-opus-4.7"}},
+        )
+        routing = session_cli.ResolvedRouting(
+            template="openrouter-anthropic",
+            base_url="http://localhost:8095",
+            proxy_id="test-or-proxy",
+        )
+        with (
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=routing),
+            patch("forge.config.loader.load_proxy_instance_config", return_value=proxy_cfg),
+            patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke,
+        ):
+            result = runner.invoke(
+                main,
+                ["session", "start", "model-proxy-ok", "--proxy", "test-or-proxy", "--model", "claude-opus-4-7"],
+            )
+
+        assert result.exit_code == 0, result.output
+        env_vars = mock_invoke.call_args.kwargs["env_vars"]
+        assert env_vars["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-4-7"
+
+    def test_start_with_model_and_proxy_rejects_unconfigured_alternative(
+        self, runner: CliRunner, temp_env: Path
+    ) -> None:
+        """--model + --proxy should error when the proxy has no matching alternative."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        proxy_cfg = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter-openai",
+            template_digest="abc",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8096",
+            port=8096,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+        )
+        routing = session_cli.ResolvedRouting(
+            template="openrouter-openai",
+            base_url="http://localhost:8096",
+            proxy_id="test-or-openai",
+        )
+        with (
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=routing),
+            patch("forge.config.loader.load_proxy_instance_config", return_value=proxy_cfg),
+        ):
+            result = runner.invoke(
+                main,
+                ["session", "start", "model-proxy-bad", "--proxy", "test-or-openai", "--model", "claude-opus-4-7"],
+            )
+
+        assert result.exit_code == 1
+        assert "does not configure model alternative" in result.output
 
     def test_start_duplicate_fails(self, runner: CliRunner, temp_env: Path) -> None:
         """Should fail when session already exists."""

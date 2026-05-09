@@ -31,6 +31,9 @@ proxy:
       haiku:
         temperature: 0.3
         max_tokens: 4096
+    model_alternatives:                   # Per-tier alternative models (--model in proxy mode)
+      opus:
+        claude-opus-4-7: anthropic/claude-opus-4-7
 ```
 
 **Note:** All hyperparameters are per-tier because each model has different limits and optimal defaults.
@@ -52,13 +55,18 @@ proxy:
 
 **Proxy templates** (internal, pre-canned configurations):
 
-| Template                  | Use case                                   |
-| ------------------------- | ------------------------------------------ |
-| `litellm-openai`          | OpenAI models via remote/shared LiteLLM    |
-| `litellm-gemini`          | Gemini models via remote/shared LiteLLM    |
-| `litellm-anthropic`       | Anthropic models via remote/shared LiteLLM |
-| `litellm-gemini-local`    | Local LiteLLM + Gemini API key             |
-| `litellm-anthropic-local` | Local LiteLLM + Anthropic API key          |
+| Template                  | Use case                                    |
+| ------------------------- | ------------------------------------------- |
+| `openrouter-anthropic`    | Claude models via OpenRouter (direct)       |
+| `openrouter-openai`       | GPT models via OpenRouter (direct)          |
+| `openrouter-gemini`       | Gemini models via OpenRouter (direct)       |
+| `openrouter-openai-codex` | OpenAI Codex via OpenRouter (direct)        |
+| `openrouter-gemini-flash` | Gemini Flash via OpenRouter (cheap, direct) |
+| `litellm-openai`          | OpenAI models via remote/shared LiteLLM     |
+| `litellm-gemini`          | Gemini models via remote/shared LiteLLM     |
+| `litellm-anthropic`       | Anthropic models via remote/shared LiteLLM  |
+| `litellm-gemini-local`    | Local LiteLLM + Gemini API key              |
+| `litellm-anthropic-local` | Local LiteLLM + Anthropic API key           |
 
 A proxy template is an operational profile:
 
@@ -228,9 +236,9 @@ costs:
 CLI updates use the normal proxy edit surface:
 
 ```bash
-forge proxy set openrouter costs.caps.per_day=20.00
-forge proxy set openrouter costs.cap_mode=strict
-forge proxy set openrouter costs.on_cap_hit=warn
+forge proxy set openrouter-anthropic costs.caps.per_day=20.00
+forge proxy set openrouter-anthropic costs.cap_mode=strict
+forge proxy set openrouter-anthropic costs.on_cap_hit=warn
 ```
 
 Runtime logs:

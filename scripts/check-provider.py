@@ -155,10 +155,7 @@ def _smoke_test_openai_model(client, model: str, *, required: bool) -> bool:  # 
         finish = chat_resp.choices[0].finish_reason
         _ok(f"Completion verified via /v1/chat/completions (model: {model}, finish: {finish})")
         if chat_resp.usage:
-            _info(
-                f"Test call usage: {chat_resp.usage.prompt_tokens} in / "
-                f"{chat_resp.usage.completion_tokens} out"
-            )
+            _info(f"Test call usage: {chat_resp.usage.prompt_tokens} in / " f"{chat_resp.usage.completion_tokens} out")
         return True
     except openai.NotFoundError as e:
         if "chat model" not in str(e).lower():
@@ -177,10 +174,7 @@ def _smoke_test_openai_model(client, model: str, *, required: bool) -> bool:  # 
         )
         _ok(f"Completion verified via /v1/responses (model: {model}, status: {resp.status})")
         if resp.usage:
-            _info(
-                f"Test call usage: {resp.usage.input_tokens} in / "
-                f"{resp.usage.output_tokens} out"
-            )
+            _info(f"Test call usage: {resp.usage.input_tokens} in / " f"{resp.usage.output_tokens} out")
         return True
     except Exception as e:
         _report_failure(f"Completion failed (Responses API): {e}")

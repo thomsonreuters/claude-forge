@@ -133,23 +133,27 @@ async def test_count_tokens_uses_proxy_default_tier(monkeypatch):
 
     monkeypatch.setattr(server.client_factory, "get_client", _fake_get_client)
 
+    class ProviderCfg:
+        tiers = type("T", (), {"haiku": "h", "sonnet": "s", "opus": "o"})()
+        model_alternatives: dict = {}
+
     class ProxyCfg:
         default_tier = "haiku"
         preferred_provider = "openai"
-        gemini = type(
-            "G",
-            (),
-            {"tiers": type("T", (), {"haiku": "h", "sonnet": "s", "opus": "o"})()},
-        )()
+        _provider = ProviderCfg()
+        gemini = ProviderCfg()
+
+        def get_model_for_tier(self, tier: str) -> str:
+            return getattr(self._provider.tiers, tier, "s")
+
+        def get_provider(self, name=None):
+            return self._provider
 
     class SessionCfg:
         default_tier = "opus"
 
     monkeypatch.setattr(server.config, "proxy", ProxyCfg())
     monkeypatch.setattr(server.config, "session", SessionCfg())
-
-    # Stub map_model_name — these tests verify tier resolution, not model mapping
-    monkeypatch.setattr(server, "map_model_name", lambda v: v)
 
     # Ensure data_models.map_model_name doesn't blow up during simulated MessagesRequest creation
     monkeypatch.setattr(server, "MessagesRequest", DummyMessagesRequest)

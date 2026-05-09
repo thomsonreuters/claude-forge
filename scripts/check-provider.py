@@ -7,7 +7,7 @@ Usage:
     scripts/check-provider.py gemini
     scripts/check-provider.py openrouter
     scripts/check-provider.py openrouter --all-models
-    scripts/check-provider.py openrouter --model openai/gpt-5
+    scripts/check-provider.py openrouter --model gpt-5
     scripts/check-provider.py all
 """
 
@@ -26,9 +26,10 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 PROVIDERS = ("anthropic", "openai", "gemini", "openrouter")
 DEFAULT_MODEL_LIMIT = 40
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
-DEFAULT_OPENAI_MODEL = "gpt-5-mini"
+DEFAULT_OPENAI_MODEL = "gpt-4o"
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 TEST_MAX_TOKENS = 16
+TEST_MAX_OUTPUT_TOKENS_RESPONSES = 256  # Responses API counts reasoning toward this budget
 OPENROUTER_TEST_MAX_TOKENS = 16
 
 
@@ -129,6 +130,63 @@ def _print_model_ids(model_ids: list[str], *, all_models: bool, limit: int, labe
         _info("Use --all-models to print every model id.")
 
 
+def _smoke_test_openai_model(client, model: str, *, required: bool) -> bool:  # noqa: ANN001  # openai imported lazily
+    """Smoke-test `model` against the right OpenAI endpoint.
+
+    Tries /v1/chat/completions first. If the model is not a chat model
+    (e.g., GPT-5 family / codex), retries via /v1/responses. Failures are
+    reported as _fail when `required=True` (user passed --model) or as
+    informational skips otherwise.
+    """
+    import openai
+
+    def _report_failure(msg: str) -> None:
+        if required:
+            _fail(msg)
+        else:
+            _info(f"Completion test skipped: {msg}")
+
+    try:
+        chat_resp = client.chat.completions.create(
+            model=model,
+            max_completion_tokens=TEST_MAX_TOKENS,
+            messages=[{"role": "user", "content": "Say 'ok'"}],
+        )
+        finish = chat_resp.choices[0].finish_reason
+        _ok(f"Completion verified via /v1/chat/completions (model: {model}, finish: {finish})")
+        if chat_resp.usage:
+            _info(
+                f"Test call usage: {chat_resp.usage.prompt_tokens} in / "
+                f"{chat_resp.usage.completion_tokens} out"
+            )
+        return True
+    except openai.NotFoundError as e:
+        if "chat model" not in str(e).lower():
+            _report_failure(f"Completion failed: {e}")
+            return False
+        _info("Model is not a chat model; retrying via /v1/responses (Responses API).")
+    except Exception as e:
+        _report_failure(f"Completion failed: {e}")
+        return False
+
+    try:
+        resp = client.responses.create(
+            model=model,
+            input="Say 'ok'",
+            max_output_tokens=TEST_MAX_OUTPUT_TOKENS_RESPONSES,
+        )
+        _ok(f"Completion verified via /v1/responses (model: {model}, status: {resp.status})")
+        if resp.usage:
+            _info(
+                f"Test call usage: {resp.usage.input_tokens} in / "
+                f"{resp.usage.output_tokens} out"
+            )
+        return True
+    except Exception as e:
+        _report_failure(f"Completion failed (Responses API): {e}")
+        return False
+
+
 def check_openai(
     *,
     all_models: bool = False,
@@ -178,21 +236,8 @@ def check_openai(
         _fail(f"API error: {e}")
         return False
 
-    # Quick completion test
-    try:
-        resp = client.chat.completions.create(
-            model=test_model,
-            max_completion_tokens=TEST_MAX_TOKENS,
-            messages=[{"role": "user", "content": "Say 'ok'"}],
-        )
-        _ok(f"Completion verified (model: {test_model}, finish: {resp.choices[0].finish_reason})")
-        if resp.usage:
-            _info(f"Test call usage: {resp.usage.prompt_tokens} in / {resp.usage.completion_tokens} out")
-    except Exception as e:
-        if model:
-            _fail(f"Completion failed: {e}")
-            return False
-        _info(f"Completion test skipped: {e}")
+    if not _smoke_test_openai_model(client, test_model, required=bool(model)) and model:
+        return False
 
     return True
 

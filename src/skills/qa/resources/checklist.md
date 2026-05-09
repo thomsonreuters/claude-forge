@@ -12,7 +12,8 @@
 
 **Test Repo**: `$FORGE_TEST_REPO`
 
-**Last updated**: 2026-05-09 (added cost tracking, spend caps, OpenRouter templates, model alternatives, subprocess proxy, status line cost display)
+**Last updated**: 2026-05-09 (added cost tracking, spend caps, OpenRouter templates, model alternatives, subprocess
+proxy, status line cost display)
 
 ---
 

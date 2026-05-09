@@ -10,6 +10,7 @@ from forge.core.models.catalog import get_compact_name, get_default_model
 from forge.review.models import (
     AVAILABLE_MODELS,
     DEFAULT_MODELS,
+    MODEL_ALIASES,
     ModelSpec,
     MultiReviewOutput,
     ReviewResult,
@@ -18,9 +19,10 @@ from forge.review.models import (
     resolve_model_specs,
 )
 
-# DEFAULT_MODELS keys use compact names (e.g., "gemini-3.1-pro" not "gemini-3.1-pro-preview")
-OPENAI_DEFAULT = get_compact_name(get_default_model("openai", "opus"))
-GEMINI_DEFAULT = get_compact_name(get_default_model("gemini", "opus"))
+# DEFAULT_MODELS keys use canonical model names; compact names remain accepted aliases.
+OPENAI_DEFAULT = get_default_model("openai", "opus")
+GEMINI_DEFAULT = get_default_model("gemini", "opus")
+GEMINI_COMPACT = get_compact_name(GEMINI_DEFAULT)
 ANTHROPIC_DEFAULT = get_default_model("anthropic", "opus")
 
 
@@ -58,6 +60,14 @@ class TestDefaultModels:
 
     def test_gemini_uses_proxy(self):
         assert DEFAULT_MODELS[GEMINI_DEFAULT].proxy == "litellm-gemini"
+
+    def test_compact_gemini_alias_is_accepted(self):
+        assert MODEL_ALIASES[GEMINI_COMPACT] == GEMINI_DEFAULT
+
+        specs = resolve_model_specs(GEMINI_COMPACT)
+
+        assert [s.name for s in specs] == [GEMINI_DEFAULT]
+        assert [s.effective_worker_id for s in specs] == [GEMINI_COMPACT]
 
     def test_claude_is_direct(self):
         assert DEFAULT_MODELS["claude-opus"].proxy is None

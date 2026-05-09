@@ -38,7 +38,8 @@ print(f'estimated={d[\"estimated\"]}')
 "
 ```
 
-- [ ] JSON contains all required fields: `period`, `proxy_id`, `total_cost_micros`, `total_cost_usd`, `total_requests`, `interactive_cost_micros`, `by_verb`, `by_model`, `estimated`
+- [ ] JSON contains all required fields: `period`, `proxy_id`, `total_cost_micros`, `total_cost_usd`, `total_requests`,
+  `interactive_cost_micros`, `by_verb`, `by_model`, `estimated`
 - [ ] `period` is `today`
 - [ ] `estimated` is `true`
 
@@ -52,8 +53,8 @@ print(f'estimated={d[\"estimated\"]}')
 mkdir -p ~/.forge/costs/requests
 cat > ~/.forge/costs/requests/qa-fixture_99999.jsonl <<'EOF'
 {"ts":"2026-05-01T00:00:00Z","proxy_id":"qa-fixture","model":"test/gemini-2.5-flash","tier":"haiku","input_tokens":200,"output_tokens":80,"cached_tokens":0,"cost_micros":300,"estimated":true,"pricing_source":"catalog","latency_ms":120.0,"failed":false,"request_id":"req-qa-001"}
-{"ts":"2026-05-01T00:01:00Z","proxy_id":"qa-fixture","model":"test/gemini-2.5-pro","tier":"sonnet","input_tokens":500,"output_tokens":150,"cached_tokens":50,"cost_micros":1200,"estimated":true,"pricing_source":"catalog","latency_ms":350.0,"failed":false,"request_id":"req-qa-002"}
-{"ts":"2026-05-01T00:02:00Z","proxy_id":"qa-fixture","model":"test/gemini-2.5-pro","tier":"opus","input_tokens":1000,"output_tokens":400,"cached_tokens":100,"cost_micros":3500,"estimated":true,"pricing_source":"catalog","latency_ms":800.0,"failed":false,"request_id":"req-qa-003"}
+{"ts":"2026-05-01T00:01:00Z","proxy_id":"qa-fixture","model":"test/gemini-3.1-pro-preview","tier":"sonnet","input_tokens":500,"output_tokens":150,"cached_tokens":50,"cost_micros":1200,"estimated":true,"pricing_source":"catalog","latency_ms":350.0,"failed":false,"request_id":"req-qa-002"}
+{"ts":"2026-05-01T00:02:00Z","proxy_id":"qa-fixture","model":"test/gemini-3.1-pro-preview","tier":"opus","input_tokens":1000,"output_tokens":400,"cached_tokens":100,"cost_micros":3500,"estimated":true,"pricing_source":"catalog","latency_ms":800.0,"failed":false,"request_id":"req-qa-003"}
 EOF
 
 # Verify fixture is readable -- filter by qa-fixture to isolate from real proxy logs
@@ -63,7 +64,7 @@ forge proxy costs qa-fixture --period all --json
 - [ ] Fixture file created at `~/.forge/costs/requests/qa-fixture_99999.jsonl`
 - [ ] `forge proxy costs qa-fixture --period all --json` shows `total_cost_micros` of 5000 (300 + 1200 + 3500)
 - [ ] `total_requests` is 3
-- [ ] `by_model` contains both `test/gemini-2.5-flash` and `test/gemini-2.5-pro`
+- [ ] `by_model` contains both `test/gemini-2.5-flash` and `test/gemini-3.1-pro-preview`
 
 ### 7.4 Seed Fixture Verb Logs
 
@@ -180,25 +181,25 @@ rejection. This avoids depending on a real request landing above a tiny cap (whi
 models).
 
 ```
-# Set a low daily cap
-forge proxy set litellm-gemini costs.caps.per_day=0.01
-forge proxy set litellm-gemini costs.on_cap_hit=reject
-forge proxy set litellm-gemini costs.cap_mode=post
+# Set a low daily cap on litellm-openai (the working proxy in the container)
+forge proxy set litellm-openai costs.caps.per_day=0.01
+forge proxy set litellm-openai costs.on_cap_hit=reject
+forge proxy set litellm-openai costs.cap_mode=post
 
 # Seed a cost log with a current timestamp so the tracker bootstraps above the cap.
 # The tracker reads YYYY-MM_*.jsonl files on startup (bootstrap_from_logs).
 mkdir -p ~/.forge/costs/requests
 MONTH=$(date -u +%Y-%m)
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "{\"ts\":\"$TS\",\"proxy_id\":\"litellm-gemini\",\"model\":\"seed\",\"tier\":\"sonnet\",\"input_tokens\":0,\"output_tokens\":0,\"cached_tokens\":0,\"cost_micros\":50000,\"estimated\":true,\"pricing_source\":\"catalog\",\"latency_ms\":0,\"failed\":false,\"request_id\":\"req-qa-cap-seed\"}" \
+echo "{\"ts\":\"$TS\",\"proxy_id\":\"litellm-openai\",\"model\":\"seed\",\"tier\":\"sonnet\",\"input_tokens\":0,\"output_tokens\":0,\"cached_tokens\":0,\"cost_micros\":50000,\"estimated\":true,\"pricing_source\":\"catalog\",\"latency_ms\":0,\"failed\":false,\"request_id\":\"req-qa-cap-seed\"}" \
   > ~/.forge/costs/requests/${MONTH}_qa-cap-seed.jsonl
 
-# Restart proxy so it bootstraps from the seeded log
-forge proxy stop litellm-gemini 2>/dev/null || true
-forge proxy start litellm-gemini
+# Restart proxy so it bootstraps from the seeded log (--force bypasses shared-port check)
+forge proxy stop litellm-openai --force 2>/dev/null || true
+forge proxy start litellm-openai
 
 # Make a request -- should be rejected immediately
-forge claude start --proxy litellm-gemini
+forge claude start --proxy litellm-openai
 # Say "hello" -- expect rejection or error about spend cap, then exit (/exit)
 
 # Clean up seeded log
@@ -223,20 +224,20 @@ cost log approach for deterministic cap triggering.
 
 ```
 # Switch to warn mode
-forge proxy set litellm-gemini costs.on_cap_hit=warn
+forge proxy set litellm-openai costs.on_cap_hit=warn
 
 # Re-seed the cost log (cleanup from 7.9 removed it)
 MONTH=$(date -u +%Y-%m)
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "{\"ts\":\"$TS\",\"proxy_id\":\"litellm-gemini\",\"model\":\"seed\",\"tier\":\"sonnet\",\"input_tokens\":0,\"output_tokens\":0,\"cached_tokens\":0,\"cost_micros\":50000,\"estimated\":true,\"pricing_source\":\"catalog\",\"latency_ms\":0,\"failed\":false,\"request_id\":\"req-qa-cap-warn\"}" \
+echo "{\"ts\":\"$TS\",\"proxy_id\":\"litellm-openai\",\"model\":\"seed\",\"tier\":\"sonnet\",\"input_tokens\":0,\"output_tokens\":0,\"cached_tokens\":0,\"cost_micros\":50000,\"estimated\":true,\"pricing_source\":\"catalog\",\"latency_ms\":0,\"failed\":false,\"request_id\":\"req-qa-cap-warn\"}" \
   > ~/.forge/costs/requests/${MONTH}_qa-cap-seed.jsonl
 
-# Restart proxy so it bootstraps with the seeded cost
-forge proxy stop litellm-gemini 2>/dev/null || true
-forge proxy start litellm-gemini
+# Restart proxy so it bootstraps with the seeded cost (--force bypasses shared-port check)
+forge proxy stop litellm-openai --force 2>/dev/null || true
+forge proxy start litellm-openai
 
 # Make a request through the proxy
-forge claude start --proxy litellm-gemini
+forge claude start --proxy litellm-openai
 # Say "hello", then exit (/exit)
 
 # Clean up seeded log
@@ -263,16 +264,24 @@ ls ~/.forge/costs/requests/qa-fixture_*.jsonl 2>&1 || echo "QA_REQUEST_LOGS_CLEA
 ls ~/.forge/costs/verbs/qa-fixture_*.jsonl 2>&1 || echo "QA_VERB_LOGS_CLEAN"
 ls ~/.forge/costs/requests/*_qa-cap-seed.jsonl 2>&1 || echo "QA_CAP_SEED_LOGS_CLEAN"
 
-# Reset spend caps on test proxy
+# Reset spend caps on test proxies
 forge proxy set litellm-gemini costs.caps.per_day=none 2>/dev/null || true
 forge proxy set litellm-gemini costs.caps.per_month=none 2>/dev/null || true
 forge proxy set litellm-gemini costs.on_cap_hit=reject 2>/dev/null || true
 forge proxy set litellm-gemini costs.cap_mode=post 2>/dev/null || true
+forge proxy set litellm-openai costs.caps.per_day=none 2>/dev/null || true
+forge proxy set litellm-openai costs.caps.per_month=none 2>/dev/null || true
+forge proxy set litellm-openai costs.on_cap_hit=reject 2>/dev/null || true
+forge proxy set litellm-openai costs.cap_mode=post 2>/dev/null || true
+
+# Restart litellm-openai so the running proxy drops seeded spend/cap state from 7.9/7.10
+forge proxy stop litellm-openai --force 2>/dev/null || true
+forge proxy start litellm-openai
 ```
 
 - [ ] QA fixture request logs removed (no `qa-fixture_*.jsonl` in `requests/`)
 - [ ] QA fixture verb logs removed (no `qa-fixture_*.jsonl` in `verbs/`)
 - [ ] QA cap seed logs removed (no `*_qa-cap-seed.jsonl` in `requests/`)
-- [ ] Spend caps reset on test proxy
+- [ ] Spend caps reset on test proxies (litellm-gemini and litellm-openai)
 
 ---

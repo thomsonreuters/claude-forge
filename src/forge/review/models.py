@@ -8,7 +8,7 @@ for proxy resolution via ``lookup_proxy_base_url()``.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 PromptMode = Literal["override", "prefix"]
@@ -95,28 +95,24 @@ def _build_available_models() -> dict[str, ModelSpec]:
     """Build available review models from the model catalog.
 
     Model names and flags derive from model_catalog.yaml so updating
-    defaults is a single YAML change. Dict keys use compact display names
-    (e.g., "gemini-3.1-pro" not "gemini-3.1-pro-preview") so the CLI
-    surface stays clean.
+    defaults is a single YAML change. Dict keys use canonical model names
+    so workflow docs, list-models, and --models use the same spelling.
     """
-    from forge.core.models.catalog import get_compact_name, get_default_model
+    from forge.core.models.catalog import get_default_model
 
     openai_opus = get_default_model("openai", "opus")
     gemini_opus = get_default_model("gemini", "opus")
     anthropic_opus = get_default_model("anthropic", "opus")
 
-    openai_name = get_compact_name(openai_opus)
-    gemini_name = get_compact_name(gemini_opus)
-
     return {
-        openai_name: ModelSpec(
-            name=openai_name,
+        openai_opus: ModelSpec(
+            name=openai_opus,
             proxy="litellm-openai",
             model_flag=None,
             description="Logical problems, systematic code review",
         ),
-        gemini_name: ModelSpec(
-            name=gemini_name,
+        gemini_opus: ModelSpec(
+            name=gemini_opus,
             proxy="litellm-gemini",
             model_flag=None,
             description="Balanced analysis, pragmatic suggestions, large context",
@@ -160,17 +156,31 @@ def _build_available_models() -> dict[str, ModelSpec]:
 
 def _build_default_model_names() -> tuple[str, ...]:
     """Return the semantically chosen default quorum model names."""
-    from forge.core.models.catalog import get_compact_name, get_default_model
+    from forge.core.models.catalog import get_default_model
 
     return (
-        get_compact_name(get_default_model("openai", "opus")),
-        get_compact_name(get_default_model("gemini", "opus")),
+        get_default_model("openai", "opus"),
+        get_default_model("gemini", "opus"),
         "claude-opus",
     )
 
 
+def _build_model_aliases(available: dict[str, ModelSpec]) -> dict[str, str]:
+    """Return convenience aliases mapped to canonical workflow model names."""
+    from forge.core.models.catalog import get_compact_name, get_default_model
+
+    aliases: dict[str, str] = {}
+    for family in ("openai", "gemini"):
+        canonical = get_default_model(family, "opus")
+        compact = get_compact_name(canonical)
+        if compact != canonical and compact not in available:
+            aliases[compact] = canonical
+    return aliases
+
+
 # Proxy_ids match Forge template names (forge proxy create <template>).
 AVAILABLE_MODELS: dict[str, ModelSpec] = _build_available_models()
+MODEL_ALIASES: dict[str, str] = _build_model_aliases(AVAILABLE_MODELS)
 _DEFAULT_MODEL_NAMES: tuple[str, ...] = _build_default_model_names()
 DEFAULT_MODELS: dict[str, ModelSpec] = {name: AVAILABLE_MODELS[name] for name in _DEFAULT_MODEL_NAMES}
 
@@ -185,12 +195,19 @@ def resolve_model_specs(names_str: str | None) -> list[ModelSpec]:
         return list(DEFAULT_MODELS.values())
 
     names = [m.strip() for m in names_str.split(",")]
-    invalid = [m for m in names if m not in AVAILABLE_MODELS]
+    invalid = [m for m in names if m not in AVAILABLE_MODELS and m not in MODEL_ALIASES]
     if invalid:
-        available = list(AVAILABLE_MODELS.keys())
+        available = list(AVAILABLE_MODELS.keys()) + sorted(MODEL_ALIASES.keys())
         raise ValueError(f"Unknown models: {invalid}. Available: {available}")
 
-    return [AVAILABLE_MODELS[m] for m in names]
+    specs: list[ModelSpec] = []
+    for name in names:
+        if name in AVAILABLE_MODELS:
+            specs.append(AVAILABLE_MODELS[name])
+            continue
+        canonical = MODEL_ALIASES[name]
+        specs.append(replace(AVAILABLE_MODELS[canonical], worker_id=name))
+    return specs
 
 
 def available_model_specs() -> list[ModelSpec]:

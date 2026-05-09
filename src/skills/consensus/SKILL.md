@@ -91,19 +91,19 @@ Models are assigned roles cyclically. Default roles differ by mode:
 
 **Proposal mode** (default):
 
-| Order | Default Model  | Role         | Focus                                        |
-| ----- | -------------- | ------------ | -------------------------------------------- |
-| 1st   | gpt-5.5        | architecture | Structural alignment, coupling, abstractions |
-| 2nd   | gemini-2.5-pro | security     | Vulnerabilities, trust boundaries, risks     |
-| 3rd   | claude-opus    | correctness  | Logic errors, edge cases, invariants         |
+| Order | Default Model          | Role         | Focus                                        |
+| ----- | ---------------------- | ------------ | -------------------------------------------- |
+| 1st   | gpt-5.5                | architecture | Structural alignment, coupling, abstractions |
+| 2nd   | gemini-3.1-pro-preview | security     | Vulnerabilities, trust boundaries, risks     |
+| 3rd   | claude-opus            | correctness  | Logic errors, edge cases, invariants         |
 
 **Code mode** (`--code`):
 
-| Order | Default Model  | Role            | Focus                                  |
-| ----- | -------------- | --------------- | -------------------------------------- |
-| 1st   | gpt-5.5        | architecture    | Component boundaries, dependency flow  |
-| 2nd   | gemini-2.5-pro | security        | Injection, auth, secrets, trust        |
-| 3rd   | claude-opus    | maintainability | Readability, complexity, test coverage |
+| Order | Default Model          | Role            | Focus                                  |
+| ----- | ---------------------- | --------------- | -------------------------------------- |
+| 1st   | gpt-5.5                | architecture    | Component boundaries, dependency flow  |
+| 2nd   | gemini-3.1-pro-preview | security        | Injection, auth, secrets, trust        |
+| 3rd   | claude-opus            | maintainability | Readability, complexity, test coverage |
 
 Use `--models` to control which models participate. Use `--worker` for explicit model:role mapping.
 

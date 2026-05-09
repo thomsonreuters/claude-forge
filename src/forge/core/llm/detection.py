@@ -41,7 +41,7 @@ def detect_provider(model: str) -> ProviderType:
     Examples:
         >>> detect_provider("openai/gpt-5.2")
         'litellm_remote'
-        >>> detect_provider("vertex_ai/gemini-2.5-pro")
+        >>> detect_provider("vertex_ai/gemini-3.1-pro-preview")
         'litellm_remote'
         >>> detect_provider("gemini/gemini-2.0-flash")
         'litellm_local'
@@ -70,7 +70,7 @@ def detect_provider(model: str) -> ProviderType:
     known = sorted({*LITELLM_REMOTE_PREFIXES, *LITELLM_LOCAL_PREFIXES})
     raise ValueError(
         f"Unknown model prefix in '{model}'. Known prefixes: {', '.join(known)}. "
-        "Use a prefixed canonical ID like 'openai/gpt-5.2' or 'gemini/gemini-2.5-pro'."
+        "Use a prefixed canonical ID like 'openai/gpt-5.2' or 'gemini/gemini-3.1-pro-preview'."
     )
 
 

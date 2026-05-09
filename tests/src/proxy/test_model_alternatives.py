@@ -1,7 +1,5 @@
 """Tests for model_alternatives proxy routing."""
 
-from unittest.mock import patch
-
 import pytest
 
 from forge.proxy import server

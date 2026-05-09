@@ -15,7 +15,7 @@ parallel `claude -p` subprocesses and collect results for synthesis.
 # Deep analysis on a topic (single model, default: claude-opus)
 forge workflow analyze "Should we use event sourcing for the audit log?"
 
-# Multi-model code review (default worker set: gpt-5.5, gemini-2.5-pro, claude-opus)
+# Multi-model code review (default worker set: gpt-5.5, gemini-3.1-pro-preview, claude-opus)
 forge workflow panel src/forge/session/store.py --code
 
 # Multi-model document review
@@ -37,7 +37,7 @@ forge workflow consensus "Should we adopt gRPC for internal services?"
 Unless you pass `-m`, the multi-model workflows use this built-in worker set:
 
 - `gpt-5.5` -> proxy id `litellm-openai`
-- `gemini-2.5-pro` -> proxy id `litellm-gemini`
+- `gemini-3.1-pro-preview` -> proxy id `litellm-gemini`
 - `claude-opus` -> direct Anthropic, pinned to stable Claude Opus 4.6
 
 Selectable direct Claude workers also include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Use
@@ -87,7 +87,7 @@ forge workflow panel src/ --code --review-type security --severity high
 - `--code` -- use code review framework (default: document review)
 - `-p` -- custom review prompt (overrides target+framework and --review-type)
 - `--context` -- `blind` (default: fresh subprocess) or `resume:<uuid>` (fork session context)
-- `-m` -- models to use (default: `gpt-5.5,gemini-2.5-pro,claude-opus`)
+- `-m` -- models to use (default: `gpt-5.5,gemini-3.1-pro-preview,claude-opus`)
 - `--roles` -- comma-separated reviewer roles (security, performance, architecture, maintainability, correctness)
 - `--review-type` -- review focus: `full` (default), `security`, `performance`, `quick` (security/performance need
   --code)
@@ -144,13 +144,13 @@ forge workflow consensus --worker gpt-5.5:architect --worker claude-opus:securit
 
 All `forge workflow` subcommands support:
 
-| Flag      | Description                                                       |
-| --------- | ----------------------------------------------------------------- |
-| `--json`  | Structured JSON output (model responses, durations, success/fail) |
-| `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)       |
-| `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-2.5-pro`)  |
-| `-t`      | Per-model timeout in seconds (default: 600)                       |
-| `--cwd`   | Working directory for subprocesses                                |
+| Flag      | Description                                                              |
+| --------- | ------------------------------------------------------------------------ |
+| `--json`  | Structured JSON output (model responses, durations, success/fail)        |
+| `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)              |
+| `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-3.1-pro-preview`) |
+| `-t`      | Per-model timeout in seconds (default: 600)                              |
+| `--cwd`   | Working directory for subprocesses                                       |
 
 ---
 
@@ -213,7 +213,7 @@ your decision rather than the executor freelancing.
 
 ### "No active proxy found" or a worker fails immediately
 
-The built-in `gpt-5.5` and `gemini-2.5-pro` workers expect active proxies with ids `litellm-openai` and
+The built-in `gpt-5.5` and `gemini-3.1-pro-preview` workers expect active proxies with ids `litellm-openai` and
 `litellm-gemini`. Check availability and create missing proxies:
 
 ```bash

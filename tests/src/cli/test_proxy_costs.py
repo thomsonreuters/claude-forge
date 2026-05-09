@@ -75,7 +75,7 @@ def test_costs_json_filters_verb_records_by_proxy(monkeypatch) -> None:
         },
         {
             "proxy_id": "litellm-gemini",
-            "model": "gemini/gemini-2.5-pro",
+            "model": "gemini/gemini-3.1-pro-preview",
             "cost_micros": 40_000,
             "input_tokens": 800,
             "output_tokens": 200,

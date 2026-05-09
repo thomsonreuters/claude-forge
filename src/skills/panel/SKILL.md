@@ -38,11 +38,11 @@ and stop.
 
 ## Models Used
 
-| Model            | Strength                            | Via                  |
-| ---------------- | ----------------------------------- | -------------------- |
-| `gpt-5.5`        | Logical problems, systematic review | litellm-openai proxy |
-| `gemini-2.5-pro` | Balanced analysis, large context    | litellm-gemini proxy |
-| `claude-opus`    | Stable Claude Opus 4.6 reasoning    | Direct Anthropic     |
+| Model                    | Strength                            | Via                  |
+| ------------------------ | ----------------------------------- | -------------------- |
+| `gpt-5.5`                | Logical problems, systematic review | litellm-openai proxy |
+| `gemini-3.1-pro-preview` | Balanced analysis, large context    | litellm-gemini proxy |
+| `claude-opus`            | Stable Claude Opus 4.6 reasoning    | Direct Anthropic     |
 
 Selectable direct Claude workers include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Use
 `claude-opus-4.7` as a bounded review/quorum worker when the prompt has a concrete target and should require file:line
@@ -90,7 +90,7 @@ Parse the JSON output. The structure is:
   "prompt": "...",
   "results": {
     "gpt-5.5": {"response": "...", "error": null, "success": true, "duration_seconds": 45.2},
-    "gemini-2.5-pro": {"response": "...", "error": null, "success": true, "duration_seconds": 38.1},
+    "gemini-3.1-pro-preview": {"response": "...", "error": null, "success": true, "duration_seconds": 38.1},
     "claude-opus": {"response": "...", "error": null, "success": true, "duration_seconds": 52.7}
   },
   "successful": 3,

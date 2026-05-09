@@ -38,8 +38,8 @@ defaults:
     opus: gpt-5.5
   gemini:
     haiku: gemini-3-flash-preview
-    sonnet: gemini-2.5-pro
-    opus: gemini-2.5-pro
+    sonnet: gemini-3.1-pro-preview
+    opus: gemini-3.1-pro-preview
   anthropic:
     haiku: claude-haiku-4-5-20251001
     sonnet: claude-sonnet-4-6

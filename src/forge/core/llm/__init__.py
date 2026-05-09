@@ -108,7 +108,7 @@ def get_client(
 
     Examples:
         >>> client = get_client("openai/gpt-5.2")
-        >>> client = get_client("vertex_ai/gemini-2.5-pro")
+        >>> client = get_client("vertex_ai/gemini-3.1-pro-preview")
         >>> client = get_client("gemini/gemini-2.0-flash")  # Local LiteLLM
     """
     resolved_provider = provider or detect_provider(model)

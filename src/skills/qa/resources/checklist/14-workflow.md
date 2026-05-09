@@ -32,7 +32,7 @@ forge workflow list-models --available
 <!-- auto -->
 
 ```bash
-forge workflow panel docs/ --models gpt-5.5,gemini-2.5-pro --json
+forge workflow panel docs/ --models gpt-5.5,gemini-3.1-pro-preview --json
 ```
 
 Context mode examples (display-only -- resume needs a real session UUID):
@@ -55,7 +55,7 @@ forge workflow panel docs/ --context blind --json
 
 ```bash
 # Policy gate mode (structured verdict + exit code)
-forge workflow panel -p "Check for security issues" --models gpt-5.5,gemini-2.5-pro --check
+forge workflow panel -p "Check for security issues" --models gpt-5.5,gemini-3.1-pro-preview --check
 echo "Exit code: $?"
 ```
 
@@ -68,10 +68,10 @@ echo "Exit code: $?"
 
 ```bash
 # Multi-model code review (uses bundled codereview resource)
-forge workflow panel src/ --code --models gpt-5.5,gemini-2.5-pro --json
+forge workflow panel src/ --code --models gpt-5.5,gemini-3.1-pro-preview --json
 
 # With --check mode
-forge workflow panel src/ --code --models gpt-5.5,gemini-2.5-pro --check
+forge workflow panel src/ --code --models gpt-5.5,gemini-3.1-pro-preview --check
 echo "Exit code: $?"
 ```
 
@@ -102,10 +102,10 @@ echo "Exit code: $?"
 
 ```bash
 # Adversarial debate with positional proposal
-forge workflow debate "Should we rewrite the core in Rust?" --models gpt-5.5,gemini-2.5-pro --json
+forge workflow debate "Should we rewrite the core in Rust?" --models gpt-5.5,gemini-3.1-pro-preview --json
 
 # Gate mode (exit 0=pass, 1=fail). Debate is fail-closed: success without a parseable verdict = failure.
-forge workflow debate "Should we adopt microservices?" --models gpt-5.5,gemini-2.5-pro --check
+forge workflow debate "Should we adopt microservices?" --models gpt-5.5,gemini-3.1-pro-preview --check
 ```
 
 - [ ] Spawns workers with stance injection (for/against/neutral)
@@ -118,10 +118,10 @@ forge workflow debate "Should we adopt microservices?" --models gpt-5.5,gemini-2
 
 ```bash
 # Adversarial code evaluation (uses bundled code evaluation resource)
-forge workflow debate src/ --code --models gpt-5.5,gemini-2.5-pro --json
+forge workflow debate src/ --code --models gpt-5.5,gemini-3.1-pro-preview --json
 
 # With --check mode
-forge workflow debate src/ --code --models gpt-5.5,gemini-2.5-pro --check
+forge workflow debate src/ --code --models gpt-5.5,gemini-3.1-pro-preview --check
 echo "Exit code: $?"
 ```
 
@@ -135,10 +135,10 @@ echo "Exit code: $?"
 
 ```bash
 # Two-round consensus with role-assigned workers (proposal mode)
-forge workflow consensus "Should we adopt a microservices architecture?" --models gpt-5.5,gemini-2.5-pro --json
+forge workflow consensus "Should we adopt a microservices architecture?" --models gpt-5.5,gemini-3.1-pro-preview --json
 
 # Gate mode (requires 'position' field, not 'verdict')
-forge workflow consensus "Should we adopt event sourcing?" --models gpt-5.5,gemini-2.5-pro --check
+forge workflow consensus "Should we adopt event sourcing?" --models gpt-5.5,gemini-3.1-pro-preview --check
 echo "Exit code: $?"
 ```
 
@@ -154,10 +154,10 @@ echo "Exit code: $?"
 
 ```bash
 # Two-round code consensus (code mode uses architecture/security/maintainability)
-forge workflow consensus src/ --code --models gpt-5.5,gemini-2.5-pro --json
+forge workflow consensus src/ --code --models gpt-5.5,gemini-3.1-pro-preview --json
 
 # With --check mode
-forge workflow consensus src/ --code --models gpt-5.5,gemini-2.5-pro --check
+forge workflow consensus src/ --code --models gpt-5.5,gemini-3.1-pro-preview --check
 echo "Exit code: $?"
 ```
 
@@ -205,17 +205,17 @@ commands manually, treat this step as a failure.
 
 ```bash
 # Single model filter -- should limit to that model only
-forge workflow panel docs/ --models gemini-2.5-pro --json 2>&1 | jq '.results | keys | length'
+forge workflow panel docs/ --models gemini-3.1-pro-preview --json 2>&1 | jq '.results | keys | length'
 
 echo "---"
 
 # Multiple model filter (comma-separated)
-forge workflow panel docs/ --models gpt-5.5,gemini-2.5-pro --json 2>&1 | jq '{results: (.results | keys), successful: .successful, failed: .failed}'
+forge workflow panel docs/ --models gpt-5.5,gemini-3.1-pro-preview --json 2>&1 | jq '{results: (.results | keys), successful: .successful, failed: .failed}'
 
 echo "---"
 
 # Verify result keys match the requested models
-forge workflow panel docs/ --models gemini-2.5-pro --json 2>&1 | jq '.results | keys'
+forge workflow panel docs/ --models gemini-3.1-pro-preview --json 2>&1 | jq '.results | keys'
 ```
 
 - [ ] Single `--models` value produces 1 result key in `.results`

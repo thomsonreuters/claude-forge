@@ -49,7 +49,7 @@ def test_error_message_lists_known_prefixes() -> None:
     [
         ("openai/gpt-5.2", "litellm_remote"),
         ("anthropic/claude-sonnet-4", "litellm_remote"),
-        ("vertex_ai/gemini-2.5-pro", "litellm_remote"),
+        ("vertex_ai/gemini-3.1-pro-preview", "litellm_remote"),
         ("gemini/gemini-2.5-flash", "litellm_local"),
     ],
 )

@@ -335,7 +335,7 @@ class TestOpenRouterModelMapping:
 
         monkeypatch.setattr(config_proxy, "proxy", ProxyCfg())
 
-        assert map_model_name("google/gemini-2.5-pro") == "google/gemini-2.5-pro"
+        assert map_model_name("google/gemini-3.1-pro-preview") == "google/gemini-3.1-pro-preview"
         assert map_model_name("anthropic/claude-sonnet-4.6") == "anthropic/claude-sonnet-4.6"
         assert map_model_name("meta-llama/llama-3.1-70b") == "meta-llama/llama-3.1-70b"
 

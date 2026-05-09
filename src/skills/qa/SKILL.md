@@ -473,12 +473,12 @@ For each section/step in the filtered range:
 
 11. **Gate rules** -- check after each section completes:
 
-    | If section fails... | Then...                                                     |
-    | ------------------- | ----------------------------------------------------------- |
-    | 0 (Enable)          | Stop. Enable is broken.                                     |
-    | 2 (Extensions)      | Skip Section 3 (can't verify auth without ext).             |
+    | If section fails... | Then...                                                              |
+    | ------------------- | -------------------------------------------------------------------- |
+    | 0 (Enable)          | Stop. Enable is broken.                                              |
+    | 2 (Extensions)      | Skip Section 3 (can't verify auth without ext).                      |
     | 4 (Proxy)           | Skip Sections 7, 14-16 (no proxy for costs/workflow/skills/handoff). |
-    | Any section         | Section 20 (Cleanup) always runs.                           |
+    | Any section         | Section 20 (Cleanup) always runs.                                    |
 
 12. **Context conservation**: After completing each `## N.` section, print a one-line summary using the progress numbers
     from the last `record` output. Do NOT carry raw command output forward -- the state file and logs inside the

@@ -90,11 +90,11 @@ result in the conversation. If `--output` was not specified, print the result in
 
 Models are assigned stances cyclically. Default models:
 
-| Order | Default Model  | Stance  | Role                     |
-| ----- | -------------- | ------- | ------------------------ |
-| 1st   | gpt-5.5        | FOR     | Supporter -- strengths   |
-| 2nd   | gemini-2.5-pro | AGAINST | Critic -- risks          |
-| 3rd   | claude-opus    | NEUTRAL | Analyst -- balanced view |
+| Order | Default Model          | Stance  | Role                     |
+| ----- | ---------------------- | ------- | ------------------------ |
+| 1st   | gpt-5.5                | FOR     | Supporter -- strengths   |
+| 2nd   | gemini-3.1-pro-preview | AGAINST | Critic -- risks          |
+| 3rd   | claude-opus            | NEUTRAL | Analyst -- balanced view |
 
 Use `--models` to control which models participate. Stances cycle through for/against/neutral in order.
 

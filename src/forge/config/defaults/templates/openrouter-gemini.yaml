@@ -1,7 +1,7 @@
 # Template: openrouter-gemini
 # Google Gemini models via OpenRouter (direct, no LiteLLM)
 #
-# Access to Gemini 2.5 Pro and Flash.
+# Access to Gemini 3.1 Pro and Flash.
 # Requires OPENROUTER_API_KEY in .env (or environment).
 
 proxy:
@@ -11,8 +11,8 @@ proxy:
   openrouter:
     tiers:
       haiku: google/gemini-2.5-flash
-      sonnet: google/gemini-2.5-pro
-      opus: google/gemini-2.5-pro
+      sonnet: google/gemini-3.1-pro-preview
+      opus: google/gemini-3.1-pro-preview
     tier_overrides:
       sonnet:
         reasoning_effort: medium

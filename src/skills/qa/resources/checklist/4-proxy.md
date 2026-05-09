@@ -384,11 +384,15 @@ forge proxy template show openrouter-gemini-flash
 ```
 
 - [ ] `forge proxy template list` shows 13 user-facing templates total (8 litellm + 5 openrouter)
-- [ ] `openrouter-anthropic` maps tiers to Claude models (haiku=claude-haiku-4.5, sonnet=claude-sonnet-4.6, opus=claude-opus-4.6)
+- [ ] `openrouter-anthropic` maps tiers to Claude models (haiku=claude-haiku-4.5, sonnet=claude-sonnet-4.6,
+  opus=claude-opus-4.6)
 - [ ] `openrouter-openai` maps tiers to GPT models (haiku=gpt-5.4-mini, sonnet=gpt-5.5, opus=gpt-5.5)
-- [ ] `openrouter-openai-codex` maps tiers to Codex models (haiku=gpt-5.1-codex-mini, sonnet=gpt-5.3-codex, opus=gpt-5.5)
-- [ ] `openrouter-gemini` maps tiers to Gemini models (haiku=gemini-2.5-flash, sonnet=gemini-2.5-pro, opus=gemini-2.5-pro)
-- [ ] `openrouter-gemini-flash` maps all tiers to gemini-2.5-flash with tier_overrides for reasoning_effort (low/medium/high)
+- [ ] `openrouter-openai-codex` maps tiers to Codex models (haiku=gpt-5.1-codex-mini, sonnet=gpt-5.3-codex,
+  opus=gpt-5.5)
+- [ ] `openrouter-gemini` maps tiers to Gemini models (haiku=gemini-2.5-flash, sonnet=gemini-3.1-pro-preview,
+  opus=gemini-3.1-pro-preview)
+- [ ] `openrouter-gemini-flash` maps all tiers to gemini-2.5-flash with tier_overrides for reasoning_effort
+  (low/medium/high)
 - [ ] Each OpenRouter template has a distinct default_port (8095-8099)
 
 ### 4.18 OpenRouter Proxy Create

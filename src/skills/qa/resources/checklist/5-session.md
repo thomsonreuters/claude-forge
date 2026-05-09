@@ -107,8 +107,8 @@ CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name 
 
 # Verify fork lives in the same directory as parent
 forge session show test-session-forked
-jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}' \
-  /workspace/.forge/sessions/test-session-forked/forge.session.json
+cat /workspace/.forge/sessions/test-session-forked/forge.session.json | \
+  jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}'
 ```
 
 - [ ] Forked session created in same directory (`/workspace`)
@@ -146,8 +146,8 @@ CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name 
 
 # Verify fork
 forge session show test-session-forked-wt
-jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}' \
-  /workspace-test-session-forked-wt/.forge/sessions/test-session-forked-wt/forge.session.json
+cat /workspace-test-session-forked-wt/.forge/sessions/test-session-forked-wt/forge.session.json | \
+  jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}'
 cat /workspace-test-session-forked-wt/.forge/prev_sessions/test-session-parent.md
 ```
 
@@ -175,7 +175,7 @@ forge session delete test-incognito --force 2>/dev/null || true
 
 # Launch an incognito session (auto-deletes on exit).
 # Say "hello", then exit with /exit.
-forge session incognito test-incognito
+forge session incognito test-incognito --proxy litellm-openai
 
 # After exiting Claude, verify auto-cleanup removed the session
 forge session list
@@ -217,7 +217,7 @@ git worktree remove /workspace-test-refcount-owner --force 2>/dev/null || true
 git branch -D test-refcount-owner 2>/dev/null || true
 
 forge session start test-refcount-owner --worktree --no-launch
-WORKTREE_PATH=$(jq -r '.sessions["test-refcount-owner"].worktree_path' ~/.forge/sessions/index.json)
+WORKTREE_PATH=$(forge session show test-refcount-owner --json | jq -r '.worktree.path')
 
 # Seed a fake UUID so fork's confirmed.claude_session_id guard passes
 OWNER_JSON="$WORKTREE_PATH/.forge/sessions/test-refcount-owner/forge.session.json"
@@ -250,8 +250,8 @@ forge session delete test-session-worktree --force 2>/dev/null || true
 forge session start test-session-worktree --worktree --no-launch
 
 # Worktree sessions store manifests in the worktree dir, not the main workspace.
-# Read the worktree path from the global index.
-WORKTREE_PATH=$(jq -r '.sessions["test-session-worktree"].worktree_path' ~/.forge/sessions/index.json)
+# Read the worktree path from session show.
+WORKTREE_PATH=$(forge session show test-session-worktree --json | jq -r '.worktree.path')
 MANIFEST="$WORKTREE_PATH/.forge/sessions/test-session-worktree/forge.session.json"
 
 # Verify worktree recorded in manifest
@@ -284,7 +284,7 @@ forge session delete test-session-system-prompt --force 2>/dev/null || true
 
 # Launch a session with an inline system prompt.
 # Say "hello", then exit with /exit.
-forge session start test-session-system-prompt --system-prompt "FORGE_MANUAL_TEST_SYSTEM_PROMPT"
+forge session start test-session-system-prompt --proxy litellm-openai --system-prompt "FORGE_MANUAL_TEST_SYSTEM_PROMPT"
 
 # After exiting Claude, verify the generated file
 test -f .claude/forge.system-prompt.generated.md && echo "FILE_EXISTS=true" || echo "FILE_EXISTS=false"
@@ -428,6 +428,10 @@ git branch -D test-into-target 2>/dev/null || true
 # Create a target worktree (simulating an existing feature branch)
 git worktree add /workspace-test-into-target -b test-into-target
 
+# Install Forge extensions in the target worktree (required for --into)
+cd /workspace-test-into-target && forge extension enable --local
+cd /workspace
+
 # Fork the parent session into the existing worktree.
 # Claude will launch with parent handoff context.
 # Disable auto-memory so "where were we?" tests Forge handoff, not CC memory.
@@ -436,8 +440,8 @@ CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name 
 
 # Verify fork
 forge session show test-fork-into
-jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree, owns_worktree})}' \
-  /workspace-test-into-target/.forge/sessions/test-fork-into/forge.session.json
+cat /workspace-test-into-target/.forge/sessions/test-fork-into/forge.session.json | \
+  jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree, owns_worktree})}'
 ```
 
 - [ ] Fork created in existing worktree at `/workspace-test-into-target`

@@ -10,7 +10,7 @@ class TestGetCompactName:
 
     def test_strips_provider_prefix(self) -> None:
         """Provider prefix is stripped (vertex_ai/, openai/, gemini/)."""
-        assert get_compact_name("vertex_ai/gemini-2.5-pro") == "gemini-2.5-pro"
+        assert get_compact_name("vertex_ai/gemini-3.1-pro-preview") == "gemini-3.1-pro"
         assert get_compact_name("openai/gpt-5.2") == "gpt-5.2"
         assert get_compact_name("gemini/gemini-3.1-pro-preview") == "gemini-3.1-pro"
 

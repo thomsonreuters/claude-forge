@@ -29,7 +29,7 @@ def _mock_output(
     if results is None:
         results = [
             ReviewResult("gpt-5.5", "Good code", "", True, 1.5),
-            ReviewResult("gemini-3.1-pro", "Needs work", "", True, 2.0),
+            ReviewResult("gemini-3.1-pro-preview", "Needs work", "", True, 2.0),
         ]
     return MultiReviewOutput(prompt="test prompt", results=results)
 

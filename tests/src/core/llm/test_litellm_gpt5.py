@@ -40,7 +40,7 @@ class TestGPT5ModelDetection:
         non_gpt5_specs = [
             "openai/gpt-4o",
             "openai/gpt-4o-mini",
-            "vertex_ai/gemini-2.5-pro",
+            "vertex_ai/gemini-3.1-pro-preview",
             "anthropic/claude-sonnet-4",
         ]
         for model in non_gpt5_specs:

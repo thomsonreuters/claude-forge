@@ -33,7 +33,7 @@ class TestInferVendor:
 
     def test_gemini_models_to_vertex_ai(self):
         """Gemini models map to vertex_ai (remote routing)."""
-        assert _infer_vendor("gemini-2.5-pro") == "vertex_ai"
+        assert _infer_vendor("gemini-3.1-pro-preview") == "vertex_ai"
         assert _infer_vendor("gemini-2.0-flash") == "vertex_ai"
         assert _infer_vendor("GEMINI-3-PRO") == "vertex_ai"
 

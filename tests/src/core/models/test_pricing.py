@@ -44,9 +44,9 @@ class TestGetPricing:
         assert p.input_per_mtok == 5.0
 
     def test_known_gemini_model(self):
-        p = get_pricing("gemini-2.5-pro")
+        p = get_pricing("gemini-3.1-pro-preview")
         assert p.source == "catalog"
-        assert p.input_per_mtok == 1.25
+        assert p.input_per_mtok == 2.0
 
     def test_alias_resolves_to_canonical(self):
         """OpenRouter dot-form alias should resolve via model catalog."""

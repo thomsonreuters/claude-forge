@@ -230,8 +230,13 @@ triggers Forge's WorktreeCreate hook, which creates the worktree and auto-instal
 In the **container shell**:
 
 ```
+# Clean up from previous runs
+forge session delete wt-hook-test --yes --force 2>/dev/null || true
+git worktree remove /workspace-wt-hook-test --force 2>/dev/null || true
+git branch -D wt-hook-test 2>/dev/null || true
+
 # Start a session with --worktree to trigger WorktreeCreate hook
-forge session start wt-hook-test --worktree
+forge session start wt-hook-test --worktree --proxy litellm-openai
 
 # In the launched Claude session, check that Forge hooks are active:
 #   - The status line should be visible
@@ -247,7 +252,7 @@ cat ../$(basename $(pwd))-wt-hook-test/.claude/settings.local.json 2>/dev/null |
 # Should list hook event types (SessionStart, Stop, etc.)
 
 # Cleanup
-forge session delete wt-hook-test --force
+forge session delete wt-hook-test --yes --force
 ```
 
 - [ ] Worktree created by Forge's WorktreeCreate hook (not Claude Code's default)

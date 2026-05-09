@@ -444,6 +444,34 @@ tiers:
             data = yaml.load(f)
         assert data["costs"]["caps"]["per_day"] == 20.0
 
+    def test_set_cost_cap_can_reset_to_none(self, runner: CliRunner, temp_env: Path) -> None:
+        """Set command accepts none/null for optional cost caps."""
+        from ruamel.yaml import YAML
+
+        proxy_yaml = """\
+template: litellm-openai
+provider: litellm
+proxy_endpoint: http://localhost:8085
+port: 8085
+upstream_base_url: https://litellm.test.example.com
+tiers:
+  haiku: gpt-4o-mini
+  sonnet: gpt-4o
+  opus: gpt-5
+costs:
+  caps:
+    per_day: 20.0
+"""
+        proxy_file = _create_proxy_file(temp_env, "cost-cap-reset-test", proxy_yaml)
+
+        result = runner.invoke(main, ["proxy", "set", "cost-cap-reset-test", "costs.caps.per_day=none"])
+
+        assert result.exit_code == 0
+        yaml = YAML()
+        with open(proxy_file) as f:
+            data = yaml.load(f)
+        assert data["costs"]["caps"]["per_day"] is None
+
     def test_set_invalid_format_error(self, runner: CliRunner, temp_env: Path) -> None:
         """Set command errors on invalid format."""
         proxy_yaml = """\

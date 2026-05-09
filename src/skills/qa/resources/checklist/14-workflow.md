@@ -197,4 +197,29 @@ commands manually, treat this step as a failure.
 - [ ] Synthesis produced with points of agreement AND disagreement
 - [ ] Different perspectives visible in the final response
 
+### 14.11 Workflow `--models` Filter
+
+<!-- requires: api_key -->
+
+<!-- auto -->
+
+```bash
+# Single model filter -- should limit to that model only
+forge workflow panel docs/ --models gemini-2.5-pro --json 2>&1 | jq '.results | keys | length'
+
+echo "---"
+
+# Multiple model filter (comma-separated)
+forge workflow panel docs/ --models gpt-5.5,gemini-2.5-pro --json 2>&1 | jq '{results: (.results | keys), successful: .successful, failed: .failed}'
+
+echo "---"
+
+# Verify result keys match the requested models
+forge workflow panel docs/ --models gemini-2.5-pro --json 2>&1 | jq '.results | keys'
+```
+
+- [ ] Single `--models` value produces 1 result key in `.results`
+- [ ] Comma-separated `--models` produces one result per specified model (`.successful` count matches)
+- [ ] Result keys in `.results` correspond to the requested model names
+
 ---

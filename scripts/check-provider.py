@@ -7,7 +7,7 @@ Usage:
     scripts/check-provider.py gemini
     scripts/check-provider.py openrouter
     scripts/check-provider.py openrouter --all-models
-    scripts/check-provider.py openrouter --model gpt-5
+    scripts/check-provider.py openrouter --model gpt-5.5
     scripts/check-provider.py all
 """
 

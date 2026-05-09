@@ -155,4 +155,184 @@ forge session delete test-session-breadcrumb --force >/dev/null
 
 - [ ] Shows session lineage breadcrumb (for example `test-session-1 > test-session-breadcrumb`)
 
+### 8.4 Cost Display (Direct vs Proxy Format)
+
+<!-- human:confirm -->
+
+The status line shows cost differently in direct vs proxy mode. Direct mode reads `cost.total_cost_usd` from the input
+JSON; proxy mode reads live metrics from `GET /` on the proxy. This step verifies direct-mode rendering through the CLI
+and proxy-mode rendering through a tiny local endpoint that returns the proxy metrics shape.
+
+```bash
+cd $FORGE_TEST_REPO
+
+# Direct mode cost (no tilde prefix) -- feed total_cost_usd via cost data
+STATUS_DIRECT=$(jq -nc \
+  --arg cwd "$FORGE_TEST_REPO" \
+  '{
+    workspace: {current_dir: $cwd},
+    model: {display_name: "Opus 4.6"},
+    cost: {
+      total_cost_usd: 0.05,
+      total_duration_ms: 60000
+    }
+  }')
+
+echo "=== Direct mode ==="
+echo "$STATUS_DIRECT" \
+  | FORGE_SESSION=test-session-1 forge status-line 2>&1 | cat -v
+
+echo "---"
+
+echo "=== Proxy formatter ==="
+PORT_FILE=$(mktemp)
+python3 - "$PORT_FILE" <<'PY' &
+import json
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        port = self.server.server_port
+        body = {
+            "is_proxy": True,
+            "proxy": {
+                "proxy_id": "qa-status-proxy",
+                "template": "qa-status",
+                "port": port,
+                "base_url": f"http://127.0.0.1:{port}",
+            },
+            "runtime": {
+                "active_tier": "sonnet",
+                "active_context_window": 200000,
+                "context_windows": {"sonnet": 200000},
+                "tier_mappings": {"sonnet": "qa/model"},
+            },
+            "metrics": {"costs": {"total_usd": 0.05}},
+        }
+        data = json.dumps(body).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, format, *args):
+        pass
+
+server = HTTPServer(("127.0.0.1", 0), Handler)
+with open(sys.argv[1], "w") as f:
+    f.write(str(server.server_port))
+server.serve_forever()
+PY
+SERVER_PID=$!
+for i in {1..20}; do test -s "$PORT_FILE" && break; sleep 0.1; done
+PORT=$(cat "$PORT_FILE")
+echo "$STATUS_DIRECT" \
+  | ANTHROPIC_BASE_URL="http://127.0.0.1:$PORT" FORGE_SESSION=test-session-1 forge status-line 2>&1 | cat -v
+kill "$SERVER_PID" 2>/dev/null || true
+wait "$SERVER_PID" 2>/dev/null || true
+rm -f "$PORT_FILE"
+```
+
+- [ ] Direct mode shows cost without tilde prefix (e.g., `$0.05`)
+- [ ] Proxy-mode cost formatting uses tilde prefix for estimated proxy spend (e.g., `~$0.05`) and shows duration (`1m`)
+
+### 8.5 Sub-Dollar Cost Formatting
+
+<!-- human:confirm -->
+
+```bash
+cd $FORGE_TEST_REPO
+
+# Direct mode sub-cent cost (< $0.01 triggers cents format)
+STATUS_SUBCENT=$(jq -nc \
+  --arg cwd "$FORGE_TEST_REPO" \
+  '{
+    workspace: {current_dir: $cwd},
+    model: {display_name: "Haiku 4.5"},
+    cost: {
+      total_cost_usd: 0.005,
+      total_duration_ms: 30000
+    }
+  }')
+
+echo "=== Direct sub-cent ==="
+echo "$STATUS_SUBCENT" \
+  | FORGE_SESSION=test-session-1 forge status-line 2>&1 | cat -v
+
+echo "---"
+
+# Direct mode above-cent cost (>= $0.01 uses dollar format)
+STATUS_ABOVECENT=$(jq -nc \
+  --arg cwd "$FORGE_TEST_REPO" \
+  '{
+    workspace: {current_dir: $cwd},
+    model: {display_name: "Haiku 4.5"},
+    cost: {
+      total_cost_usd: 0.03,
+      total_duration_ms: 30000
+    }
+  }')
+
+echo "=== Direct above-cent ==="
+echo "$STATUS_ABOVECENT" \
+  | FORGE_SESSION=test-session-1 forge status-line 2>&1 | cat -v
+
+echo "---"
+
+echo "=== Proxy sub-cent formatter ==="
+PORT_FILE=$(mktemp)
+python3 - "$PORT_FILE" <<'PY' &
+import json
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        port = self.server.server_port
+        body = {
+            "is_proxy": True,
+            "proxy": {
+                "proxy_id": "qa-status-proxy",
+                "template": "qa-status",
+                "port": port,
+                "base_url": f"http://127.0.0.1:{port}",
+            },
+            "runtime": {
+                "active_tier": "sonnet",
+                "active_context_window": 200000,
+                "context_windows": {"sonnet": 200000},
+                "tier_mappings": {"sonnet": "qa/model"},
+            },
+            "metrics": {"costs": {"total_usd": 0.005}},
+        }
+        data = json.dumps(body).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, format, *args):
+        pass
+
+server = HTTPServer(("127.0.0.1", 0), Handler)
+with open(sys.argv[1], "w") as f:
+    f.write(str(server.server_port))
+server.serve_forever()
+PY
+SERVER_PID=$!
+for i in {1..20}; do test -s "$PORT_FILE" && break; sleep 0.1; done
+PORT=$(cat "$PORT_FILE")
+echo "$STATUS_SUBCENT" \
+  | ANTHROPIC_BASE_URL="http://127.0.0.1:$PORT" FORGE_SESSION=test-session-1 forge status-line 2>&1 | cat -v
+kill "$SERVER_PID" 2>/dev/null || true
+wait "$SERVER_PID" 2>/dev/null || true
+rm -f "$PORT_FILE"
+```
+
+- [ ] Sub-cent cost (`< $0.01`) displays in cents format for direct and proxy modes (e.g., `0c` and `~0.5c`)
+- [ ] Above-cent cost (`>= $0.01`) displays in dollar format (e.g., `$0.03`)
+
 ---

@@ -83,7 +83,7 @@ situations where the label matches but the image is wrong (see the `--reset` arg
 | proxy      | 4       | search      | 12      |
 | session    | 5       | guard       | 13      |
 | hooks      | 6       | workflow    | 14      |
-|            |         | skills      | 15      |
+| costs      | 7       | skills      | 15      |
 |            |         | handoff     | 16      |
 |            |         | info        | 17      |
 |            |         | disable     | 18      |
@@ -477,7 +477,7 @@ For each section/step in the filtered range:
     | ------------------- | ----------------------------------------------------------- |
     | 0 (Enable)          | Stop. Enable is broken.                                     |
     | 2 (Extensions)      | Skip Section 3 (can't verify auth without ext).             |
-    | 4 (Proxy)           | Skip Sections 14-16 (no proxy for workflow/skills/handoff). |
+    | 4 (Proxy)           | Skip Sections 7, 14-16 (no proxy for costs/workflow/skills/handoff). |
     | Any section         | Section 20 (Cleanup) always runs.                           |
 
 12. **Context conservation**: After completing each `## N.` section, print a one-line summary using the progress numbers
@@ -638,7 +638,7 @@ The full checklist is split:
 - Index: `resources/checklist.md`
 - Sections: `resources/checklist/*.md`
 
-It covers 20 categories:
+It covers 21 categories:
 
 | Category    | Section | Destructive? |
 | ----------- | ------- | ------------ |
@@ -649,6 +649,7 @@ It covers 20 categories:
 | proxy       | 4       | No           |
 | session     | 5       | No           |
 | hooks       | 6       | No           |
+| costs       | 7       | No           |
 | status-line | 8       | No           |
 | commands    | 9       | No           |
 | resume      | 10      | No           |

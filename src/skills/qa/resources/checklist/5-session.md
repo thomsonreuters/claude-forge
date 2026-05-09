@@ -446,4 +446,72 @@ jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree, owns_wo
 - [ ] Parent handoff context file present in target worktree
 - [ ] Asking "where were we?" reflects parent context from 5.6
 
+### 5.16 Subprocess Proxy (Direct + Proxied Subprocesses)
+
+<!-- prereq: 2.4, 4.2 -->
+
+<!-- auto -->
+
+```bash
+# Clean up from previous runs
+forge session delete test-subprocess-proxy --force 2>/dev/null || true
+
+# Create a session with --subprocess-proxy (direct main, proxied subprocesses)
+forge session start test-subprocess-proxy --subprocess-proxy litellm-gemini --no-launch
+
+# Verify intent recorded in session manifest
+jq '.intent.subprocess_proxy' .forge/sessions/test-subprocess-proxy/forge.session.json
+
+# Verify session is direct mode (no proxy routing for main session)
+jq '{proxy: .intent.proxy, started_with_proxy: .confirmed.started_with_proxy}' \
+  .forge/sessions/test-subprocess-proxy/forge.session.json
+```
+
+- [ ] Session created with `--subprocess-proxy` flag (exit 0)
+- [ ] `intent.subprocess_proxy` is `"litellm-gemini"` in session manifest
+- [ ] `intent.proxy` is null (main session is direct mode)
+- [ ] `confirmed.started_with_proxy` is null (no proxy for main session)
+
+### 5.17 Subprocess Proxy Mutual Exclusivity
+
+<!-- auto -->
+
+```bash
+# Try combining --subprocess-proxy with --proxy (should error)
+forge session start test-invalid-subproxy \
+  --subprocess-proxy litellm-gemini --proxy litellm-openai --no-launch 2>&1
+echo "EXIT=$?"
+```
+
+- [ ] Error message about mutual exclusivity of `--subprocess-proxy` and `--proxy`
+- [ ] Exit code is non-zero
+
+### 5.18 Subprocess Proxy Inheritance (Fork)
+
+<!-- prereq: 5.16 -->
+
+<!-- auto -->
+
+```bash
+# Seed confirmed.claude_session_id so fork guard passes
+PARENT_JSON=".forge/sessions/test-subprocess-proxy/forge.session.json"
+jq '.confirmed.claude_session_id = "fixture-subproxy"' "$PARENT_JSON" > /tmp/sp.json \
+  && mv /tmp/sp.json "$PARENT_JSON"
+
+# Fork the session
+forge session delete test-fork-subproxy --force 2>/dev/null || true
+forge session fork test-subprocess-proxy --name test-fork-subproxy --no-launch
+
+# Verify forked session inherits subprocess_proxy
+jq '.intent.subprocess_proxy' .forge/sessions/test-fork-subproxy/forge.session.json
+
+# Clean up
+forge session delete test-subprocess-proxy --force 2>/dev/null || true
+forge session delete test-fork-subproxy --force 2>/dev/null || true
+```
+
+- [ ] Forked session inherits `subprocess_proxy` from parent
+- [ ] Child `intent.subprocess_proxy` is `"litellm-gemini"`
+- [ ] Both test sessions cleaned up
+
 ---

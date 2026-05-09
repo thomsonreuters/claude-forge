@@ -866,7 +866,9 @@ def set_cmd(proxy_id: str, key_value: str) -> None:
     final_key = keys[-1]
     coerced_value: Any
     try:
-        if final_key in ("port", "proxy_format", "thinking_budget_tokens"):
+        if value.lower() in ("none", "null"):
+            coerced_value = None
+        elif final_key in ("port", "proxy_format", "thinking_budget_tokens"):
             coerced_value = int(value)
         elif final_key in ("temperature",) or key in ("costs.caps.per_day", "costs.caps.per_month"):
             coerced_value = float(value)
@@ -874,8 +876,6 @@ def set_cmd(proxy_id: str, key_value: str) -> None:
             coerced_value = True
         elif value.lower() == "false":
             coerced_value = False
-        elif value.lower() in ("none", "null"):
-            coerced_value = None
         else:
             coerced_value = value
     except ValueError as e:

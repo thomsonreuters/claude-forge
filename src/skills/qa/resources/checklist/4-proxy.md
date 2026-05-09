@@ -19,9 +19,10 @@ forge proxy template list
 
 - [ ] `forge proxy list` shows "No proxies found." when none exist
 - [ ] `forge proxy list` shows tip to run `forge proxy template list`
-- [ ] `forge proxy template list` shows available templates (8 user-facing: litellm-anthropic, litellm-anthropic-local,
+- [ ] `forge proxy template list` shows available templates (13 user-facing: litellm-anthropic, litellm-anthropic-local,
   litellm-gemini, litellm-gemini-flash-local, litellm-gemini-local, litellm-openai, litellm-openai-codex-local,
-  litellm-openai-local)
+  litellm-openai-local, openrouter-anthropic, openrouter-gemini, openrouter-gemini-flash, openrouter-openai,
+  openrouter-openai-codex)
 - [ ] Internal test-only templates (e.g., litellm-gemini-test) are hidden from the default list
 
 ### 4.2 Create a Proxy
@@ -93,16 +94,16 @@ forge proxy delete <proxy_id>
 - [ ] `validate` reports config health
 - [ ] `delete` removes proxy and cleans up registry
 
-### 4.5 Proxy Prune
+### 4.5 Proxy Clean
 
 <!-- auto -->
 
 ```bash
 # Clean up stale proxies (dead processes)
-forge proxy prune
+forge proxy clean
 ```
 
-- [ ] Prune removes stale entries (or reports none found)
+- [ ] Clean removes stale entries (or reports none found)
 
 ### 4.6 Launch Session with Host Proxy
 
@@ -365,5 +366,76 @@ forge backend show litellm-4000 --raw
 
 - [ ] Backend config created (or reports it already exists)
 - [ ] `forge backend show` displays config YAML
+
+### 4.17 OpenRouter Templates
+
+<!-- auto -->
+
+```bash
+# List all templates -- should now include OpenRouter alongside LiteLLM
+forge proxy template list
+
+# Show each OpenRouter template
+forge proxy template show openrouter-anthropic
+forge proxy template show openrouter-openai
+forge proxy template show openrouter-openai-codex
+forge proxy template show openrouter-gemini
+forge proxy template show openrouter-gemini-flash
+```
+
+- [ ] `forge proxy template list` shows 13 user-facing templates total (8 litellm + 5 openrouter)
+- [ ] `openrouter-anthropic` maps tiers to Claude models (haiku=claude-haiku-4.5, sonnet=claude-sonnet-4.6, opus=claude-opus-4.6)
+- [ ] `openrouter-openai` maps tiers to GPT models (haiku=gpt-5.4-mini, sonnet=gpt-5.5, opus=gpt-5.5)
+- [ ] `openrouter-openai-codex` maps tiers to Codex models (haiku=gpt-5.1-codex-mini, sonnet=gpt-5.3-codex, opus=gpt-5.5)
+- [ ] `openrouter-gemini` maps tiers to Gemini models (haiku=gemini-2.5-flash, sonnet=gemini-2.5-pro, opus=gemini-2.5-pro)
+- [ ] `openrouter-gemini-flash` maps all tiers to gemini-2.5-flash with tier_overrides for reasoning_effort (low/medium/high)
+- [ ] Each OpenRouter template has a distinct default_port (8095-8099)
+
+### 4.18 OpenRouter Proxy Create
+
+<!-- auto -->
+
+```bash
+# Clean up from previous runs
+forge proxy delete openrouter-test --force 2>/dev/null || true
+
+# Create an OpenRouter proxy without starting it (no OPENROUTER_API_KEY needed for config-only)
+forge proxy create openrouter-anthropic --name openrouter-test --no-start
+
+# Show proxy details
+forge proxy show openrouter-test
+
+# Show raw YAML
+forge proxy show openrouter-test --raw
+```
+
+- [ ] OpenRouter proxy created from template (exit 0)
+- [ ] `forge proxy show` or `forge proxy validate` displays `Provider: openrouter`
+- [ ] Raw YAML shows `provider: openrouter` and tier mappings with `anthropic/` prefixed model IDs
+- [ ] Proxy uses port 8095 (openrouter-anthropic default)
+
+### 4.19 Model Alternatives
+
+<!-- prereq: 4.18 -->
+
+<!-- auto -->
+
+```bash
+# Check model_alternatives in the openrouter-anthropic template
+forge proxy template show openrouter-anthropic --raw | grep -A3 model_alternatives
+
+# Check instance inherits alternatives
+forge proxy show openrouter-test --raw | grep -A3 model_alternatives
+
+echo "---"
+
+# Clean up
+forge proxy delete openrouter-test --force 2>/dev/null || true
+```
+
+- [ ] Template YAML includes `model_alternatives` section under opus tier
+- [ ] Opus alternative maps `claude-opus-4-7` to `anthropic/claude-opus-4.7`
+- [ ] Proxy instance inherits `model_alternatives` from template
+- [ ] `openrouter-test` proxy cleaned up
 
 ---

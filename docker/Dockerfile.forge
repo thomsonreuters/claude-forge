@@ -49,20 +49,22 @@ WORKDIR /forge
 # Copied early (before source) — rarely changes, maximizes cache reuse
 # -----------------------------------------------------------------------------
 COPY docker/certs/ /forge/docker/certs/
-RUN cert_count=$(find /forge/docker/certs/ -maxdepth 1 -type f \( -name '*.pem' -o -name '*.crt' \) ! -name 'ca-bundle.pem' | wc -l) && \
+RUN cert_count=$(find /forge/docker/certs/ -maxdepth 1 -type f \( -name '*.pem' -o -name '*.crt' \) | wc -l) && \
     if [ "$cert_count" -gt 0 ]; then \
         echo "Installing $cert_count additional CA certificate(s)..." && \
-        find /forge/docker/certs/ -maxdepth 1 -type f \( -name '*.pem' -o -name '*.crt' \) ! -name 'ca-bundle.pem' -exec cat -- {} + > /forge/docker/certs/ca-bundle.pem && \
-        cp /forge/docker/certs/ca-bundle.pem /usr/local/share/ca-certificates/additional-ca.crt && \
+        find /forge/docker/certs/ -maxdepth 1 -type f \( -name '*.pem' -o -name '*.crt' \) -exec cp -t /usr/local/share/ca-certificates/ {} + && \
+        for f in /usr/local/share/ca-certificates/*.pem; do [ -f "$f" ] && mv "$f" "${f%.pem}.crt"; done && \
         update-ca-certificates && \
         echo "Additional CA installed successfully"; \
     else \
         echo "No additional CA certificates found in docker/certs/"; \
-        touch /forge/docker/certs/ca-bundle.pem; \
     fi
 
-# Set NODE_EXTRA_CA_CERTS for Node.js (concatenated bundle; empty file is safe)
-ENV NODE_EXTRA_CA_CERTS=/forge/docker/certs/ca-bundle.pem
+# Point Node.js at the OS-native CA bundle.
+# - Always exists, always non-empty PEM (Mozilla defaults from ca-certificates package)
+# - update-ca-certificates appends user-added certs from /usr/local/share/ca-certificates/
+# - Propagates through Docker ENV to RUN (build-time npm), CMD, and `docker exec` regardless of shell type
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
 # =============================================================================
 # Toolchain stages: Install Claude Code before Forge source copy

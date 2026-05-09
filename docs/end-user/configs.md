@@ -168,9 +168,12 @@ For environments with SSL inspection (e.g. enterprise, Zscaler), place **CA cert
 cp your-ca.pem docker/certs/
 ```
 
-The Dockerfile discovers all `.pem` and `.crt` files (top-level only — subdirectories are not scanned), concatenates
-them into a single bundle, installs it via `update-ca-certificates`, and sets `NODE_EXTRA_CA_CERTS` for Node.js (Claude
-Code). No filename convention required — any `.pem` or `.crt` works.
+The Dockerfile discovers all `.pem` and `.crt` files (top-level only — subdirectories are not scanned), copies them into
+the Debian system trust store (`/usr/local/share/ca-certificates/`), and runs `update-ca-certificates` to merge them
+into the canonical OS bundle at `/etc/ssl/certs/ca-certificates.crt`. Node.js (Claude Code) reads that bundle via
+`ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt`, which is set unconditionally — the file always exists
+(Mozilla defaults are present even with no user-added certs), so there is no empty-file warning. No filename convention
+required — any `.pem` or `.crt` works.
 
 **Security**: Only place CA certificate files here. **Never place private keys** (`.pem` files containing `PRIVATE KEY`
 blocks) in this directory — they would be concatenated into the trust bundle and baked into the Docker image layer.

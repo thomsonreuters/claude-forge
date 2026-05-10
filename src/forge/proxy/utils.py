@@ -88,7 +88,9 @@ def log_request_beautifully(
         status_str = f"{status_color}{status_symbol} {status_code}{Colors.RESET}"
 
         log_line = f"{Colors.BOLD}{method} {endpoint}{Colors.RESET} {status_str}"
-        model_line = f"  {original_display} → {mapped_display} ({messages_str}, {tools_str})"
+        model_line = (
+            f"  {original_display} → {mapped_display} ({messages_str}, {tools_str})"
+        )
 
         # Never write ANSI-colored output to file logs.
         # Only emit these lines to an interactive terminal.
@@ -120,12 +122,18 @@ def log_request_beautifully(
         )
 
 
-def smart_format_str(obj: object, max_string: int = 500, max_length: int = 100, indent: int = 2) -> str:
+def smart_format_str(
+    obj: object, max_string: int = 500, max_length: int = 100, indent: int = 2
+) -> str:
     """Format an object to a string with rich formatting."""
-    return pretty_repr(obj, max_string=max_string, max_length=max_length, indent_size=indent)
+    return pretty_repr(
+        obj, max_string=max_string, max_length=max_length, indent_size=indent
+    )
 
 
-def smart_format_proto_str(obj: object, max_string: int = 500, max_length: int = 100, indent: int = 2) -> str:
+def smart_format_proto_str(
+    obj: object, max_string: int = 500, max_length: int = 100, indent: int = 2
+) -> str:
     """Format a proto object to a string with rich formatting."""
     formatted_obj = proto_to_dict(obj)
     return smart_format_str(formatted_obj, max_string, max_length, indent)
@@ -207,8 +215,10 @@ async def log_tool_event(
         if details:
             event["details"] = details
 
+        from forge.core.state import open_secure_append
+
         async with _tool_events_lock:
-            with open(jsonl_path, "a") as f:
+            with open_secure_append(jsonl_path) as f:
                 f.write(json.dumps(event) + "\n")
 
         _logger.debug(
@@ -220,7 +230,111 @@ async def log_tool_event(
         )
     except Exception as e:
         # Log error but don't fail the request
-        _logger.error("Failed to log tool event: %s (request_id=%s)", e, request_id, exc_info=True)
+        _logger.error(
+            "Failed to log tool event: %s (request_id=%s)", e, request_id, exc_info=True
+        )
+
+
+# Tool Failure Logger — opt-in via RuntimeConfig.log_tool_failures
+_tool_failure_lock = asyncio.Lock()
+
+
+def _should_log_tool_failures() -> bool:
+    from forge.runtime_config import get_runtime_config
+
+    return get_runtime_config().log_tool_failures
+
+
+_TOOL_FAILURE_SCHEMA_VERSION = 1
+_TOOL_INPUT_MAX_STR_LEN = 1024
+_TOOL_INPUT_MAX_DEPTH = 8
+_ERROR_MAX_LEN = 2000
+
+
+def _truncate_for_log(
+    value: str | dict | list | None, max_len: int
+) -> str | dict | list | None:
+    """Truncate a top-level string value (used for the error field)."""
+    if isinstance(value, str) and len(value) > max_len:
+        return value[:max_len] + f"... ({len(value)} chars)"
+    return value
+
+
+def _truncate_recursive(
+    value: Any,
+    max_str_len: int = _TOOL_INPUT_MAX_STR_LEN,
+    max_depth: int = _TOOL_INPUT_MAX_DEPTH,
+) -> Any:
+    """Recursively cap large string values inside nested dicts/lists.
+
+    Edit/Write tool inputs can carry tens of KB of file content. Without
+    this, a single failure can produce a multi-MB JSONL line.
+    """
+    if max_depth <= 0:
+        return "<truncated: max depth exceeded>"
+    if isinstance(value, str):
+        if len(value) > max_str_len:
+            return value[:max_str_len] + f"... ({len(value)} chars)"
+        return value
+    if isinstance(value, dict):
+        return {
+            k: _truncate_recursive(v, max_str_len, max_depth - 1)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_truncate_recursive(v, max_str_len, max_depth - 1) for v in value]
+    return value
+
+
+def _truncate_error_for_log(error_content: str | dict | list | None) -> Any:
+    """Bound tool error payloads, including Anthropic list/dict content blocks."""
+    if isinstance(error_content, str):
+        return _truncate_for_log(error_content, _ERROR_MAX_LEN)
+    return _truncate_recursive(error_content, max_str_len=_ERROR_MAX_LEN)
+
+
+async def log_tool_failure(
+    *,
+    request_id: str,
+    mapped_model: str,
+    tool_name: str | None,
+    tool_use_id: str | None,
+    tool_input: dict[str, Any] | None,
+    error_content: str | dict | list | None,
+) -> None:
+    """Log tool failure to dedicated JSONL for addendum refinement.
+
+    Opt-in via log_tool_failures (no debug mode required). Best-effort:
+    write failures are logged but never break the LLM response.
+    """
+    if not _should_log_tool_failures():
+        return
+
+    try:
+        from forge.core.state import open_secure_append
+
+        logs_dir = get_forge_home() / "logs" / "tool_failures"
+        logs_dir.mkdir(exist_ok=True, parents=True)
+
+        datestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+        jsonl_path = logs_dir / f"{datestamp}_failures.{_pid_suffix()}.jsonl"
+
+        record: dict[str, Any] = {
+            "schema_version": _TOOL_FAILURE_SCHEMA_VERSION,
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "request_id": request_id,
+            "tool_use_id": tool_use_id,
+            "model": mapped_model,
+            "tool": tool_name,
+            "tool_input": _truncate_recursive(tool_input),
+            "error": _truncate_error_for_log(error_content),
+        }
+
+        async with _tool_failure_lock:
+            with open_secure_append(jsonl_path) as f:
+                f.write(json.dumps(record, default=str) + "\n")
+    except Exception as e:
+        _logger.warning("Failed to write tool failure log: %s", e)
 
 
 async def log_request_response(
@@ -295,8 +409,10 @@ async def log_request_response(
         event["request_body"] = request_body
         event["response_body"] = response_body
 
+        from forge.core.state import open_secure_append
+
         async with _request_response_lock:
-            with open(jsonl_path, "a") as f:
+            with open_secure_append(jsonl_path) as f:
                 f.write(json.dumps(event, default=str) + "\n")
 
         if is_failure:
@@ -321,7 +437,8 @@ async def log_request_response(
             )
         else:
             _logger.debug(
-                "[%s] Request/Response logged: status=%s, model=%s->%s, " "messages=%s, tools=%s, duration=%sms",
+                "[%s] Request/Response logged: status=%s, model=%s->%s, "
+                "messages=%s, tools=%s, duration=%sms",
                 request_id,
                 status_code,
                 original_model,

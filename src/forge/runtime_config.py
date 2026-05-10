@@ -93,27 +93,38 @@ class RuntimeConfig:
     # Does NOT affect deny output or substantive warning lines -- those stay visible always.
     policy_summary_feedback: str = "on"
 
+    # Log tool failures to ~/.forge/logs/tool_failures/ even without debug mode.
+    # Off by default because records may include tool inputs and error payloads.
+    log_tool_failures: bool = False
+
     def __post_init__(self) -> None:
         valid_modes = {"host", "sidecar"}
         if self.proxy_mode not in valid_modes:
             raise ValueError(
-                f"Invalid proxy_mode: '{self.proxy_mode}' " f"(must be one of: {', '.join(sorted(valid_modes))})"
+                f"Invalid proxy_mode: '{self.proxy_mode}' "
+                f"(must be one of: {', '.join(sorted(valid_modes))})"
             )
         if self.context_limit < 1:
             raise ValueError(f"context_limit must be >= 1, got {self.context_limit}")
         if self.status_timeout <= 0:
             raise ValueError(f"status_timeout must be > 0, got {self.status_timeout}")
         if self.handoff_timeout < 1:
-            raise ValueError(f"handoff_timeout must be >= 1, got {self.handoff_timeout}")
+            raise ValueError(
+                f"handoff_timeout must be >= 1, got {self.handoff_timeout}"
+            )
         valid_log_levels = {"off", "debug", "info", "warning"}
         if self.log_level not in valid_log_levels:
             raise ValueError(
                 f"Invalid log_level: '{self.log_level}' (must be one of: {', '.join(sorted(valid_log_levels))})"
             )
         if self.log_retention_days < 0:
-            raise ValueError(f"log_retention_days must be >= 0, got {self.log_retention_days}")
+            raise ValueError(
+                f"log_retention_days must be >= 0, got {self.log_retention_days}"
+            )
         if self.session_retention_days < 0:
-            raise ValueError(f"session_retention_days must be >= 0, got {self.session_retention_days}")
+            raise ValueError(
+                f"session_retention_days must be >= 0, got {self.session_retention_days}"
+            )
         valid_feedback = {"on", "off"}
         if self.policy_summary_feedback not in valid_feedback:
             raise ValueError(
@@ -187,7 +198,9 @@ def _apply_env_overrides(config: RuntimeConfig) -> RuntimeConfig:
     try:
         result = RuntimeConfig(**merged)
     except (ValueError, TypeError) as e:
-        logger.warning("Env override produced invalid config: %s — ignoring overrides", e)
+        logger.warning(
+            "Env override produced invalid config: %s — ignoring overrides", e
+        )
         object.__setattr__(config, "_env_sources", {})
         return config
 
@@ -403,4 +416,9 @@ proxy_mode: host
 # "on" (default) prints what was checked and the verdict after each policy evaluation.
 # "off" silences summary lines. Deny messages and substantive warnings stay visible always.
 # policy_summary_feedback: "on"
+
+# Tool failure telemetry for proxied sessions.
+# Records failed tool call inputs and errors to help refine model-family prompt addendums.
+# Off by default because payloads may include file paths, command text, or content snippets.
+# log_tool_failures: false
 """

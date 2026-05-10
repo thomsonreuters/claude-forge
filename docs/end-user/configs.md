@@ -58,11 +58,16 @@ Available settings:
 | `handoff_timeout`                | `300`                  | Handoff agent timeout (seconds)                                                           |
 | `log_level`                      | `off`                  | File logging level (`off`, `debug`, `info`, `warning`)                                    |
 | `policy_summary_feedback`        | `on`                   | Post-evaluation summary lines and additionalContext (`on`/`off`)                          |
+| `log_tool_failures`              | `false`                | Log tool failures to `~/.forge/logs/tool_failures/` (proxy; includes tool inputs/errors)  |
 
 Environment overrides:
 
 - `FORGE_DEBUG` overrides `log_level`. Accepted values: `1/true/yes` -> `debug`, `0/false/no/off` -> `off`, or explicit
   `debug/info/warning`
+
+**Note on running processes:** Runtime config is cached per-process. Changes via `forge config set` take effect for new
+CLI invocations and new sessions, but **already-running proxies do not pick up changes until restart**. To toggle
+`log_tool_failures` on a live proxy, run `forge proxy stop <id> && forge proxy start <id>`.
 
 **In-session access (read-only):** Type `%config` in the Claude prompt to see effective config. See
 [hooks.md](hooks.md#in-session-commands--commands) for all `%` commands.

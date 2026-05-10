@@ -61,6 +61,10 @@ class TestRuntimeConfigDefaults:
         rc = RuntimeConfig()
         assert rc.user_agent_claude_code_version == ""
 
+    def test_tool_failure_logging_is_opt_in(self):
+        rc = RuntimeConfig()
+        assert rc.log_tool_failures is False
+
 
 class TestRuntimeConfigValidation:
     def test_invalid_proxy_mode_rejected(self):
@@ -166,6 +170,12 @@ class TestLoadRuntimeConfig:
         assert rc.proxy_mode == "sidecar"
         assert rc.status_timeout == 0.5
 
+    def test_log_tool_failures_yaml_parsed(self, tmp_path: Path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("log_tool_failures: true\n")
+        rc = load_runtime_config(config_file)
+        assert rc.log_tool_failures is True
+
     def test_partial_yaml_uses_defaults_for_missing(self, tmp_path: Path):
         config_file = tmp_path / "config.yaml"
         config_file.write_text("proxy_mode: sidecar\n")
@@ -182,7 +192,9 @@ class TestLoadRuntimeConfig:
 
     def test_unknown_keys_warned_and_ignored(self, tmp_path: Path, caplog):
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("proxy_mode: host\nfuture_setting: true\nanother_key: 42\n")
+        config_file.write_text(
+            "proxy_mode: host\nfuture_setting: true\nanother_key: 42\n"
+        )
         with caplog.at_level(logging.WARNING):
             rc = load_runtime_config(config_file)
         assert rc.proxy_mode == "host"
@@ -219,7 +231,9 @@ class TestLoadRuntimeConfig:
 
     def test_integer_and_float_types_preserved(self, tmp_path: Path):
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("context_limit: 1000000\n" "status_timeout: 0.25\n" "handoff_timeout: 60\n")
+        config_file.write_text(
+            "context_limit: 1000000\nstatus_timeout: 0.25\nhandoff_timeout: 60\n"
+        )
         rc = load_runtime_config(config_file)
         assert rc.context_limit == 1000000
         assert rc.status_timeout == 0.25
@@ -290,7 +304,9 @@ class TestWriteRuntimeConfig:
         # Make os.replace fail so the atomic swap doesn't complete
         from unittest.mock import patch
 
-        with patch("forge.runtime_config.os.replace", side_effect=OSError("mock replace")):
+        with patch(
+            "forge.runtime_config.os.replace", side_effect=OSError("mock replace")
+        ):
             with pytest.raises(OSError, match="mock replace"):
                 write_runtime_config({"proxy_mode": "sidecar"}, path=config_path)
 
@@ -365,6 +381,7 @@ class TestGetDefaultConfigContent:
             "context_limit",
             "status_timeout",
             "handoff_timeout",
+            "log_tool_failures",
         ]:
             assert key in content, f"Missing key in default content: {key}"
 
@@ -437,5 +454,6 @@ class TestEnvVarOverrides:
         valid_fields = {f.name for f in fields(RuntimeConfig)}
         for env_var, field_name in _ENV_OVERRIDES.items():
             assert field_name in valid_fields, (
-                f"_ENV_OVERRIDES[{env_var!r}] targets {field_name!r} " f"which is not a RuntimeConfig field"
+                f"_ENV_OVERRIDES[{env_var!r}] targets {field_name!r} "
+                f"which is not a RuntimeConfig field"
             )

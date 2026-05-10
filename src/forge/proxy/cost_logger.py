@@ -71,11 +71,13 @@ def log_request_cost(
     }
 
     try:
+        from forge.core.state import open_secure_append
+
         log_path = _current_log_path()
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
         with _lock:
-            with open(log_path, "a") as f:
+            with open_secure_append(log_path) as f:
                 f.write(json.dumps(record, separators=(",", ":")) + "\n")
     except Exception as e:
         logger.warning("Failed to write cost log: %s", e)

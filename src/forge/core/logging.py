@@ -80,6 +80,12 @@ def configure_debug_logging(component: str, subdirectory: str) -> None:
         handler.setLevel(py_level)
         handler.setFormatter(fmt)
         forge_logger.addHandler(handler)
+
+        # Set 0600 perms — log files may contain payload fragments / hostnames.
+        try:
+            os.chmod(str(log_file), 0o600)
+        except OSError:
+            pass
     except Exception:
         pass  # Fail-open: don't crash the command because logging couldn't start
 

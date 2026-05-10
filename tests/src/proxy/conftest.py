@@ -144,5 +144,6 @@ def server_stubs(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(server, "log_request_response", lambda *a, **kw: None)
     monkeypatch.setattr(server, "log_request_beautifully", lambda *a, **kw: None)
     monkeypatch.setattr(server, "log_tool_event", lambda *a, **kw: None)
+    monkeypatch.setattr(server, "log_tool_failure", lambda *a, **kw: None)
     monkeypatch.setattr(server, "_check_client_tool_failures", lambda *a, **kw: None)
     return server

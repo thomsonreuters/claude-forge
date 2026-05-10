@@ -26,6 +26,7 @@ import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
+from typing import Any
 
 import click
 import uvicorn
@@ -60,6 +61,7 @@ from forge.proxy.utils import (
     log_request_beautifully,
     log_request_response,
     log_tool_event,
+    log_tool_failure,
 )
 
 logger = logging.getLogger(__name__)
@@ -228,7 +230,9 @@ def _get_tier_override(tier: str) -> TierOverride | None:
         return None
 
 
-def _resolve_model_with_alternatives(tier: str, original_model_name: str | None, fallback_model: str) -> str:
+def _resolve_model_with_alternatives(
+    tier: str, original_model_name: str | None, fallback_model: str
+) -> str:
     """Resolve backend model, checking per-tier alternatives before the tier default.
 
     Used by both message routing and token counting so model resolution is
@@ -244,7 +248,9 @@ def _resolve_model_with_alternatives(tier: str, original_model_name: str | None,
                 return alt_models[lookup]
     except Exception:
         # Best-effort: degrade to fallback_model if provider config is unavailable
-        logger.debug("model_alternatives lookup failed, using tier default", exc_info=True)
+        logger.debug(
+            "model_alternatives lookup failed, using tier default", exc_info=True
+        )
     return fallback_model
 
 
@@ -406,7 +412,9 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             },
         )
 
-    logger.debug(f"[{request_id}] Resolved tier: {resolved_tier} (source={resolved_tier_source})")
+    logger.debug(
+        f"[{request_id}] Resolved tier: {resolved_tier} (source={resolved_tier_source})"
+    )
 
     request_data.tier = resolved_tier
 
@@ -416,13 +424,17 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
     #   2. Model is truly ambiguous (no provider prefix and not a known backend model)
     # Do NOT override explicit backend models like "openai/gpt-5.5" or "vertex_ai/gemini-3.1-pro"
     original_model_name = request_data.original_model_name
-    mapped_model = map_model_name(request_data.model)  # Map AFTER reload() for fresh config
+    mapped_model = map_model_name(
+        request_data.model
+    )  # Map AFTER reload() for fresh config
 
     # Check if original model is an explicit backend model (has provider prefix)
     # These should be passed through, not tier-resolved
     if config.proxy.preferred_provider == "openrouter":
         # OpenRouter: any provider/model format is explicit (google/, meta-llama/, etc.)
-        is_explicit_backend = original_model_name is not None and "/" in original_model_name
+        is_explicit_backend = (
+            original_model_name is not None and "/" in original_model_name
+        )
     else:
         is_explicit_backend = (
             original_model_name is not None
@@ -452,16 +464,22 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
     else:
         # Anthropic-style or ambiguous — check alternatives, then fall back to tier default
         tier_default = config.proxy.get_model_for_tier(resolved_tier)
-        actual_model_id = _resolve_model_with_alternatives(resolved_tier, original_model_name, tier_default)
-        logger.debug(f"[{request_id}] Tier-resolved model: tier={resolved_tier} -> '{actual_model_id}'")
+        actual_model_id = _resolve_model_with_alternatives(
+            resolved_tier, original_model_name, tier_default
+        )
+        logger.debug(
+            f"[{request_id}] Tier-resolved model: tier={resolved_tier} -> '{actual_model_id}'"
+        )
 
     try:
         num_messages = len(request_data.messages) if request_data.messages else 0
         num_tools = len(request_data.tools) if request_data.tools else 0
-        tool_names = [tool.name for tool in request_data.tools] if request_data.tools else []
+        tool_names = (
+            [tool.name for tool in request_data.tools] if request_data.tools else []
+        )
         has_system = bool(request_data.system)
 
-        await _check_client_tool_failures(request_data, request_id)
+        await _check_client_tool_failures(request_data, request_id, actual_model_id)
 
         # Detect provider BEFORE conversion to enable provider-specific schema handling
         detected_provider = client_factory.detect_provider_for_model(actual_model_id)
@@ -473,7 +491,9 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             f"messages={num_messages}, tools={num_tools}, stream={request_data.stream}"
         )
 
-        openai_request_dict = convert_anthropic_to_openai(request_data, provider=provider_name)
+        openai_request_dict = convert_anthropic_to_openai(
+            request_data, provider=provider_name
+        )
 
         openai_request_dict["model"] = actual_model_id
 
@@ -485,12 +505,16 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             incoming_user_agent = raw_request.headers.get("user-agent")
             if incoming_user_agent:
                 openai_request_dict["_user_agent"] = incoming_user_agent
-                logger.debug(f"[{request_id}] Forwarding User-Agent: {incoming_user_agent[:120]!r}")
+                logger.debug(
+                    f"[{request_id}] Forwarding User-Agent: {incoming_user_agent[:120]!r}"
+                )
 
         # Priority: request explicit > tier_override > model default (in catalog)
         tier_override = _get_tier_override(resolved_tier)
         if tier_override:
-            logger.debug(f"[{request_id}] Tier override for '{resolved_tier}': {tier_override}")
+            logger.debug(
+                f"[{request_id}] Tier override for '{resolved_tier}': {tier_override}"
+            )
 
         if request_data.temperature is not None:
             openai_request_dict["temperature"] = request_data.temperature
@@ -534,8 +558,12 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
         # Get unified client for this model (pass tier for tier-specific hyperparameters)
         try:
-            client = await client_factory.get_client(actual_model_id, tier=request_data.tier)
-            logger.debug(f"[{request_id}] Got client for {actual_model_id} (tier={request_data.tier})")
+            client = await client_factory.get_client(
+                actual_model_id, tier=request_data.tier
+            )
+            logger.debug(
+                f"[{request_id}] Got client for {actual_model_id} (tier={request_data.tier})"
+            )
         except AuthenticationError as e:
             logger.error(f"[{request_id}] Authentication failed: {e}")
             raise HTTPException(
@@ -550,7 +578,9 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             # Streaming response
             async def stream_generator():
                 try:
-                    async for chunk in client.create_streaming_completion(openai_request_dict, request_id):
+                    async for chunk in client.create_streaming_completion(
+                        openai_request_dict, request_id
+                    ):
                         yield chunk
                 except ToolCallError as e:
                     yield {
@@ -560,7 +590,9 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                         }
                     }
                 except ProxyStreamError as e:
-                    logger.error(f"[{request_id}] ProxyStreamError ({e.error_type}): {e}")
+                    logger.error(
+                        f"[{request_id}] ProxyStreamError ({e.error_type}): {e}"
+                    )
                     yield {
                         "error": {
                             "type": e.error_type,
@@ -610,7 +642,9 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 status_code=200,
             )
 
-            def _on_stream_complete(usage: dict[str, int], failed: bool, error_type: str | None) -> None:
+            def _on_stream_complete(
+                usage: dict[str, int], failed: bool, error_type: str | None
+            ) -> None:
                 elapsed = (time.time() - start_time) * 1000
                 in_tok = usage.get("input_tokens", 0)
                 out_tok = usage.get("output_tokens", 0)
@@ -650,8 +684,12 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             )
         else:
             try:
-                openai_response = await client.create_completion(openai_request_dict, request_id)
-                anthropic_response = convert_openai_to_anthropic(openai_response, original_model_name)
+                openai_response = await client.create_completion(
+                    openai_request_dict, request_id
+                )
+                anthropic_response = convert_openai_to_anthropic(
+                    openai_response, original_model_name
+                )
 
                 if not anthropic_response:
                     raise HTTPException(
@@ -802,8 +840,12 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 # Try refreshing credentials once
                 logger.warning(f"[{request_id}] Auth failed, refreshing credentials")
                 client = await client_factory.invalidate_and_retry(actual_model_id)
-                openai_response = await client.create_completion(openai_request_dict, request_id)
-                anthropic_response = convert_openai_to_anthropic(openai_response, original_model_name)
+                openai_response = await client.create_completion(
+                    openai_request_dict, request_id
+                )
+                anthropic_response = convert_openai_to_anthropic(
+                    openai_response, original_model_name
+                )
 
                 if not anthropic_response:
                     raise HTTPException(
@@ -918,7 +960,9 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
         )
 
         logger.error(f"[{request_id}] Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"type": "api_error", "message": error_msg})
+        raise HTTPException(
+            status_code=500, detail={"type": "api_error", "message": error_msg}
+        )
 
 
 @app.post("/v1/messages/count_tokens", response_model=TokenCountResponse)
@@ -954,7 +998,9 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
         mapped_model = map_model_name(request_data.model)
 
         if config.proxy.preferred_provider == "openrouter":
-            is_explicit_backend = original_model_name is not None and "/" in original_model_name
+            is_explicit_backend = (
+                original_model_name is not None and "/" in original_model_name
+            )
         else:
             is_explicit_backend = (
                 original_model_name is not None
@@ -977,10 +1023,16 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
             actual_model_id = mapped_model
         else:
             tier_default = config.proxy.get_model_for_tier(resolved_tier)
-            actual_model_id = _resolve_model_with_alternatives(resolved_tier, original_model_name, tier_default)
+            actual_model_id = _resolve_model_with_alternatives(
+                resolved_tier, original_model_name, tier_default
+            )
 
-        logger.info(f"[{request_id}] Token counting: original='{original_model_name}', target='{actual_model_id}'")
-        logger.debug(f"[{request_id}] Token count resolved tier: {resolved_tier} (source={resolved_tier_source})")
+        logger.info(
+            f"[{request_id}] Token counting: original='{original_model_name}', target='{actual_model_id}'"
+        )
+        logger.debug(
+            f"[{request_id}] Token count resolved tier: {resolved_tier} (source={resolved_tier_source})"
+        )
 
         detected_provider = client_factory.detect_provider_for_model(actual_model_id)
         provider_name = detected_provider.value
@@ -991,14 +1043,18 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
             system=request_data.system,
             max_tokens=1,
         )
-        openai_dict = convert_anthropic_to_openai(simulated_request, provider=provider_name)
+        openai_dict = convert_anthropic_to_openai(
+            simulated_request, provider=provider_name
+        )
         messages = openai_dict.get("messages", [])
 
         client = await client_factory.get_client(actual_model_id, tier=resolved_tier)
         token_count = await client.count_tokens(messages)
 
         response = TokenCountResponse(input_tokens=token_count)
-        return JSONResponse(content=response.model_dump(), headers={"X-Request-ID": request_id})
+        return JSONResponse(
+            content=response.model_dump(), headers={"X-Request-ID": request_id}
+        )
 
     except Exception as e:
         logger.error(f"[{request_id}] Token counting failed: {e}")
@@ -1026,7 +1082,9 @@ def get_context_window(model_name: str) -> int:
     from forge.core.models import get_context_window_tokens, model_exists
 
     if not model_exists(model_name):
-        logger.debug(f"Model {model_name!r} not in catalog, using default context window")
+        logger.debug(
+            f"Model {model_name!r} not in catalog, using default context window"
+        )
         return DEFAULT_CONTEXT_WINDOW
 
     return get_context_window_tokens(model_name)
@@ -1111,7 +1169,9 @@ async def root(request: Request):
         default_tier = None
         default_tier_source = "missing"
 
-    runtime_active_model = tier_models.get(default_tier or "sonnet") or tier_models.get("sonnet")
+    runtime_active_model = tier_models.get(default_tier or "sonnet") or tier_models.get(
+        "sonnet"
+    )
 
     routing_section = {
         "default_tier": default_tier,
@@ -1128,9 +1188,13 @@ async def root(request: Request):
         "template": active_template,
         "provider": preferred_provider,
         "tier_mappings": tier_models,
-        "context_windows": {tier: get_context_window(model) for tier, model in tier_models.items()},
+        "context_windows": {
+            tier: get_context_window(model) for tier, model in tier_models.items()
+        },
         "active_tier": default_tier,
-        "active_context_window": get_context_window(runtime_active_model) if runtime_active_model else None,
+        "active_context_window": get_context_window(runtime_active_model)
+        if runtime_active_model
+        else None,
         # Proxy-owned hyperparameter defaults actually used by proxy clients (post-merge)
         "llm_defaults_by_tier": llm_defaults_by_tier,
     }
@@ -1175,7 +1239,9 @@ async def log_requests_middleware(request: Request, call_next):
     elif "/" == path:
         prefix = "inf_"
 
-    request_id = request.headers.get("X-Request-ID") or f"{prefix}{uuid.uuid4().hex[:12]}"
+    request_id = (
+        request.headers.get("X-Request-ID") or f"{prefix}{uuid.uuid4().hex[:12]}"
+    )
     request.state.request_id = request_id
 
     # Endpoints that have their own detailed logging
@@ -1212,9 +1278,27 @@ async def log_requests_middleware(request: Request, call_next):
         )
 
 
-async def _check_client_tool_failures(request_data: MessagesRequest, request_id: str):
-    """Check for client-side tool execution failures in the request."""
-    for msg in request_data.messages:
+async def _check_client_tool_failures(
+    request_data: MessagesRequest, request_id: str, mapped_model: str
+):
+    """Check for client-side tool execution failures in the request.
+
+    Only scans the most recent user message. Older tool_result blocks were
+    already inspected on prior requests; re-scanning them produces duplicate
+    log entries and skews telemetry.
+    """
+    latest_user_msg = next(
+        (
+            m
+            for m in reversed(request_data.messages)
+            if m.role == "user" and isinstance(m.content, list)
+        ),
+        None,
+    )
+    if latest_user_msg is None:
+        return
+
+    for msg in (latest_user_msg,):
         if msg.role == "user" and isinstance(msg.content, list):
             for block in msg.content:
                 if hasattr(block, "type") and block.type == "tool_result":
@@ -1230,13 +1314,19 @@ async def _check_client_tool_failures(request_data: MessagesRequest, request_id:
 
                     if hasattr(block, "content") and not is_error:
                         # 2. Check for dict with error keys (structured errors)
-                        if isinstance(block.content, dict) and any(k in block.content for k in ["error", "exception"]):
+                        if isinstance(block.content, dict) and any(
+                            k in block.content for k in ["error", "exception"]
+                        ):
                             is_error = True
                             error_content = block.content
                         # 3. For string content, only check for explicit error patterns at the start
                         # Don't scan the entire content as it causes false positives with documentation
                         elif isinstance(block.content, str):
-                            content_start = block.content[:200] if len(block.content) > 200 else block.content
+                            content_start = (
+                                block.content[:200]
+                                if len(block.content) > 200
+                                else block.content
+                            )
                             # Be specific to avoid false positives
                             error_patterns = [
                                 "Error:",
@@ -1254,7 +1344,10 @@ async def _check_client_tool_failures(request_data: MessagesRequest, request_id:
                                 "Invalid input",
                                 "Traceback (most recent call last)",
                             ]
-                            if any(content_start.startswith(pattern) for pattern in error_patterns):
+                            if any(
+                                content_start.startswith(pattern)
+                                for pattern in error_patterns
+                            ):
                                 is_error = True
                                 error_content = block.content
                             else:
@@ -1263,11 +1356,14 @@ async def _check_client_tool_failures(request_data: MessagesRequest, request_id:
                             error_content = block.content
 
                     if is_error and tool_use_id:
-                        tool_name = _find_tool_name(request_data.messages, msg, tool_use_id)
+                        tool_name, tool_input = _find_tool_use_info(
+                            request_data.messages, msg, tool_use_id
+                        )
 
                         # Check if this is a stale cleared tool result (not actionable)
                         is_cleared_content = (
-                            isinstance(error_content, str) and "Old tool result content cleared" in error_content
+                            isinstance(error_content, str)
+                            and "Old tool result content cleared" in error_content
                         )
 
                         # Only log as warning if we have actual error content (not cleared)
@@ -1291,16 +1387,34 @@ async def _check_client_tool_failures(request_data: MessagesRequest, request_id:
                             )
 
                         enriched_content = error_content
-                        if error_content and not is_cleared_content and isinstance(error_content, str):
+                        if (
+                            error_content
+                            and not is_cleared_content
+                            and isinstance(error_content, str)
+                        ):
                             provider_cfg = config.proxy.get_provider()
                             if provider_cfg.error_hints:
-                                enriched_content = enrich_error_content(tool_name, error_content)
+                                enriched_content = enrich_error_content(
+                                    tool_name, error_content
+                                )
                                 if enriched_content != error_content:
                                     block.content = enriched_content
-                                    logger.debug(f"[{request_id}] Enriched error hint for tool '{tool_name}'")
+                                    logger.debug(
+                                        f"[{request_id}] Enriched error hint for tool '{tool_name}'"
+                                    )
 
                         # Only log as failure if we have actual error content (not cleared)
                         if error_content and not is_cleared_content:
+                            asyncio.create_task(
+                                log_tool_failure(
+                                    request_id=request_id,
+                                    mapped_model=mapped_model,
+                                    tool_name=tool_name,
+                                    tool_use_id=tool_use_id,
+                                    tool_input=tool_input,
+                                    error_content=error_content,
+                                )
+                            )
                             asyncio.create_task(
                                 log_tool_event(
                                     request_id=request_id,
@@ -1316,8 +1430,10 @@ async def _check_client_tool_failures(request_data: MessagesRequest, request_id:
                             )
 
 
-def _find_tool_name(messages, current_msg, tool_use_id):
-    """Find tool name from message history."""
+def _find_tool_use_info(
+    messages, current_msg, tool_use_id
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Find tool name and input parameters from message history."""
     current_idx = messages.index(current_msg)
 
     for i in range(current_idx - 1, -1, -1):
@@ -1330,8 +1446,11 @@ def _find_tool_name(messages, current_msg, tool_use_id):
                     and hasattr(block, "id")
                     and block.id == tool_use_id
                 ):
-                    return getattr(block, "name", None)
-    return None
+                    return (
+                        getattr(block, "name", None),
+                        getattr(block, "input", None),
+                    )
+    return None, None
 
 
 def find_available_port(start_port: int, max_attempts: int = 10) -> int:
@@ -1344,7 +1463,9 @@ def find_available_port(start_port: int, max_attempts: int = 10) -> int:
                 return port
             except OSError:
                 continue
-    raise RuntimeError(f"Could not find available port in range {start_port}-{start_port + max_attempts}")
+    raise RuntimeError(
+        f"Could not find available port in range {start_port}-{start_port + max_attempts}"
+    )
 
 
 @click.command()
@@ -1354,8 +1475,12 @@ def find_available_port(start_port: int, max_attempts: int = 10) -> int:
     required=True,
     help="Configuration template to use (e.g., litellm-gemini, litellm-openai, litellm-anthropic)",
 )
-@click.option("--port", type=int, default=8082, help="Port to run the server on (default: 8082)")
-@click.option("--host", default="0.0.0.0", help="Host to bind the server to (default: 0.0.0.0)")
+@click.option(
+    "--port", type=int, default=8082, help="Port to run the server on (default: 8082)"
+)
+@click.option(
+    "--host", default="0.0.0.0", help="Host to bind the server to (default: 0.0.0.0)"
+)
 @click.option("--reload", is_flag=True, help="Enable auto-reload on code changes")
 @click.option(
     "--auto-port",
@@ -1417,7 +1542,9 @@ def main(
         click.echo(
             f"⚠︎  Warning: Template '{template}' typically uses port {default_port}, but starting on port {port}"
         )
-        click.echo(f" Recommended: python -m forge.proxy.server --template {template} --port {default_port}")
+        click.echo(
+            f" Recommended: python -m forge.proxy.server --template {template} --port {default_port}"
+        )
 
     actual_port = port
     if auto_port:
@@ -1448,7 +1575,9 @@ def main(
             )
 
             validate_proxy_startup(
-                ctx=ProxyStartupContext(proxy_id=effective_proxy_id, template=template, port=actual_port)
+                ctx=ProxyStartupContext(
+                    proxy_id=effective_proxy_id, template=template, port=actual_port
+                )
             )
 
         except ProxyStartupValidationError as e:

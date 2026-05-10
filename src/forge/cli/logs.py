@@ -24,6 +24,7 @@ _LOG_DIR_DESCRIPTIONS: dict[str, str] = {
     "backend": "Backend process logs (LiteLLM)",
     "hooks": "Hook logs",
     "cli": "CLI command logs",
+    "tool_failures": "Tool failure telemetry (proxy, opt-in)",
     "tool_events": "Tool event recordings (proxy, debug-only)",
     "requests": "Raw request/response logs (proxy, debug-only)",
 }

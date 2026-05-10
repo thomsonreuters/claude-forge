@@ -108,13 +108,15 @@ def _log_verb_cost(result: VerbCostResult) -> None:
     }
 
     try:
+        from forge.core.state import open_secure_append
+
         log_dir = _verb_log_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
         month = datetime.now(timezone.utc).strftime("%Y-%m")
         path = log_dir / f"{month}_{os.getpid()}.jsonl"
 
         with _verb_lock:
-            with open(path, "a") as f:
+            with open_secure_append(path) as f:
                 f.write(json.dumps(record, separators=(",", ":")) + "\n")
     except Exception as e:
         logger.warning("Failed to write verb cost log: %s", e)

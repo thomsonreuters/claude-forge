@@ -19,6 +19,25 @@ from typing import Any
 from .exceptions import StateCorruptedError, StateNotFoundError
 
 
+def open_secure_append(path: Path) -> Any:
+    """Open a file for append with 0600 permissions (owner read/write only).
+
+    Used for log files that may contain sensitive payloads (request bodies,
+    tool inputs, error messages). Creates the file with 0600 if missing;
+    chmods to 0600 if it already exists.
+
+    The post-open chmod has a tiny TOCTOU window for pre-existing files but
+    closes it on every subsequent write. New files are created with 0600
+    atomically (subject to umask, which only clears bits we already want clear).
+    """
+    fd = os.open(str(path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+    except OSError:
+        pass  # best-effort: some filesystems (e.g., CIFS) may not support fchmod
+    return os.fdopen(fd, "a", encoding="utf-8")
+
+
 def atomic_write_text(
     path: Path,
     content: str,

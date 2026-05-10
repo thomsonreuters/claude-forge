@@ -26,6 +26,19 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_OUTPUT_TOKENS = 16384
 
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+
+
+def _is_local_url(url: str) -> bool:
+    """Check if a URL points to a local host."""
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url)
+        return (parsed.hostname or "") in _LOCAL_HOSTS
+    except Exception:
+        return False
+
 
 def _enforce_max_output_tokens_cap(model_name: str, requested: int | None, *, strict: bool = True) -> int:
     """Enforce the catalog's max_output_tokens as a hard cap.
@@ -172,6 +185,23 @@ class TierClientFactory:
         logger.warning(f"Unknown model provider for model: {model_name}, defaulting to LiteLLM")
         return ModelProvider.LITELLM
 
+    def _get_upstream_base_url(self) -> str | None:
+        """Get the proxy's upstream base URL from the instance config.
+
+        Reads the proxy.yaml for the current proxy instance to determine
+        whether the upstream is local or remote.
+        """
+        proxy_id = os.getenv("FORGE_PROXY_ID")
+        if not proxy_id:
+            return None
+        try:
+            from forge.config.loader import load_proxy_instance_config
+
+            instance = load_proxy_instance_config(proxy_id)
+            return instance.upstream_base_url if instance else None
+        except Exception:
+            return None
+
     def _get_ttl_for_provider(self, provider: ModelProvider) -> float:
         """Get the TTL for a specific provider."""
         if provider == ModelProvider.LITELLM:
@@ -291,6 +321,16 @@ class TierClientFactory:
                 )
 
                 core_provider = core_detect_provider(model_name)
+
+                # Override to litellm_local when upstream is localhost.
+                # detect_provider uses model prefix (openai/ -> litellm_remote),
+                # but local templates route through a local LiteLLM that needs
+                # no API key. The proxy instance config's upstream_base_url is
+                # the authoritative source for local vs remote.
+                if core_provider == "litellm_remote":
+                    upstream = self._get_upstream_base_url()
+                    if upstream and _is_local_url(upstream):
+                        core_provider = "litellm_local"
 
             client = self._client_classes[provider](
                 model=model_name,

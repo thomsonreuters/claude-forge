@@ -45,6 +45,12 @@ _HINT_RULES: list[tuple[Optional[str], list[str], str]] = [
             "Do not append file extensions. If not found, stop retrying the same ID."
         ),
     ),
+    # Read: invalid pages parameter (non-PDF files)
+    (
+        "Read",
+        ["Invalid pages parameter"],
+        "pages is only for PDF files. For non-PDF files, omit pages entirely. Retry with only file_path.",
+    ),
     # Read: file not found
     (
         "Read",

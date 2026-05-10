@@ -345,6 +345,21 @@ def _show_logs(logs_root: Path) -> None:
         else:
             console.print("\n[dim]Tip: forge logs --clean --older-than 7      # manual one-off cleanup[/dim]")
 
+    # Tip about tool failure telemetry when it's not enabled
+    tool_failures_dir = logs_root / "tool_failures"
+    tool_failures_empty = not tool_failures_dir.is_dir() or not any(tool_failures_dir.iterdir())
+    if tool_failures_empty:
+        try:
+            from forge.runtime_config import get_runtime_config as _get_rc2
+
+            if not _get_rc2().log_tool_failures:
+                console.print(
+                    "\n[dim]Tip: Log non-Claude model tool misuse (e.g., invalid Read parameters):[/dim]"
+                )
+                console.print("[dim]  forge config set log_tool_failures=true[/dim]")
+        except Exception:
+            pass
+
     # Warn about adopted proxies that won't have Forge logs.
     # Show regardless of whether proxy/ has files — old log files from a
     # previously managed proxy don't help diagnose a current adopted one.

@@ -18,6 +18,35 @@ import asyncio
 import json
 import logging
 import traceback
+from typing import Any
+
+
+# Tool parameters that non-Claude models compulsively fill with empty values.
+# Stripped before forwarding to Claude Code to prevent validation errors.
+_STRIP_EMPTY_PARAMS: dict[str, set[str]] = {
+    "Read": {"pages", "offset", "limit"},
+}
+
+
+def sanitize_tool_input(tool_name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
+    """Strip empty optional parameters that non-Claude models add compulsively.
+
+    GPT-5.5 fills every optional schema field with "" or null even when not
+    needed (e.g., pages="" on Read for non-PDF files). Claude Code rejects
+    these, causing an unrecoverable retry loop.
+    """
+    params_to_check = _STRIP_EMPTY_PARAMS.get(tool_name)
+    if not params_to_check:
+        return tool_input
+
+    cleaned = dict(tool_input)
+    for param in params_to_check:
+        if param in cleaned:
+            val = cleaned[param]
+            if val is None or val == "" or val == 0:
+                del cleaned[param]
+
+    return cleaned
 import uuid
 from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Union
 
@@ -302,14 +331,15 @@ def convert_anthropic_to_openai(request: MessagesRequest, provider: str = "gemin
                     )
                     logger.debug("Image block added to intermediate format.")
                 elif block.type == "tool_use" and msg.role == "assistant":
+                    cleaned_input = sanitize_tool_input(block.name, block.input) if isinstance(block.input, dict) else block.input
                     tool_calls_list.append(
                         {
                             "id": block.id,
                             "type": "function",
                             "function": {
                                 "name": block.name,
-                                "arguments": json.dumps(block.input),
-                            },  # Arguments must be JSON string
+                                "arguments": json.dumps(cleaned_input),
+                            },
                         }
                     )
                     logger.debug(f"Assistant tool_use '{block.name}' converted to intermediate tool_calls.")
@@ -537,6 +567,7 @@ def convert_openai_to_anthropic(
 
                         try:
                             args_input = json.loads(args_str)
+                            args_input = sanitize_tool_input(tool_name, args_input) if isinstance(args_input, dict) else args_input
                         except json.JSONDecodeError:
                             logger.warning(
                                 f"[{request_id}] Non-streaming: Failed to parse tool arguments JSON: {args_str}. Sending raw string."

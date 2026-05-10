@@ -339,7 +339,7 @@ class TestQaWorkflowChecklist:
         """Regression for QA-036: guided step must not look directly runnable."""
         review_md = SKILLS_DIR / "qa" / "resources" / "checklist" / "14-workflow.md"
         content = review_md.read_text()
-        step = content.split("### 14.10", 1)[1].split("\n---", 1)[0]
+        step = content.split("### 14.10", 1)[1].split("\n### ", 1)[0]
         assert "```bash" not in step
 
 

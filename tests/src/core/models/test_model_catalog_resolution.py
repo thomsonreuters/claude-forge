@@ -174,3 +174,46 @@ class TestCatalogContainment:
         """'in' operator returns False for unknown."""
         catalog = load_model_catalog()
         assert "fake-model" not in catalog
+
+
+class TestSystemPromptAddendum:
+    """Tests for get_system_prompt_addendum resolution."""
+
+    def test_returns_content_for_openai_model(self):
+        from forge.core.models import get_system_prompt_addendum
+
+        content = get_system_prompt_addendum("gpt-5.5")
+        assert content is not None
+        assert "Read" in content
+        assert "pages" in content
+
+    def test_returns_content_for_gemini_model(self):
+        from forge.core.models import get_system_prompt_addendum
+
+        content = get_system_prompt_addendum("gemini-3.1-pro-preview")
+        assert content is not None
+        assert "Read" in content
+
+    def test_returns_none_for_claude_model(self):
+        from forge.core.models import get_system_prompt_addendum
+
+        assert get_system_prompt_addendum("claude-opus-4-6") is None
+
+    def test_returns_none_for_unknown_model(self):
+        from forge.core.models import get_system_prompt_addendum
+
+        assert get_system_prompt_addendum("unknown-custom-model") is None
+
+    def test_strips_provider_prefix(self):
+        from forge.core.models import get_system_prompt_addendum
+
+        content = get_system_prompt_addendum("openai/gpt-5.5")
+        assert content is not None
+
+    def test_openai_and_gemini_files_loadable(self):
+        from importlib import resources
+
+        for name in ("openai.md", "gemini.md"):
+            ref = resources.files("forge.core.data").joinpath("system_prompt_addendums", name)
+            content = ref.read_text(encoding="utf-8")
+            assert len(content) > 100

@@ -220,6 +220,34 @@ def test_extra_args_forwarded(tmp_path, monkeypatch):
     assert captured["extra_args"] == ["--debug"]
 
 
+def test_proxy_launch_by_template_injects_resolved_proxy_addendum(tmp_path, monkeypatch):
+    """Bare launcher resolves template names to proxy IDs before addendum lookup."""
+    _setup_proxy_env(tmp_path, monkeypatch)
+
+    captured = {}
+
+    def fake_resolve(proxy_id: str | None) -> str:
+        captured["proxy_id"] = proxy_id
+        return "Bare addendum"
+
+    def fake_invoke(*, system_prompt_file=None, **_kw):
+        captured["system_prompt_file"] = system_prompt_file
+        captured["content"] = Path(system_prompt_file).read_text(encoding="utf-8")
+        return 0
+
+    with (
+        patch("forge.cli.session_addendum.resolve_addendum_content_for_proxy", side_effect=fake_resolve),
+        patch(_INVOKE, side_effect=fake_invoke),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(main, ["claude", "start", "--proxy", "litellm-openai"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["proxy_id"] == "proxy_1"
+    assert captured["content"] == "Bare addendum"
+    assert not Path(captured["system_prompt_file"]).exists()
+
+
 # --- Output ---
 
 

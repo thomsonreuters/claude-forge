@@ -78,6 +78,7 @@ models:
     default_reasoning_effort: medium
     use_responses_api: true
     intelligence_score: 99
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.5:
@@ -102,6 +103,7 @@ models:
     default_reasoning_effort: medium
     use_responses_api: true
     intelligence_score: 99
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.4-pro:
@@ -126,6 +128,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 100
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.4-mini:
@@ -150,6 +153,7 @@ models:
     default_reasoning_effort: medium
     use_responses_api: true
     intelligence_score: 85
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.4-nano:
@@ -174,6 +178,7 @@ models:
     default_reasoning_effort: minimal
     use_responses_api: true
     intelligence_score: 76
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.2:
@@ -198,6 +203,7 @@ models:
     litellm_reasoning_efforts: [none, low, medium, high, xhigh]
     default_reasoning_effort: medium
     intelligence_score: 98
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.2-pro:
@@ -223,6 +229,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 99
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.3-codex:
@@ -246,6 +253,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 95
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.2-codex:
@@ -270,6 +278,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 90
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.1-codex:
@@ -294,6 +303,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 82
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.1-codex-mini:
@@ -318,6 +328,7 @@ models:
     litellm_reasoning_efforts: [low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 77
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.1-codex-max:
@@ -342,6 +353,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 85
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.1-mini:
@@ -366,6 +378,7 @@ models:
     litellm_reasoning_efforts: [none, low, medium, high]
     default_reasoning_effort: none
     intelligence_score: 76
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5-mini:
@@ -390,6 +403,7 @@ models:
     litellm_reasoning_efforts: [minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 79
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5:
@@ -414,6 +428,7 @@ models:
     litellm_reasoning_efforts: [minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 88
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5-pro:
@@ -439,6 +454,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 91
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5-codex:
@@ -463,6 +479,7 @@ models:
     default_reasoning_effort: medium
     use_responses_api: true
     intelligence_score: 80
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5-nano:
@@ -487,6 +504,7 @@ models:
     litellm_reasoning_efforts: [minimal, low, medium, high]
     default_reasoning_effort: minimal
     intelligence_score: 70
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-4o:
@@ -512,6 +530,7 @@ models:
     litellm_reasoning_efforts: null
     default_reasoning_effort: null
     intelligence_score: 76
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-4o-mini:
@@ -536,6 +555,7 @@ models:
     litellm_reasoning_efforts: null
     default_reasoning_effort: null
     intelligence_score: 65
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-4.1:
@@ -560,6 +580,7 @@ models:
     litellm_reasoning_efforts: null
     default_reasoning_effort: null
     intelligence_score: 72
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o4-mini:
@@ -581,6 +602,7 @@ models:
     litellm_reasoning_efforts: [none, minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 60
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o3:
@@ -602,6 +624,7 @@ models:
     litellm_reasoning_efforts: [none, minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 85
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o3-pro:
@@ -624,6 +647,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 87
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o3-mini:
@@ -645,6 +669,7 @@ models:
     litellm_reasoning_efforts: [none, minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 67
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o1:
@@ -666,6 +691,7 @@ models:
     litellm_reasoning_efforts: [none, minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 84
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   # ---------------------------------------------------------------------------
@@ -693,6 +719,7 @@ models:
     litellm_reasoning_efforts: [none, disable, minimal, low, medium, high]
     default_reasoning_effort: high
     intelligence_score: 94
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: []
 
   gemini-3.1-pro-preview-customtools:
@@ -716,6 +743,7 @@ models:
     litellm_reasoning_efforts: [none, disable, minimal, low, medium, high]
     default_reasoning_effort: high
     intelligence_score: 94
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: [agentic, custom-tools]
 
   gemini-3-flash-preview:
@@ -739,6 +767,7 @@ models:
     litellm_reasoning_efforts: [none, disable, minimal, low, medium, high]
     default_reasoning_effort: high
     intelligence_score: 80
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: []
 
   gemini-2.5-pro:
@@ -765,6 +794,7 @@ models:
     litellm_reasoning_efforts: [none, disable, low, medium, high]
     default_reasoning_effort: high
     intelligence_score: 89
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: []
 
   gemini-2.5-flash:
@@ -791,6 +821,7 @@ models:
     litellm_reasoning_efforts: [none, disable, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 73
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: []
 
   # ---------------------------------------------------------------------------

@@ -50,7 +50,9 @@ def _get_context_limit_for_proxy(proxy_id: str) -> int:
 
         proxy_config = load_proxy_instance_config(proxy_id)
         if proxy_config is None:
-            logger.debug(f"No proxy config found for {proxy_id}, using default context limit")
+            logger.debug(
+                f"No proxy config found for {proxy_id}, using default context limit"
+            )
             return _default_context_limit()
 
         tier = proxy_config.default_tier or "sonnet"
@@ -61,7 +63,9 @@ def _get_context_limit_for_proxy(proxy_id: str) -> int:
             return _default_context_limit()
 
         context_limit = get_context_window_tokens(model)
-        logger.debug(f"Computed context limit {context_limit} for model {model} (tier {tier})")
+        logger.debug(
+            f"Computed context limit {context_limit} for model {model} (tier {tier})"
+        )
         return context_limit
 
     except Exception as e:
@@ -69,7 +73,9 @@ def _get_context_limit_for_proxy(proxy_id: str) -> int:
         return _default_context_limit()
 
 
-def _healthcheck_proxy(*, base_url: str, expected_template: str, expected_proxy_id: str) -> None:
+def _healthcheck_proxy(
+    *, base_url: str, expected_template: str, expected_proxy_id: str
+) -> None:
     """Validate proxy is reachable and matches proxy identity."""
 
     url = base_url.rstrip("/") + "/"
@@ -82,7 +88,9 @@ def _healthcheck_proxy(*, base_url: str, expected_template: str, expected_proxy_
         raise ValueError(f"proxy healthcheck failed at {url}: {e}")
 
     if response.status_code != 200:
-        raise ValueError(f"proxy healthcheck failed at {url}: status {response.status_code}")
+        raise ValueError(
+            f"proxy healthcheck failed at {url}: status {response.status_code}"
+        )
 
     try:
         data = response.json()
@@ -161,11 +169,27 @@ def _build_bare_launch_env(
 
 
 @claude.command("start")
-@click.option("--proxy", "proxy_id", type=str, default=None, help="Proxy to use (proxy_id or template name)")
 @click.option(
-    "--no-proxy", "direct", is_flag=True, default=False, help="Bypass the proxy and talk to Anthropic directly"
+    "--proxy",
+    "proxy_id",
+    type=str,
+    default=None,
+    help="Proxy to use (proxy_id or template name)",
 )
-@click.option("--direct", "direct_deprecated", is_flag=True, hidden=True, help="Deprecated alias for --no-proxy")
+@click.option(
+    "--no-proxy",
+    "direct",
+    is_flag=True,
+    default=False,
+    help="Bypass the proxy and talk to Anthropic directly",
+)
+@click.option(
+    "--direct",
+    "direct_deprecated",
+    is_flag=True,
+    hidden=True,
+    help="Deprecated alias for --no-proxy",
+)
 @click.argument("claude_args", nargs=-1, type=click.UNPROCESSED)
 def start_cmd(
     proxy_id: str | None,
@@ -224,7 +248,9 @@ def start_cmd(
         except ValueError as e:
             click.echo(f"Error: {e}")
             if "not running" in str(e):
-                click.echo(f"Tip: Run 'forge proxy start {entry.proxy_id}' to start it.")
+                click.echo(
+                    f"Tip: Run 'forge proxy start {entry.proxy_id}' to start it."
+                )
             sys.exit(1)
 
         template = entry.template
@@ -248,18 +274,35 @@ def start_cmd(
             sys.exit(1)
 
     if proxy_display:
-        console.print(f"Starting Claude with proxy [green]{proxy_display}[/green] ({template})")
+        console.print(
+            f"Starting Claude with proxy [green]{proxy_display}[/green] ({template})"
+        )
     else:
         console.print("Starting Claude [green]direct[/green] (no proxy)")
 
-    sys.exit(
-        invoke_claude(
-            model=None,
-            env_vars=env_vars,
-            unset_env_vars=unset_vars,
-            extra_args=list(claude_args) if claude_args else None,
-        )
+    from forge.cli.session_addendum import (
+        resolve_addendum_content_for_proxy,
+        write_bare_addendum,
     )
+
+    addendum_content = resolve_addendum_content_for_proxy(proxy_display)
+    addendum_path: Path | None = None
+    if addendum_content:
+        addendum_path = write_bare_addendum(addendum_content)
+
+    try:
+        sys.exit(
+            invoke_claude(
+                model=None,
+                system_prompt_file=str(addendum_path) if addendum_path else None,
+                env_vars=env_vars,
+                unset_env_vars=unset_vars,
+                extra_args=list(claude_args) if claude_args else None,
+            )
+        )
+    finally:
+        if addendum_path:
+            addendum_path.unlink(missing_ok=True)
 
 
 # --- Preset subgroup ---
@@ -322,7 +365,9 @@ def preset_edit() -> None:
 
     editor = os.environ.get("EDITOR", "vim")
     if not shutil.which(editor):
-        console.print(f"[red]Error:[/red] Editor '{editor}' not found. Set $EDITOR to an available editor.")
+        console.print(
+            f"[red]Error:[/red] Editor '{editor}' not found. Set $EDITOR to an available editor."
+        )
         sys.exit(1)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
@@ -333,7 +378,9 @@ def preset_edit() -> None:
     try:
         result = subprocess.run([editor, str(tmp_path)])
         if result.returncode != 0:
-            console.print(f"[red]Error:[/red] Editor exited with code {result.returncode}")
+            console.print(
+                f"[red]Error:[/red] Editor exited with code {result.returncode}"
+            )
             console.print(f"Your changes are saved at: {display_path(tmp_path)}")
             sys.exit(1)
 
@@ -369,7 +416,9 @@ def preset_edit() -> None:
 
 @preset.command("reset")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-@click.option("--force", "-f", is_flag=True, hidden=True, help="Deprecated alias for --yes")
+@click.option(
+    "--force", "-f", is_flag=True, hidden=True, help="Deprecated alias for --yes"
+)
 def preset_reset(yes: bool, force: bool) -> None:
     """Reset settings preset to built-in defaults."""
     from forge.core.state import atomic_write_text

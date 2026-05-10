@@ -50,7 +50,9 @@ def _load_catalog_yaml() -> dict[str, Any]:
     return yaml.safe_load(yaml_content)
 
 
-def _parse_temperature(model_id: str, temp_data: Any, constraint: str) -> TemperatureSpec:
+def _parse_temperature(
+    model_id: str, temp_data: Any, constraint: str
+) -> TemperatureSpec:
     """Parse temperature field which can be a single value or dict.
 
     Args:
@@ -80,12 +82,18 @@ def _parse_temperature(model_id: str, temp_data: Any, constraint: str) -> Temper
                 max=float(temp_data["max"]),
             )
         except (TypeError, ValueError) as e:
-            raise ModelCatalogError(f"Model {model_id!r} temperature spec error: {e}") from e
+            raise ModelCatalogError(
+                f"Model {model_id!r} temperature spec error: {e}"
+            ) from e
 
-    raise ModelCatalogError(f"Model {model_id!r} has invalid temperature: {temp_data!r} (expected number or dict)")
+    raise ModelCatalogError(
+        f"Model {model_id!r} has invalid temperature: {temp_data!r} (expected number or dict)"
+    )
 
 
-def _parse_tuple_or_none(model_id: str, field_name: str, data: Any) -> tuple[str, ...] | None:
+def _parse_tuple_or_none(
+    model_id: str, field_name: str, data: Any
+) -> tuple[str, ...] | None:
     """Parse a field that should be a list of strings or null.
 
     Args:
@@ -102,7 +110,9 @@ def _parse_tuple_or_none(model_id: str, field_name: str, data: Any) -> tuple[str
     if data is None:
         return None
     if not isinstance(data, list):
-        raise ModelCatalogError(f"Model {model_id!r} {field_name} must be a list or null, got {type(data).__name__}")
+        raise ModelCatalogError(
+            f"Model {model_id!r} {field_name} must be a list or null, got {type(data).__name__}"
+        )
     return tuple(str(item) for item in data)
 
 
@@ -132,7 +142,9 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
 
     missing = required_fields - set(data.keys())
     if missing:
-        raise ModelCatalogError(f"Model {model_id!r} missing required fields: {sorted(missing)}")
+        raise ModelCatalogError(
+            f"Model {model_id!r} missing required fields: {sorted(missing)}"
+        )
 
     constraint = data["temperature_constraint"]
     valid_constraints = {"fixed", "range"}
@@ -146,18 +158,44 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
     litellm_reasoning_efforts = _parse_tuple_or_none(
         model_id, "litellm_reasoning_efforts", data.get("litellm_reasoning_efforts")
     )
-    verbosity_levels = _parse_tuple_or_none(model_id, "verbosity_levels", data.get("verbosity_levels"))
-    thinking_levels = _parse_tuple_or_none(model_id, "thinking_levels", data.get("thinking_levels"))
-    thinking_modes = _parse_tuple_or_none(model_id, "thinking_modes", data.get("thinking_modes"))
+    verbosity_levels = _parse_tuple_or_none(
+        model_id, "verbosity_levels", data.get("verbosity_levels")
+    )
+    thinking_levels = _parse_tuple_or_none(
+        model_id, "thinking_levels", data.get("thinking_levels")
+    )
+    thinking_modes = _parse_tuple_or_none(
+        model_id, "thinking_modes", data.get("thinking_modes")
+    )
 
     tags_raw = data.get("tags", [])
     if not isinstance(tags_raw, list):
-        raise ModelCatalogError(f"Model {model_id!r} tags must be a list, got {type(tags_raw).__name__}")
+        raise ModelCatalogError(
+            f"Model {model_id!r} tags must be a list, got {type(tags_raw).__name__}"
+        )
     tags = tuple(str(t) for t in tags_raw)
 
     short_name = data.get("short_name")
     if short_name is not None:
         short_name = str(short_name)
+
+    addendum = data.get("system_prompt_addendum")
+    if addendum is not None:
+        addendum = str(addendum)
+        if not addendum.startswith("system_prompt_addendums/") or not addendum.endswith(
+            ".md"
+        ):
+            raise ModelCatalogError(
+                f"Model {model_id!r} system_prompt_addendum must be "
+                f"'system_prompt_addendums/<name>.md', got {addendum!r}"
+            )
+        try:
+            ref = resources.files("forge.core.data").joinpath(*addendum.split("/"))
+            ref.read_text(encoding="utf-8")
+        except Exception as e:
+            raise ModelCatalogError(
+                f"Model {model_id!r} system_prompt_addendum resource not found: {addendum!r}"
+            ) from e
 
     try:
         return ModelSpec(
@@ -166,12 +204,16 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
             intelligence_score=int(data["intelligence_score"]),
             context_window_tokens=int(data["context_window_tokens"]),
             max_output_tokens=int(data["max_output_tokens"]),
-            max_thinking_tokens=int(data["max_thinking_tokens"]) if data.get("max_thinking_tokens") else None,
+            max_thinking_tokens=int(data["max_thinking_tokens"])
+            if data.get("max_thinking_tokens")
+            else None,
             supports_thinking=bool(data["supports_thinking"]),
             supports_images=bool(data["supports_images"]),
             supports_verbosity=bool(data.get("supports_verbosity", False)),
             supports_top_p=bool(data.get("supports_top_p", True)),
-            supports_sampling_overrides=bool(data.get("supports_sampling_overrides", True)),
+            supports_sampling_overrides=bool(
+                data.get("supports_sampling_overrides", True)
+            ),
             supports_1m_context=bool(data.get("supports_1m_context", False)),
             temperature_constraint=constraint,
             temperature=temperature,
@@ -184,6 +226,7 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
             thinking_levels=thinking_levels,
             default_thinking_level=data.get("default_thinking_level"),
             token_estimate_multiplier=float(data.get("token_estimate_multiplier", 1.0)),
+            system_prompt_addendum=addendum,
             tags=tags,
         )
     except (TypeError, ValueError) as e:
@@ -213,50 +256,72 @@ def _validate_and_build_catalog(raw: dict[str, Any]) -> ModelCatalog:
 
     models_raw = raw.get("models", {})
     if not isinstance(models_raw, dict):
-        raise ModelCatalogError(f"'models' must be a dict, got {type(models_raw).__name__}")
+        raise ModelCatalogError(
+            f"'models' must be a dict, got {type(models_raw).__name__}"
+        )
 
     models: dict[str, ModelSpec] = {}
     for model_id, model_data in models_raw.items():
         if not isinstance(model_data, dict):
-            raise ModelCatalogError(f"Model {model_id!r} must be a dict, got {type(model_data).__name__}")
+            raise ModelCatalogError(
+                f"Model {model_id!r} must be a dict, got {type(model_data).__name__}"
+            )
         models[model_id] = _parse_model_spec(model_id, model_data)
 
     aliases_raw = raw.get("aliases", {})
     if not isinstance(aliases_raw, dict):
-        raise ModelCatalogError(f"'aliases' must be a dict, got {type(aliases_raw).__name__}")
+        raise ModelCatalogError(
+            f"'aliases' must be a dict, got {type(aliases_raw).__name__}"
+        )
 
     aliases: dict[str, str] = {}
     for alias, target in aliases_raw.items():
         if not isinstance(target, str):
-            raise ModelCatalogError(f"Alias {alias!r} target must be a string, got {type(target).__name__}")
+            raise ModelCatalogError(
+                f"Alias {alias!r} target must be a string, got {type(target).__name__}"
+            )
         # Validate alias target exists in models (this also prevents chaining
         # since aliases cannot be in the models dict)
         if target not in models:
-            raise ModelCatalogError(f"Alias {alias!r} points to unknown model {target!r}")
+            raise ModelCatalogError(
+                f"Alias {alias!r} points to unknown model {target!r}"
+            )
         aliases[alias] = target
 
     # Parse defaults (optional; empty dict if missing for backward compat with tests)
     defaults_raw = raw.get("defaults", {})
     if not isinstance(defaults_raw, dict):
-        raise ModelCatalogError(f"'defaults' must be a dict, got {type(defaults_raw).__name__}")
+        raise ModelCatalogError(
+            f"'defaults' must be a dict, got {type(defaults_raw).__name__}"
+        )
 
     defaults: dict[str, dict[str, str]] = {}
     for provider, tiers in defaults_raw.items():
         if not isinstance(tiers, dict):
-            raise ModelCatalogError(f"defaults.{provider} must be a dict, got {type(tiers).__name__}")
+            raise ModelCatalogError(
+                f"defaults.{provider} must be a dict, got {type(tiers).__name__}"
+            )
         missing_tiers = REQUIRED_TIERS - set(tiers.keys())
         if missing_tiers:
-            raise ModelCatalogError(f"defaults.{provider} missing required tiers: {sorted(missing_tiers)}")
+            raise ModelCatalogError(
+                f"defaults.{provider} missing required tiers: {sorted(missing_tiers)}"
+            )
         provider_defaults: dict[str, str] = {}
         for tier, model_id in tiers.items():
             if not isinstance(model_id, str):
-                raise ModelCatalogError(f"defaults.{provider}.{tier} must be a string, got {type(model_id).__name__}")
+                raise ModelCatalogError(
+                    f"defaults.{provider}.{tier} must be a string, got {type(model_id).__name__}"
+                )
             if model_id not in models:
-                raise ModelCatalogError(f"defaults.{provider}.{tier} references unknown model {model_id!r}")
+                raise ModelCatalogError(
+                    f"defaults.{provider}.{tier} references unknown model {model_id!r}"
+                )
             provider_defaults[tier] = model_id
         defaults[provider] = provider_defaults
 
-    logger.info(f"Loaded model catalog v{schema_version}: {len(models)} models, {len(aliases)} aliases")
+    logger.info(
+        f"Loaded model catalog v{schema_version}: {len(models)} models, {len(aliases)} aliases"
+    )
 
     return ModelCatalog(
         schema_version=schema_version,
@@ -423,3 +488,32 @@ def get_compact_name(model: str) -> str:
     model = model.removesuffix("-preview")
 
     return model
+
+
+def get_system_prompt_addendum(model_or_alias: str) -> str | None:
+    """Return system prompt addendum content for a model, or None.
+
+    Fails open: returns None for models not in the catalog (common with
+    OpenRouter custom routing) or if resource loading fails at runtime.
+    """
+    if "/" in model_or_alias:
+        model_or_alias = model_or_alias.split("/")[-1]
+
+    try:
+        spec = get_model_spec(model_or_alias)
+    except (KeyError, ModelCatalogError):
+        return None
+
+    if not spec.system_prompt_addendum:
+        return None
+
+    try:
+        ref = resources.files("forge.core.data").joinpath(
+            *spec.system_prompt_addendum.split("/")
+        )
+        return ref.read_text(encoding="utf-8")
+    except Exception:
+        logger.warning(
+            "Failed to load system prompt addendum: %s", spec.system_prompt_addendum
+        )
+        return None

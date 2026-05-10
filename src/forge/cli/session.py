@@ -270,11 +270,15 @@ def _resolve_context_limit(proxy_ref: str | None) -> int:
         tier = proxy_config.default_tier or "sonnet"
         model = proxy_config.tiers.get(tier)
         if not model:
-            logger.debug(f"No model for tier {tier} in proxy {entry.proxy_id}, using default")
+            logger.debug(
+                f"No model for tier {tier} in proxy {entry.proxy_id}, using default"
+            )
             return _default_context_limit()
 
         context_limit = get_context_window_tokens(model)
-        logger.debug(f"Computed context limit {context_limit} for '{proxy_ref}' via proxy {entry.proxy_id}")
+        logger.debug(
+            f"Computed context limit {context_limit} for '{proxy_ref}' via proxy {entry.proxy_id}"
+        )
         return context_limit
     except Exception as e:
         logger.debug(f"Failed to compute context limit for '{proxy_ref}': {e}")
@@ -531,7 +535,9 @@ def _auto_install_extensions(
         else:
             detected = _detect_parent_extensions(parent_project_root)
             if detected is None:
-                console.print("[dim]  Extensions: skipped (no parent extensions detected)[/dim]")
+                console.print(
+                    "[dim]  Extensions: skipped (no parent extensions detected)[/dim]"
+                )
                 return False
             profile, mode = detected
 
@@ -547,10 +553,14 @@ def _auto_install_extensions(
             mode=InstallMode(mode),
         )
         if plan.has_conflicts:
-            console.print("[dim]  Extensions: skipped (conflicts with existing files)[/dim]")
+            console.print(
+                "[dim]  Extensions: skipped (conflicts with existing files)[/dim]"
+            )
             return False
         n_modules = len(plan.modules)
-        console.print(f"[dim]  Extensions: inherited ({profile} profile, {n_modules} modules)[/dim]")
+        console.print(
+            f"[dim]  Extensions: inherited ({profile} profile, {n_modules} modules)[/dim]"
+        )
         return True
 
     except Exception as e:
@@ -559,7 +569,9 @@ def _auto_install_extensions(
         return False
 
 
-def _get_active_session_entry(session_name: str, forge_root: str | None = None) -> ActiveSessionEntry | None:
+def _get_active_session_entry(
+    session_name: str, forge_root: str | None = None
+) -> ActiveSessionEntry | None:
     """Return live runtime state for a session, if available."""
     try:
         from forge.session.active import ActiveSessionStore
@@ -574,13 +586,17 @@ def _get_active_session_entry(session_name: str, forge_root: str | None = None) 
         return None
 
 
-def _print_active_delete_warning(session_name: str, active_entry: ActiveSessionEntry) -> None:
+def _print_active_delete_warning(
+    session_name: str, active_entry: ActiveSessionEntry
+) -> None:
     """Print a warning before deleting a session that still appears live."""
     console.print(
         "[yellow]Warning:[/yellow] "
         f"Session [bold]{session_name}[/bold] appears to still be active in a running Claude Code launch."
     )
-    console.print("  Deleting it will remove Forge state while the Claude session keeps running until it exits.")
+    console.print(
+        "  Deleting it will remove Forge state while the Claude session keeps running until it exits."
+    )
     console.print(f"  Launch mode: {active_entry.launch_mode}")
     if active_entry.launcher_pid is not None:
         console.print(f"  Launcher PID: {active_entry.launcher_pid}")
@@ -598,10 +614,16 @@ def _resolve_launch_mode(*, sidecar: bool, host_proxy: bool) -> str:
 
     from forge.runtime_config import get_runtime_config
 
-    return LAUNCH_MODE_SIDECAR if get_runtime_config().proxy_mode == LAUNCH_MODE_SIDECAR else LAUNCH_MODE_HOST
+    return (
+        LAUNCH_MODE_SIDECAR
+        if get_runtime_config().proxy_mode == LAUNCH_MODE_SIDECAR
+        else LAUNCH_MODE_HOST
+    )
 
 
-def _get_runtime_base_url(*, use_sidecar: bool, effective_url: str | None) -> str | None:
+def _get_runtime_base_url(
+    *, use_sidecar: bool, effective_url: str | None
+) -> str | None:
     """Return the base URL Claude should see for this launch."""
     from forge.session import SIDECAR_RUNTIME_BASE_URL
 
@@ -623,7 +645,9 @@ def _get_launch_preferences(
     return use_sidecar, tuple(launch.sidecar.mounts), launch.sidecar.image
 
 
-def _combine_prompt_files(*, worktree_path: Path, session_name: str, prompt_files: list[Path]) -> str | None:
+def _combine_prompt_files(
+    *, worktree_path: Path, session_name: str, prompt_files: list[Path]
+) -> str | None:
     """Combine multiple prompt/context files into one appendable prompt file."""
     existing = [path.resolve() for path in prompt_files if path.is_file()]
     if not existing:
@@ -649,7 +673,9 @@ def _combine_prompt_files(*, worktree_path: Path, session_name: str, prompt_file
     return str(combined_path.resolve())
 
 
-def _resolve_session_artifact_root(*, manager: SessionManager, state: SessionState) -> Path:
+def _resolve_session_artifact_root(
+    *, manager: SessionManager, state: SessionState
+) -> Path:
     """Return the root used for forge-root-relative artifacts for a session."""
     if state.forge_root:
         return Path(state.forge_root)
@@ -671,14 +697,18 @@ def _generate_parent_handoff_context(
         return None, []
 
     fork_worktree = Path(manifest.worktree.path) if manifest.worktree else Path.cwd()
-    context_path = fork_worktree / ".forge" / "prev_sessions" / f"{manifest.parent_session}.md"
+    context_path = (
+        fork_worktree / ".forge" / "prev_sessions" / f"{manifest.parent_session}.md"
+    )
 
     if parent_state is None:
         parent_entry = None
         current_project_root = None
         if manifest.worktree:
             try:
-                current_project_root = manager.resolve_project_root(Path(manifest.worktree.path))
+                current_project_root = manager.resolve_project_root(
+                    Path(manifest.worktree.path)
+                )
             except Exception:
                 current_project_root = None
 
@@ -702,7 +732,9 @@ def _generate_parent_handoff_context(
                 parent_entry = manager.get_session_entry(manifest.parent_session)
 
             parent_scope = parent_entry.forge_root or parent_entry.worktree_path
-            parent_state = manager.get_session(manifest.parent_session, forge_root=parent_scope)
+            parent_state = manager.get_session(
+                manifest.parent_session, forge_root=parent_scope
+            )
         except ForgeSessionError:
             if context_path.is_file():
                 return context_path.resolve(), []
@@ -712,7 +744,9 @@ def _generate_parent_handoff_context(
                 return context_path.resolve(), []
             return None, []
 
-    parent_worktree = Path(parent_state.worktree.path) if parent_state.worktree else Path.cwd()
+    parent_worktree = (
+        Path(parent_state.worktree.path) if parent_state.worktree else Path.cwd()
+    )
 
     project_root = _resolve_session_artifact_root(manager=manager, state=parent_state)
 
@@ -769,7 +803,9 @@ def _hint_cross_project_session(name: str, forge_root: str | None) -> bool:
         entry = IndexStore().get_session(name, forge_root=None)
         other_root = entry.forge_root or entry.worktree_path
         if other_root and other_root != forge_root:
-            console.print(f"[red]Error:[/red] session '{name}' not found in current project")
+            console.print(
+                f"[red]Error:[/red] session '{name}' not found in current project"
+            )
             console.print(f"\n[dim]Tip: Session '{name}' exists in:[/dim]")
             console.print(
                 Text(display_path(other_root), style="dim", no_wrap=True),
@@ -778,8 +814,12 @@ def _hint_cross_project_session(name: str, forge_root: str | None) -> bool:
             console.print("[dim]Run the command from that directory instead.[/dim]")
             return True
     except AmbiguousSessionError as e:
-        console.print(f"[red]Error:[/red] session '{name}' not found in current project")
-        console.print(f"\n[dim]Tip: Session '{name}' exists in multiple projects:[/dim]")
+        console.print(
+            f"[red]Error:[/red] session '{name}' not found in current project"
+        )
+        console.print(
+            f"\n[dim]Tip: Session '{name}' exists in multiple projects:[/dim]"
+        )
         for root in e.forge_roots:
             console.print(
                 Text(f"  - {display_path(root)}", style="dim", no_wrap=True),
@@ -819,5 +859,6 @@ from forge.session import run_with_active_session as run_with_active_session  # 
 from forge.session.claude import invoke_claude as invoke_claude  # noqa: E402,F401
 
 # Re-export for backward compatibility (204 test references patch "forge.cli.session.XXX")
+from .session_fork import *  # noqa: E402,F401,F403
 from .session_lifecycle import *  # noqa: E402,F401,F403
 from .session_manage import *  # noqa: E402,F401,F403

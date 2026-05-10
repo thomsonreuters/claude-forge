@@ -19,7 +19,7 @@ import forge.cli.session as session_cli
 from forge.cli.main import main
 from forge.session import IndexStore, SessionManager, SessionStore, create_session_state
 from forge.session.active import ActiveSessionStore
-from forge.session.config import LAUNCH_MODE_HOST
+from forge.session.config import LAUNCH_MODE_HOST, LAUNCH_MODE_SIDECAR
 from forge.session.exceptions import DirtyWorktreeError, SessionNotFoundError
 from forge.session.models import Derivation, StartedWithProxy, SystemPromptIntent
 
@@ -110,6 +110,39 @@ def test_resume_token_estimate_multiplier_uses_direct_pin(temp_env: Path) -> Non
     assert multiplier == 1.35
 
 
+def test_addendum_resolution_mixed_family_uses_claude_default() -> None:
+    """Mixed proxy tiers should use the configured default tier, including None for Claude."""
+    from forge.cli import session_lifecycle
+
+    config = _proxy_cfg(
+        haiku="openai/gpt-5.4-mini",
+        sonnet="anthropic/claude-sonnet-4-6",
+        opus="openai/gpt-5.5",
+        default_tier="sonnet",
+    )
+
+    with patch("forge.config.loader.load_proxy_instance_config", return_value=config):
+        assert session_lifecycle.resolve_addendum_content_for_proxy("mixed-proxy") is None
+
+
+def test_addendum_resolution_mixed_family_uses_openai_default() -> None:
+    """Mixed proxy tiers should inject the default tier's addendum when that tier needs one."""
+    from forge.cli import session_lifecycle
+
+    config = _proxy_cfg(
+        haiku="anthropic/claude-haiku-4-5-20251001",
+        sonnet="anthropic/claude-sonnet-4-6",
+        opus="openai/gpt-5.5",
+        default_tier="opus",
+    )
+
+    with patch("forge.config.loader.load_proxy_instance_config", return_value=config):
+        content = session_lifecycle.resolve_addendum_content_for_proxy("mixed-proxy")
+
+    assert content is not None
+    assert "Tool Parameter Guidance" in content
+
+
 def _set_manifest_age(forge_root: Path, name: str, days: int) -> None:
     store = SessionStore(str(forge_root), name)
 
@@ -146,6 +179,36 @@ def _seed_supervised_duplicate_sessions(project: Path) -> tuple[Path, Path]:
     _write_session_manifest(forge_root_b, "shared", target_b)
 
     return forge_root_a, forge_root_b
+
+
+def _proxy_cfg(
+    *,
+    haiku: str = "openai/gpt-5.4-mini",
+    sonnet: str = "openai/gpt-5.5",
+    opus: str = "openai/gpt-5.5",
+    default_tier: str = "sonnet",
+):
+    from forge.config.schema import ProxyInstanceConfig, TierModels
+
+    return ProxyInstanceConfig(
+        proxy_format=1,
+        template="litellm-openai",
+        template_digest="abc",
+        provider="litellm",
+        proxy_endpoint="http://localhost:8085",
+        port=8085,
+        upstream_base_url="https://litellm.example/v1",
+        tiers=TierModels(haiku=haiku, sonnet=sonnet, opus=opus),
+        default_tier=default_tier,
+    )
+
+
+def _proxy_routing(proxy_id: str = "openai-proxy") -> session_cli.ResolvedRouting:
+    return session_cli.ResolvedRouting(
+        template="litellm-openai",
+        base_url="http://localhost:8085",
+        proxy_id=proxy_id,
+    )
 
 
 def _seed_supervise_source_session(project: Path, forge_root: Path) -> None:
@@ -1021,6 +1084,22 @@ class TestSessionStart:
         state = SessionStore(str(temp_env), "model-test").read()
         assert state.intent.launch is not None
         assert state.intent.launch.direct_model == "claude-opus-4-7"
+
+    def test_start_with_proxy_injects_model_addendum(self, runner: CliRunner, temp_env: Path) -> None:
+        """Proxy-routed managed launches append the model-family prompt addendum."""
+        with (
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=_proxy_routing()),
+            patch("forge.config.loader.load_proxy_instance_config", return_value=_proxy_cfg()),
+            patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke,
+        ):
+            result = runner.invoke(main, ["session", "start", "addendum-start", "--proxy", "openai-proxy"])
+
+        assert result.exit_code == 0, result.output
+        prompt_file = mock_invoke.call_args.kwargs["system_prompt_file"]
+        assert prompt_file is not None
+        prompt_content = Path(prompt_file).read_text(encoding="utf-8")
+        assert "Tool Parameter Guidance" in prompt_content
+        assert "pages" in prompt_content
 
     def test_start_with_model_no_launch_stores_normalized_pin(self, runner: CliRunner, temp_env: Path) -> None:
         result = runner.invoke(
@@ -1898,6 +1977,61 @@ class TestSessionFork:
         call_kwargs = mock_manager.fork_session.call_args.kwargs
         assert call_kwargs["create_worktree"] is True
 
+    def test_sidecar_worktree_fork_injects_addendum_once(self, runner: CliRunner, temp_env: Path) -> None:
+        """Sidecar worktree forks should combine context with one copy of the addendum."""
+        parent = create_session_state(
+            "fork-parent",
+            proxy_template="litellm-openai",
+            proxy_base_url="http://localhost:8085",
+            worktree_path=str(temp_env),
+            worktree_branch="main",
+        )
+        parent.confirmed.claude_session_id = "parent-uuid"
+
+        fork_worktree = temp_env / "fork-child"
+        fork_worktree.mkdir()
+        fork_state = create_session_state(
+            "fork-child",
+            proxy_template="litellm-openai",
+            proxy_base_url="http://localhost:8085",
+            parent_session="fork-parent",
+            is_fork=True,
+            worktree_path=str(fork_worktree),
+            worktree_branch="fork-child",
+            launch_mode=LAUNCH_MODE_SIDECAR,
+        )
+        assert fork_state.worktree is not None
+        fork_state.worktree.is_worktree = True
+        fork_state.forge_root = str(fork_worktree)
+        SessionStore(str(fork_worktree), "fork-child").write(fork_state)
+
+        context_file = fork_worktree / ".forge" / "prev_sessions" / "fork-parent.md"
+        context_file.parent.mkdir(parents=True)
+        context_file.write_text("# Parent context\n", encoding="utf-8")
+
+        with (
+            patch("forge.cli.session.SessionManager") as mock_manager_cls,
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=_proxy_routing()),
+            patch("forge.config.loader.load_proxy_instance_config", return_value=_proxy_cfg()),
+            patch("forge.cli.session._generate_parent_handoff_context", return_value=(context_file, [])),
+            patch("forge.sidecar.docker.is_docker_available", return_value=True),
+            patch("forge.sidecar.get_secrets_for_template", return_value={}),
+            patch("forge.sidecar.run_sidecar_session", return_value=0),
+        ):
+            mock_manager = mock_manager_cls.return_value
+            mock_manager.fork_session.return_value = (parent, fork_state)
+
+            result = runner.invoke(
+                main,
+                ["session", "fork", "fork-parent", "--name", "fork-child", "--worktree", "--proxy", "openai-proxy"],
+            )
+
+        assert result.exit_code == 0, result.output
+        combined = fork_worktree / ".forge" / "launch-context" / "fork-child.md"
+        content = combined.read_text(encoding="utf-8")
+        assert "# Parent context" in content
+        assert content.count("# Tool Parameter Guidance") == 1
+
     def test_fork_worktree_uses_nested_forge_roots_for_extension_inheritance(
         self, runner: CliRunner, temp_env: Path
     ) -> None:
@@ -2663,6 +2797,42 @@ class TestSessionResumeExtended:
         prompt_content = prompt_path.read_text(encoding="utf-8")
         assert "Custom system prompt" in prompt_content
         assert "# Session Context: resume-parent" in prompt_content
+
+    def test_reconnect_proxy_session_injects_model_addendum(self, runner: CliRunner, temp_env: Path) -> None:
+        """Reconnecting a proxy-routed session should retain addendum injection."""
+        with patch("forge.cli.session._resolve_routing_from_cli", return_value=_proxy_routing()):
+            result = runner.invoke(
+                main,
+                ["session", "start", "reconnect-addendum", "--proxy", "openai-proxy", "--no-launch"],
+            )
+        assert result.exit_code == 0, result.output
+
+        store = SessionStore(str(temp_env), "reconnect-addendum")
+
+        def _confirm_proxy_session(manifest) -> None:
+            manifest.confirmed.claude_session_id = "reconnect-uuid"
+            manifest.confirmed.confirmed_by = "hook:SessionStart:startup"
+            manifest.confirmed.started_with_proxy = StartedWithProxy(
+                base_url="http://localhost:8085",
+                proxy_id="openai-proxy",
+                template="litellm-openai",
+            )
+
+        store.update(timeout_s=5.0, mutate=_confirm_proxy_session)
+
+        with (
+            patch("forge.config.loader.load_proxy_instance_config", return_value=_proxy_cfg()),
+            patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke,
+        ):
+            result = runner.invoke(main, ["session", "resume", "reconnect-addendum"])
+
+        assert result.exit_code == 0, result.output
+        kwargs = mock_invoke.call_args.kwargs
+        assert kwargs["resume_id"] == "reconnect-uuid"
+        prompt_file = kwargs["system_prompt_file"]
+        assert prompt_file is not None
+        prompt_content = Path(prompt_file).read_text(encoding="utf-8")
+        assert "Tool Parameter Guidance" in prompt_content
 
 
 class TestSessionResume:

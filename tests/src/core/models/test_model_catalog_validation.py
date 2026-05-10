@@ -359,3 +359,51 @@ class TestClaude47CatalogProfile:
         assert spec.litellm_reasoning_efforts is not None
         assert "xhigh" in spec.litellm_reasoning_efforts
         assert spec.token_estimate_multiplier == 1.35
+
+
+class TestSystemPromptAddendumValidation:
+    """Tests for system_prompt_addendum field validation at catalog parse time."""
+
+    def test_defaults_to_none(self):
+        data = _minimal_model_data()
+        spec = _parse_model_spec("test", data)
+        assert spec.system_prompt_addendum is None
+
+    def test_parses_valid_path(self):
+        data = _minimal_model_data()
+        data["system_prompt_addendum"] = "system_prompt_addendums/openai.md"
+        spec = _parse_model_spec("test", data)
+        assert spec.system_prompt_addendum == "system_prompt_addendums/openai.md"
+
+    def test_rejects_bad_prefix(self):
+        data = _minimal_model_data()
+        data["system_prompt_addendum"] = "wrong_dir/openai.md"
+        with pytest.raises(ModelCatalogError, match="system_prompt_addendum must be"):
+            _parse_model_spec("test", data)
+
+    def test_rejects_bad_extension(self):
+        data = _minimal_model_data()
+        data["system_prompt_addendum"] = "system_prompt_addendums/openai.txt"
+        with pytest.raises(ModelCatalogError, match="system_prompt_addendum must be"):
+            _parse_model_spec("test", data)
+
+    def test_rejects_missing_resource(self):
+        data = _minimal_model_data()
+        data["system_prompt_addendum"] = "system_prompt_addendums/nonexistent.md"
+        with pytest.raises(ModelCatalogError, match="resource not found"):
+            _parse_model_spec("test", data)
+
+    def test_openai_models_have_addendum(self):
+        catalog = load_model_catalog()
+        spec = catalog.get("gpt-5.5")
+        assert spec.system_prompt_addendum == "system_prompt_addendums/openai.md"
+
+    def test_gemini_models_have_addendum(self):
+        catalog = load_model_catalog()
+        spec = catalog.get("gemini-3.1-pro-preview")
+        assert spec.system_prompt_addendum == "system_prompt_addendums/gemini.md"
+
+    def test_claude_models_have_no_addendum(self):
+        catalog = load_model_catalog()
+        spec = catalog.get("claude-opus-4-6")
+        assert spec.system_prompt_addendum is None

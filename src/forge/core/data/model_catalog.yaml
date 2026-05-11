@@ -58,7 +58,7 @@ models:
   # ---------------------------------------------------------------------------
   gpt-5.4:
     friendly_name: GPT-5.4
-    context_window_tokens: 400000
+    context_window_tokens: 1050000
     max_output_tokens: 128000
     max_thinking_tokens: null
     supports_thinking: true
@@ -83,7 +83,7 @@ models:
 
   gpt-5.5:
     friendly_name: GPT-5.5
-    context_window_tokens: 400000
+    context_window_tokens: 1050000
     max_output_tokens: 128000
     max_thinking_tokens: null
     supports_thinking: true
@@ -106,10 +106,33 @@ models:
     system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
+  gpt-5.5-pro:
+    friendly_name: GPT-5.5 Pro
+    context_window_tokens: 1050000
+    max_output_tokens: 128000
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    supports_verbosity: true
+    verbosity_levels: [low, medium, high]
+    temperature_constraint: fixed
+    temperature: 1.0
+    supports_top_p: false
+    default_timeout_seconds: 300
+    prompt_caching:
+      supports: false
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [low, medium, high, xhigh]
+    default_reasoning_effort: medium
+    use_responses_api: true
+    intelligence_score: 100
+    system_prompt_addendum: system_prompt_addendums/openai.md
+    tags: []
+
   gpt-5.4-pro:
     friendly_name: GPT-5.4 Pro
-    context_window_tokens: 400000
-    max_output_tokens: 272000
+    context_window_tokens: 1050000
+    max_output_tokens: 128000
     max_thinking_tokens: null
     supports_thinking: true
     supports_images: true
@@ -124,7 +147,7 @@ models:
       mechanism: auto
       min_tokens: 1024
     native_thinking_param: reasoning_effort
-    litellm_reasoning_efforts: [none, low, medium, high, xhigh]
+    litellm_reasoning_efforts: [medium, high, xhigh]
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 100
@@ -1046,6 +1069,7 @@ models:
 aliases:
   # OpenAI provider prefix (LiteLLM style)
   openai/gpt-5.5: gpt-5.5
+  openai/gpt-5.5-pro: gpt-5.5-pro
   openai/gpt-5.4: gpt-5.4
   openai/gpt-5.4-pro: gpt-5.4-pro
   openai/gpt-5.4-mini: gpt-5.4-mini

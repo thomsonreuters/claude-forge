@@ -25,6 +25,18 @@ Claude Code doesn't send session IDs downstream. The proxy identifies requests b
 
 If you want different model mappings or thinking defaults: use a different proxy.
 
+### Full model capabilities
+
+Provider CLIs sometimes limit the models they serve. For example, OpenAI's Codex CLI caps GPT-5.5 at 400K tokens as a
+serving-budget decision, even though the model supports 1,050,000 tokens via the API. Forge proxies route through the
+API directly, so you get the model's full context window and the complete set of reasoning effort levels.
+
+This also means access to models that product CLIs don't expose at all -- like `gpt-5.5-pro` (1M context, higher
+reasoning quality) or mixing providers within a single workflow (GPT for planning, Claude for execution).
+
+The tradeoff is cost: you pay API rates instead of bundled subscription pricing. Forge's
+[spend caps](#cost-tracking-and-spend-caps) make this manageable.
+
 ### No-proxy mode
 
 When using Claude Code directly (without Forge proxy), proxies are not used. Sessions still function for workflow

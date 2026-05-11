@@ -353,9 +353,7 @@ def _show_logs(logs_root: Path) -> None:
             from forge.runtime_config import get_runtime_config as _get_rc2
 
             if not _get_rc2().log_tool_failures:
-                console.print(
-                    "\n[dim]Tip: Log non-Claude model tool misuse (e.g., invalid Read parameters):[/dim]"
-                )
+                console.print("\n[dim]Tip: Log non-Claude model tool misuse (e.g., invalid Read parameters):[/dim]")
                 console.print("[dim]  forge config set log_tool_failures=true[/dim]")
         except Exception:
             pass

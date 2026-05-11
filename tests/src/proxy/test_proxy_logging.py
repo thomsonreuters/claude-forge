@@ -31,9 +31,7 @@ def _reset_config_singleton():
 
 
 @pytest.mark.asyncio
-async def test_structured_proxy_logs_disabled_by_default(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_structured_proxy_logs_disabled_by_default(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Default log_level=off should produce no JSONL files."""
     monkeypatch.setenv("FORGE_HOME", str(tmp_path / "forge_home"))
     monkeypatch.delenv("FORGE_DEBUG", raising=False)
@@ -61,9 +59,7 @@ async def test_structured_proxy_logs_disabled_by_default(
 
 
 @pytest.mark.asyncio
-async def test_structured_proxy_logs_write_in_debug(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_structured_proxy_logs_write_in_debug(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FORGE_HOME", str(tmp_path / "forge_home"))
     monkeypatch.setenv("FORGE_DEBUG", "1")
 
@@ -125,9 +121,7 @@ def _enable_tool_failure_logging(tmp_path, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.mark.asyncio
-async def test_tool_failure_log_disabled_by_default(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_tool_failure_log_disabled_by_default(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Tool failure log is opt-in even though it is independent of debug logging."""
     monkeypatch.setenv("FORGE_HOME", str(tmp_path / "forge_home"))
     monkeypatch.delenv("FORGE_DEBUG", raising=False)
@@ -138,9 +132,7 @@ async def test_tool_failure_log_disabled_by_default(
 
 
 @pytest.mark.asyncio
-async def test_tool_failure_log_writes_when_enabled(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_tool_failure_log_writes_when_enabled(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Tool failure log writes when log_tool_failures=true."""
     _enable_tool_failure_logging(tmp_path, monkeypatch)
 
@@ -156,9 +148,7 @@ async def test_tool_failure_log_writes_when_enabled(
 
 
 @pytest.mark.asyncio
-async def test_tool_failure_log_disabled_by_config(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_tool_failure_log_disabled_by_config(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Tool failure log respects log_tool_failures=false."""
     monkeypatch.setenv("FORGE_HOME", str(tmp_path / "forge_home"))
     monkeypatch.delenv("FORGE_DEBUG", raising=False)
@@ -173,9 +163,7 @@ async def test_tool_failure_log_disabled_by_config(
 
 
 @pytest.mark.asyncio
-async def test_tool_failure_log_record_fields(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_tool_failure_log_record_fields(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify all expected fields are present in the JSONL record."""
     _enable_tool_failure_logging(tmp_path, monkeypatch)
 
@@ -204,9 +192,7 @@ async def test_tool_failure_log_record_fields(
 
 
 @pytest.mark.asyncio
-async def test_tool_failure_log_truncates_long_errors(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_tool_failure_log_truncates_long_errors(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     _enable_tool_failure_logging(tmp_path, monkeypatch)
 
     long_error = "x" * 5000
@@ -226,9 +212,7 @@ async def test_tool_failure_log_truncates_long_errors(
 
 
 @pytest.mark.asyncio
-async def test_tool_failure_log_truncates_list_error_content(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_tool_failure_log_truncates_list_error_content(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Anthropic tool_result content can be a list of blocks; keep it bounded."""
     _enable_tool_failure_logging(tmp_path, monkeypatch)
 
@@ -248,9 +232,7 @@ async def test_tool_failure_log_truncates_list_error_content(
 
 
 @pytest.mark.asyncio
-async def test_tool_failure_log_survives_write_error(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_tool_failure_log_survives_write_error(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Write errors are swallowed (best-effort)."""
     monkeypatch.setenv("FORGE_HOME", "/nonexistent/readonly/path")
     monkeypatch.delenv("FORGE_DEBUG", raising=False)
@@ -277,9 +259,7 @@ def test_truncate_for_log_non_string_passthrough() -> None:
 def test_truncate_recursive_caps_string_inside_dict() -> None:
     """Edit/Write tool inputs may carry KB-scale `content` fields."""
     big_content = "x" * 50_000
-    result = _truncate_recursive(
-        {"file_path": "/foo.py", "content": big_content}, max_str_len=1024
-    )
+    result = _truncate_recursive({"file_path": "/foo.py", "content": big_content}, max_str_len=1024)
     assert isinstance(result, dict)
     assert result["file_path"] == "/foo.py"
     assert isinstance(result["content"], str)
@@ -309,9 +289,7 @@ def test_truncate_recursive_max_depth_guard() -> None:
 
 
 @pytest.mark.asyncio
-async def test_tool_failure_log_truncates_tool_input(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_tool_failure_log_truncates_tool_input(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`tool_input` with KB-scale content gets recursively truncated."""
     _enable_tool_failure_logging(tmp_path, monkeypatch)
 
@@ -333,9 +311,7 @@ async def test_tool_failure_log_truncates_tool_input(
 
 
 @pytest.mark.asyncio
-async def test_tool_failure_log_file_perms_0600(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_tool_failure_log_file_perms_0600(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Telemetry log files are owner-only readable."""
     import stat
 
@@ -352,6 +328,13 @@ async def test_tool_failure_log_file_perms_0600(
 
 
 class _FakeBlock:
+    content: str
+    id: str
+    name: str
+    input: dict
+    tool_use_id: str
+    is_error: bool
+
     def __init__(self, type: str, **kwargs):
         self.type = type
         for k, v in kwargs.items():
@@ -367,12 +350,8 @@ class _FakeMsg:
 def test_find_tool_use_info_returns_name_and_input() -> None:
     from forge.proxy.server import _find_tool_use_info
 
-    tool_use_block = _FakeBlock(
-        "tool_use", id="tu_1", name="Read", input={"file_path": "/foo.py", "pages": ""}
-    )
-    tool_result_block = _FakeBlock(
-        "tool_result", tool_use_id="tu_1", content="Error: bad pages", is_error=True
-    )
+    tool_use_block = _FakeBlock("tool_use", id="tu_1", name="Read", input={"file_path": "/foo.py", "pages": ""})
+    tool_result_block = _FakeBlock("tool_result", tool_use_id="tu_1", content="Error: bad pages", is_error=True)
     assistant_msg = _FakeMsg("assistant", [tool_use_block])
     user_msg = _FakeMsg("user", [tool_result_block])
     messages = [assistant_msg, user_msg]
@@ -408,16 +387,10 @@ async def test_check_client_tool_failures_scans_only_latest_user_message(
     _enable_tool_failure_logging(tmp_path, monkeypatch)
 
     # Old assistant turn (issued tool_use_old) + old user reply (failure).
-    old_use = _FakeBlock(
-        "tool_use", id="tu_old", name="Read", input={"file_path": "/a"}
-    )
-    old_result = _FakeBlock(
-        "tool_result", tool_use_id="tu_old", content="Error: gone", is_error=True
-    )
+    old_use = _FakeBlock("tool_use", id="tu_old", name="Read", input={"file_path": "/a"})
+    old_result = _FakeBlock("tool_result", tool_use_id="tu_old", content="Error: gone", is_error=True)
     # Newer assistant turn + new user reply.
-    new_use = _FakeBlock(
-        "tool_use", id="tu_new", name="Read", input={"file_path": "/b", "pages": ""}
-    )
+    new_use = _FakeBlock("tool_use", id="tu_new", name="Read", input={"file_path": "/b", "pages": ""})
     new_result = _FakeBlock(
         "tool_result",
         tool_use_id="tu_new",
@@ -444,16 +417,10 @@ async def test_check_client_tool_failures_scans_only_latest_user_message(
     if not files:
         # Background tasks may not have flushed yet under heavy CI; retry once
         await _aio.sleep(0.1)
-        files = list(
-            (tmp_path / "forge_home" / "logs" / "tool_failures").glob("*.jsonl")
-        )
+        files = list((tmp_path / "forge_home" / "logs" / "tool_failures").glob("*.jsonl"))
 
     assert len(files) == 1
-    lines = [
-        json.loads(line)
-        for line in files[0].read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    lines = [json.loads(line) for line in files[0].read_text(encoding="utf-8").splitlines() if line.strip()]
     # Only the newest tool_result should have been logged
     assert len(lines) == 1
     assert lines[0]["tool_use_id"] == "tu_new"
@@ -488,17 +455,11 @@ async def test_check_client_tool_failures_logs_raw_error_before_enrichment(
     )
 
     raw_error = "Error: File does not exist: /missing.py"
-    tool_use = _FakeBlock(
-        "tool_use", id="tu_raw", name="Read", input={"file_path": "/missing.py"}
-    )
-    tool_result = _FakeBlock(
-        "tool_result", tool_use_id="tu_raw", content=raw_error, is_error=True
-    )
+    tool_use = _FakeBlock("tool_use", id="tu_raw", name="Read", input={"file_path": "/missing.py"})
+    tool_result = _FakeBlock("tool_result", tool_use_id="tu_raw", content=raw_error, is_error=True)
     messages = [_FakeMsg("assistant", [tool_use]), _FakeMsg("user", [tool_result])]
 
-    await server._check_client_tool_failures(
-        MagicMock(messages=messages), "req_raw", "openai/gpt-5.5"
-    )
+    await server._check_client_tool_failures(MagicMock(messages=messages), "req_raw", "openai/gpt-5.5")
     await _aio.sleep(0.05)
 
     assert captured["error_content"] == raw_error

@@ -131,9 +131,7 @@ def _is_resumable_session(state: SessionState) -> bool:
     hook missed confirmation (for example, lock contention). Pre-seeded UUIDs
     without other evidence are still rejected.
     """
-    return bool(
-        state.confirmed.claude_session_id and _has_resumable_claude_session(state)
-    )
+    return bool(state.confirmed.claude_session_id and _has_resumable_claude_session(state))
 
 
 def _has_resumable_transcript(state: SessionState) -> bool:
@@ -154,13 +152,9 @@ def _has_resumable_transcript(state: SessionState) -> bool:
 
         # Check persisted launch root first, then computed root
         if state.confirmed.claude_project_root:
-            if get_transcript_path(
-                state.confirmed.claude_project_root, session_id
-            ).is_file():
+            if get_transcript_path(state.confirmed.claude_project_root, session_id).is_file():
                 return True
-        return get_transcript_path(
-            resolve_claude_project_root(state), session_id
-        ).is_file()
+        return get_transcript_path(resolve_claude_project_root(state), session_id).is_file()
     except Exception:
         return False
 
@@ -191,9 +185,7 @@ def _get_deferred_same_dir_fork_resume_id(
         return None
 
     try:
-        parent_state = manager.get_session(
-            manifest.parent_session, forge_root=manifest.forge_root
-        )
+        parent_state = manager.get_session(manifest.parent_session, forge_root=manifest.forge_root)
     except ForgeSessionError:
         return None
 
@@ -255,13 +247,9 @@ def _infer_launch_confirmation(
 
     # Prefer persisted launch root; fall back to computed root
     if manifest.confirmed.claude_project_root:
-        transcript_path = get_transcript_path(
-            manifest.confirmed.claude_project_root, session_id
-        )
+        transcript_path = get_transcript_path(manifest.confirmed.claude_project_root, session_id)
     else:
-        transcript_path = get_transcript_path(
-            resolve_claude_project_root(manifest), session_id
-        )
+        transcript_path = get_transcript_path(resolve_claude_project_root(manifest), session_id)
     if not transcript_path.is_file():
         return
 
@@ -278,10 +266,7 @@ def _infer_launch_confirmation(
 
 def _resolve_manifest_prompt_file(manifest: SessionState) -> Path | None:
     """Resolve a session's configured system prompt file, if any."""
-    if (
-        manifest.intent.system_prompt is None
-        or manifest.intent.system_prompt.file is None
-    ):
+    if manifest.intent.system_prompt is None or manifest.intent.system_prompt.file is None:
         return None
     prompt_path = Path(manifest.intent.system_prompt.file).expanduser()
     return prompt_path.resolve() if prompt_path.exists() else None
@@ -313,9 +298,7 @@ def _persist_fork_handoff_derivation(
         m.confirmed.derivation.strategy = strategy
         m.confirmed.derivation.context_file = context_file
 
-    return SessionStore(str(forge_root), manifest.name).update(
-        timeout_s=5.0, mutate=_mutate
-    )
+    return SessionStore(str(forge_root), manifest.name).update(timeout_s=5.0, mutate=_mutate)
 
 
 def _launch_claude_for_session(
@@ -374,9 +357,7 @@ def _launch_claude_for_session(
 
     addendum_content = resolve_addendum_content_for_proxy(proxy_id)
     if addendum_content:
-        addendum_path = write_managed_addendum(
-            forge_root, manifest.name, addendum_content
-        )
+        addendum_path = write_managed_addendum(forge_root, manifest.name, addendum_content)
         prompt_files = [addendum_path]
         if system_prompt_file:
             prompt_files.append(Path(system_prompt_file))
@@ -400,9 +381,7 @@ def _launch_claude_for_session(
 
     if use_sidecar:
         if effective_template is None or runtime_base_url is None:
-            console.print(
-                "[red]Error:[/red] Direct sessions are not supported with --sidecar"
-            )
+            console.print("[red]Error:[/red] Direct sessions are not supported with --sidecar")
             sys.exit(1)
 
         # Recover proxy_id from base_url when not explicitly provided (relaunch paths)
@@ -424,9 +403,7 @@ def _launch_claude_for_session(
             console.print("[red]Error:[/red] Docker is not available or not running")
             sys.exit(1)
 
-        store.update(
-            timeout_s=5.0, mutate=lambda m: setattr(m.confirmed, "is_sandboxed", True)
-        )
+        store.update(timeout_s=5.0, mutate=lambda m: setattr(m.confirmed, "is_sandboxed", True))
 
         try:
             extra_mounts = parse_mounts(mounts) if mounts else []
@@ -522,9 +499,7 @@ def _launch_claude_for_session(
             )
             raise
 
-    store.update(
-        timeout_s=5.0, mutate=lambda m: setattr(m.confirmed, "is_sandboxed", False)
-    )
+    store.update(timeout_s=5.0, mutate=lambda m: setattr(m.confirmed, "is_sandboxed", False))
 
     # Best-effort: recover proxy_id from base_url for host launches (resume/reconnect
     # paths don't pass proxy_id explicitly). Falls back to no proxy_id, which means
@@ -543,9 +518,7 @@ def _launch_claude_for_session(
         # Direct mode: apply explicit --model or fall back to default_direct_model
         from forge.runtime_config import get_default_direct_model
 
-        direct_model = (
-            manifest.intent.launch.direct_model if manifest.intent.launch else None
-        )
+        direct_model = manifest.intent.launch.direct_model if manifest.intent.launch else None
         direct_model = direct_model or get_default_direct_model()
         error = apply_direct_model_env(env_vars, direct_model)
         if error:
@@ -588,9 +561,7 @@ def _launch_claude_for_session(
         ),
     )
     if exit_code == 0 and not fork_session:
-        _sess()._infer_launch_confirmation(
-            store=store, manifest=manifest, session_id=resume_id or session_id
-        )
+        _sess()._infer_launch_confirmation(store=store, manifest=manifest, session_id=resume_id or session_id)
 
     _print_post_exit_tip(manifest)
 
@@ -613,10 +584,7 @@ def _print_post_exit_tip(manifest: SessionState) -> None:
     except Exception:
         logger.debug("Terminal line clear failed before post-exit tip", exc_info=True)
     resume_cmd = _resume_tip_command(manifest)
-    console.print(
-        f"\n[dim]Tip: Reconnect to this conversation with:[/dim]\n"
-        f"[dim]  {resume_cmd}[/dim]"
-    )
+    console.print(f"\n[dim]Tip: Reconnect to this conversation with:[/dim]\n" f"[dim]  {resume_cmd}[/dim]")
 
 
 def _resume_tip_command(manifest: SessionState) -> str:
@@ -640,9 +608,7 @@ def _print_branch_exists_tip(e: BranchExistsError) -> None:
     """Print contextual tip for a branch that already exists."""
     console.print(f"[red]Error:[/red] {e}")
     if e.worktree:
-        console.print(
-            "\n[dim]Tip: Use --branch to specify a different branch name.[/dim]"
-        )
+        console.print("\n[dim]Tip: Use --branch to specify a different branch name.[/dim]")
     else:
         console.print(
             f"\n[dim]Tip: Delete with `git branch -d {e.branch}` or use --branch to specify a different name.[/dim]"
@@ -662,9 +628,7 @@ def _resume_token_estimate_multiplier(
 
     from forge.runtime_config import get_default_direct_model
 
-    direct_model = (
-        parent_state.intent.launch.direct_model if parent_state.intent.launch else None
-    )
+    direct_model = parent_state.intent.launch.direct_model if parent_state.intent.launch else None
     direct_model = direct_model or get_default_direct_model()
     if not direct_model:
         return 1.0
@@ -717,22 +681,16 @@ def launch_new_session(
         console.print("[red]Error:[/red] --branch requires --worktree")
         return 1
     if sidecar and host_proxy:
-        console.print(
-            "[red]Error:[/red] --sidecar and --host-proxy are mutually exclusive"
-        )
+        console.print("[red]Error:[/red] --sidecar and --host-proxy are mutually exclusive")
         return 1
     if direct and (template or base_url):
-        console.print(
-            "[red]Error:[/red] --no-proxy cannot be combined with --template or --base-url"
-        )
+        console.print("[red]Error:[/red] --no-proxy cannot be combined with --template or --base-url")
         return 1
     if direct and sidecar:
         console.print("[red]Error:[/red] --no-proxy cannot be combined with --sidecar")
         return 1
     if direct and host_proxy:
-        console.print(
-            "[red]Error:[/red] --no-proxy cannot be combined with --host-proxy"
-        )
+        console.print("[red]Error:[/red] --no-proxy cannot be combined with --host-proxy")
         return 1
     if direct_model and sidecar:
         console.print("[red]Error:[/red] --model cannot be combined with --sidecar")
@@ -741,21 +699,13 @@ def launch_new_session(
         console.print("[red]Error:[/red] --model cannot be combined with --host-proxy")
         return 1
     if incognito and no_launch:
-        console.print(
-            "[red]Error:[/red] --incognito and --no-launch are mutually exclusive"
-        )
+        console.print("[red]Error:[/red] --incognito and --no-launch are mutually exclusive")
         return 1
     if no_launch and (system_prompt or system_prompt_file):
-        console.print(
-            "[red]Error:[/red] --system-prompt is launch-only and lost with --no-launch"
-        )
+        console.print("[red]Error:[/red] --system-prompt is launch-only and lost with --no-launch")
         return 1
 
-    launch_mode = (
-        LAUNCH_MODE_HOST
-        if direct
-        else _resolve_launch_mode(sidecar=sidecar, host_proxy=host_proxy)
-    )
+    launch_mode = LAUNCH_MODE_HOST if direct else _resolve_launch_mode(sidecar=sidecar, host_proxy=host_proxy)
     use_sidecar = launch_mode == LAUNCH_MODE_SIDECAR
     manager = _sess().SessionManager()
 
@@ -778,20 +728,14 @@ def launch_new_session(
             if proxy_cfg is None:
                 raise FileNotFoundError(proxy_id)
         except Exception:
-            console.print(
-                f"[red]Error:[/red] Could not load proxy config for '{proxy_id}'"
-            )
+            console.print(f"[red]Error:[/red] Could not load proxy config for '{proxy_id}'")
             return 1
         tier = direct_model_pin.tier
         # Strip [1m] suffix for alternative lookup (context pinning, not routing)
         lookup_model = direct_model_pin.canonical_model
         alt_models = proxy_cfg.model_alternatives.get(tier, {})
         if lookup_model not in alt_models:
-            available = (
-                ", ".join(sorted(alt_models.keys()))
-                if alt_models
-                else "(none configured)"
-            )
+            available = ", ".join(sorted(alt_models.keys())) if alt_models else "(none configured)"
             console.print(
                 f"[red]Error:[/red] Proxy '{proxy_id}' does not configure model alternative "
                 f"for '{lookup_model}' in tier '{tier}'. Available alternatives: {available}"
@@ -849,21 +793,15 @@ def launch_new_session(
         )
     except SessionExistsError as e:
         console.print(f"[red]Error:[/red] {e}")
-        console.print(
-            f"\n[dim]Tip: Use 'forge session resume {name}' to continue,[/dim]"
-        )
-        console.print(
-            f"[dim]or 'forge session delete {name}' to remove it first.[/dim]"
-        )
+        console.print(f"\n[dim]Tip: Use 'forge session resume {name}' to continue,[/dim]")
+        console.print(f"[dim]or 'forge session delete {name}' to remove it first.[/dim]")
         return 1
     except BranchExistsError as e:
         _print_branch_exists_tip(e)
         return 1
     except WorktreePathExistsError as e:
         console.print(f"[red]Error:[/red] {e}")
-        console.print(
-            "\n[dim]Tip: Remove the directory or use a different session name.[/dim]"
-        )
+        console.print("\n[dim]Tip: Remove the directory or use a different session name.[/dim]")
         return 1
     except InvalidBranchNameError as e:
         console.print(f"[red]Error:[/red] {e}")
@@ -896,9 +834,7 @@ def launch_new_session(
         from forge.session.models import SupervisorConfig
         from forge.session.store import SessionStore
 
-        _sup_forge_root = manifest.forge_root or (
-            manifest.worktree.path if manifest.worktree else str(Path.cwd())
-        )
+        _sup_forge_root = manifest.forge_root or (manifest.worktree.path if manifest.worktree else str(Path.cwd()))
         sup_config = SupervisorConfig(
             resume_id=supervise_target,
             forge_root=_supervisor_source_state.forge_root or _sup_forge_root,
@@ -915,15 +851,11 @@ def launch_new_session(
 
         forge_root = _sup_forge_root
         store = SessionStore(forge_root, manifest.name)
-        store.update(
-            timeout_s=5.0, mutate=lambda m: apply_supervisor_to_intent(m, sup_config)
-        )
+        store.update(timeout_s=5.0, mutate=lambda m: apply_supervisor_to_intent(m, sup_config))
         manifest = store.read()
 
     # --- compute launch parameters ---
-    effective_template = (
-        manifest.intent.proxy.template if manifest.intent.proxy else None
-    )
+    effective_template = manifest.intent.proxy.template if manifest.intent.proxy else None
     effective_url = manifest.intent.proxy.base_url if manifest.intent.proxy else None
 
     context_limit = (
@@ -931,17 +863,13 @@ def launch_new_session(
         if context_limit_override is not None
         else _sess()._resolve_context_limit(effective_template)
     )
-    runtime_base_url = _get_runtime_base_url(
-        use_sidecar=use_sidecar, effective_url=effective_url
-    )
+    runtime_base_url = _get_runtime_base_url(use_sidecar=use_sidecar, effective_url=effective_url)
 
     # --- output ---
     label = "incognito session" if incognito else "session"
     console.print(f"Created {label} [green]{manifest.name}[/green]")
     if proxy_display:
-        console.print(
-            f"  Proxy: {proxy_display} ({effective_template}) @ {runtime_base_url}"
-        )
+        console.print(f"  Proxy: {proxy_display} ({effective_template}) @ {runtime_base_url}")
     else:
         _print_routing_summary(template=effective_template, base_url=runtime_base_url)
     if manifest.worktree and manifest.worktree.is_worktree:
@@ -992,9 +920,7 @@ def launch_new_session(
                 proxy_id=proxy_id,
             )
         finally:
-            console.print(
-                f"\n[dim]Cleaning up incognito session '{manifest.name}'...[/dim]"
-            )
+            console.print(f"\n[dim]Cleaning up incognito session '{manifest.name}'...[/dim]")
             try:
                 _sess().SessionManager().delete_session(
                     manifest.name,
@@ -1054,9 +980,7 @@ def launch_new_session(
     type=click.Path(exists=True),
     help="Append system prompt from file",
 )
-@click.option(
-    "--worktree", "-w", is_flag=True, help="Create git worktree for session isolation"
-)
+@click.option("--worktree", "-w", is_flag=True, help="Create git worktree for session isolation")
 @click.option("--branch", "-b", help="Override branch name (requires --worktree)")
 @click.option(
     "--model",
@@ -1065,13 +989,9 @@ def launch_new_session(
     default=None,
     help="Pin the Claude model for direct sessions (for example: claude-opus-4-7 or claude-sonnet-4-6[1m])",
 )
-@click.option(
-    "--sidecar", is_flag=True, help="Run with bundled proxy in Docker container"
-)
+@click.option("--sidecar", is_flag=True, help="Run with bundled proxy in Docker container")
 @click.option("--host-proxy", is_flag=True, help="Use host proxy (overrides config)")
-@click.option(
-    "--mount", "mounts", multiple=True, help="Extra mounts (host:container[:ro|rw])"
-)
+@click.option("--mount", "mounts", multiple=True, help="Extra mounts (host:container[:ro|rw])")
 @click.option("--image", default=None, help="Docker image for sidecar mode")
 @click.option(
     "--no-launch",
@@ -1155,14 +1075,10 @@ def start(
         console.print("[red]Error:[/red] --no-proxy and --proxy are mutually exclusive")
         sys.exit(1)
     if supervisor_proxy and supervisor_direct:
-        console.print(
-            "[red]Error:[/red] --supervisor-proxy and --no-supervisor-proxy are mutually exclusive"
-        )
+        console.print("[red]Error:[/red] --supervisor-proxy and --no-supervisor-proxy are mutually exclusive")
         sys.exit(1)
     if (supervisor_proxy or supervisor_direct) and not supervise_target:
-        console.print(
-            "[red]Error:[/red] --supervisor-proxy/--no-supervisor-proxy require --supervise"
-        )
+        console.print("[red]Error:[/red] --supervisor-proxy/--no-supervisor-proxy require --supervise")
         sys.exit(1)
     if subprocess_proxy and proxy_name:
         console.print(
@@ -1189,9 +1105,7 @@ def start(
 
     if name is None:
         _fr = _sess()._cwd_forge_root()
-        existing = {
-            n for n, _ in _sess().SessionManager().list_sessions(forge_root_filter=_fr)
-        }
+        existing = {n for n, _ in _sess().SessionManager().list_sessions(forge_root_filter=_fr)}
         name = _sess().generate_unique_name(existing)
 
     sys.exit(
@@ -1366,20 +1280,10 @@ def resume(
         # Warn about handoff-only flags with native mode
         if effective_resume_mode == "native":
             ctx = click.get_current_context()
-            if (
-                ctx.get_parameter_source("strategy")
-                == click.core.ParameterSource.COMMANDLINE
-            ):
-                console.print(
-                    "[dim]Tip: --strategy is ignored with --resume-mode native.[/dim]"
-                )
-            if (
-                ctx.get_parameter_source("depth")
-                == click.core.ParameterSource.COMMANDLINE
-            ):
-                console.print(
-                    "[dim]Tip: --depth is ignored with --resume-mode native.[/dim]"
-                )
+            if ctx.get_parameter_source("strategy") == click.core.ParameterSource.COMMANDLINE:
+                console.print("[dim]Tip: --strategy is ignored with --resume-mode native.[/dim]")
+            if ctx.get_parameter_source("depth") == click.core.ParameterSource.COMMANDLINE:
+                console.print("[dim]Tip: --depth is ignored with --resume-mode native.[/dim]")
 
         if effective_resume_mode == "native":
             # Native requires a hook-confirmed session (UUID + confirmed_by/transcript evidence).
@@ -1484,12 +1388,8 @@ def _launch_in_place(
         direct=direct,
     )
 
-    effective_template, effective_url, effective_proxy_id = (
-        _get_effective_proxy_for_session(manifest)
-    )
-    context_limit = _sess()._resolve_context_limit(
-        effective_proxy_id or effective_template
-    )
+    effective_template, effective_url, effective_proxy_id = _get_effective_proxy_for_session(manifest)
+    context_limit = _sess()._resolve_context_limit(effective_proxy_id or effective_template)
     use_sidecar, mounts, image = _get_launch_preferences(manifest)
     prompt_files: list[Path] = []
 
@@ -1502,18 +1402,14 @@ def _launch_in_place(
     resume_id: str | None = None
     session_id: str | None = None
     prompt_warnings: list[str] = []
-    parent_resume_id = _get_deferred_same_dir_fork_resume_id(
-        manager=manager, manifest=manifest
-    )
+    parent_resume_id = _get_deferred_same_dir_fork_resume_id(manager=manager, manifest=manifest)
     if parent_resume_id is not None:
         resume_id = parent_resume_id
         fork_session = True
         launch_action = "Fork parent Claude conversation"
     else:
         session_id = str(_uuid.uuid4())
-        fork_context, prompt_warnings = _sess()._generate_parent_handoff_context(
-            manager=manager, manifest=manifest
-        )
+        fork_context, prompt_warnings = _sess()._generate_parent_handoff_context(manager=manager, manifest=manifest)
         if fork_context is not None:
             prompt_files.append(fork_context)
             launch_action = "Start fresh Claude session with parent context"
@@ -1521,9 +1417,7 @@ def _launch_in_place(
             launch_action = "Start fresh Claude session"
 
     # Write pre-seeded UUID to manifest + index (after worktree_path is resolved)
-    forge_root_path = (
-        Path(manifest.forge_root) if manifest.forge_root else worktree_path
-    )
+    forge_root_path = Path(manifest.forge_root) if manifest.forge_root else worktree_path
     if session_id is not None:
         try:
             from forge.session import SessionStore
@@ -1535,12 +1429,8 @@ def _launch_in_place(
             )
             manager.index_store.sync_uuid_from_state(manifest.name, store.read())
         except Exception:
-            logger.debug(
-                "Pre-seed UUID write failed (hook will reconcile)", exc_info=True
-            )
-    runtime_base_url = _get_runtime_base_url(
-        use_sidecar=use_sidecar, effective_url=effective_url
-    )
+            logger.debug("Pre-seed UUID write failed (hook will reconcile)", exc_info=True)
+    runtime_base_url = _get_runtime_base_url(use_sidecar=use_sidecar, effective_url=effective_url)
     prompt_file = _combine_prompt_files(
         worktree_path=worktree_path,
         session_name=manifest.name,
@@ -1595,9 +1485,7 @@ def _reconnect_in_place(
     dispatch) -- this function assumes the session is not active.
     """
     if not _is_resumable_session(manifest):
-        console.print(
-            "[red]Error:[/red] Cannot reconnect: no resumable Claude conversation was found."
-        )
+        console.print("[red]Error:[/red] Cannot reconnect: no resumable Claude conversation was found.")
         console.print(
             f"[dim]Tip: Use 'forge session resume {name}' to reattach, or --fresh to start a new conversation.[/dim]"
         )
@@ -1617,16 +1505,10 @@ def _reconnect_in_place(
         direct=direct,
     )
 
-    effective_template, effective_url, effective_proxy_id = (
-        _get_effective_proxy_for_session(manifest)
-    )
-    context_limit = _sess()._resolve_context_limit(
-        effective_proxy_id or effective_template
-    )
+    effective_template, effective_url, effective_proxy_id = _get_effective_proxy_for_session(manifest)
+    context_limit = _sess()._resolve_context_limit(effective_proxy_id or effective_template)
     use_sidecar, mounts, image = _get_launch_preferences(manifest)
-    runtime_base_url = _get_runtime_base_url(
-        use_sidecar=use_sidecar, effective_url=effective_url
-    )
+    runtime_base_url = _get_runtime_base_url(use_sidecar=use_sidecar, effective_url=effective_url)
 
     console.print(f"Reconnecting to session [green]{name}[/green]")
     _print_routing_summary(template=effective_template, base_url=runtime_base_url)
@@ -1668,9 +1550,7 @@ def _launch_as_child(
     through the sidecar path with stored mounts/image settings.
     """
     try:
-        parent, child = manager.relaunch_session(
-            parent_name, forge_root=parent.forge_root
-        )
+        parent, child = manager.relaunch_session(parent_name, forge_root=parent.forge_root)
     except ForgeSessionError as e:
         _handle_error(e)
         return
@@ -1684,21 +1564,13 @@ def _launch_as_child(
         direct=direct,
     )
 
-    effective_template, effective_url, effective_proxy_id = (
-        _get_effective_proxy_for_session(child)
-    )
-    context_limit = _sess()._resolve_context_limit(
-        effective_proxy_id or effective_template
-    )
+    effective_template, effective_url, effective_proxy_id = _get_effective_proxy_for_session(child)
+    context_limit = _sess()._resolve_context_limit(effective_proxy_id or effective_template)
     use_sidecar, mounts, image = _get_launch_preferences(child)
 
-    runtime_base_url = _get_runtime_base_url(
-        use_sidecar=use_sidecar, effective_url=effective_url
-    )
+    runtime_base_url = _get_runtime_base_url(use_sidecar=use_sidecar, effective_url=effective_url)
 
-    console.print(
-        f"Relaunching [green]{parent_name}[/green] as [green]{child.name}[/green]"
-    )
+    console.print(f"Relaunching [green]{parent_name}[/green] as [green]{child.name}[/green]")
     _print_routing_summary(template=effective_template, base_url=runtime_base_url)
     console.print("  Action:   Resume parent conversation in new session")
     console.print(f"  Parent:   {parent_name}")
@@ -1817,9 +1689,7 @@ def _resume_fresh(
     elif direct:
         effective_proxy_ref = None
     else:
-        effective_template, _, effective_proxy_id = _get_effective_proxy_for_session(
-            parent_state
-        )
+        effective_template, _, effective_proxy_id = _get_effective_proxy_for_session(parent_state)
         effective_proxy_ref = effective_proxy_id or effective_template
 
     context_limit = _sess()._resolve_context_limit(effective_proxy_ref)
@@ -1842,20 +1712,14 @@ def _resume_fresh(
         _handle_error(e)
         return
 
-    child_worktree_path = (
-        Path(child_manifest.worktree.path) if child_manifest.worktree else Path.cwd()
-    )
+    child_worktree_path = Path(child_manifest.worktree.path) if child_manifest.worktree else Path.cwd()
     _persist_routing_override(
-        forge_root=Path(child_manifest.forge_root)
-        if child_manifest.forge_root
-        else child_worktree_path,
+        forge_root=Path(child_manifest.forge_root) if child_manifest.forge_root else child_worktree_path,
         session_name=child_manifest.name,
         routing=routing,
         direct=direct,
     )
-    _apply_routing_override_to_state(
-        state=child_manifest, routing=routing, direct=direct
-    )
+    _apply_routing_override_to_state(state=child_manifest, routing=routing, direct=direct)
 
     console.print(f"[dim]Context assembled: {handoff_result.context_file_rel}[/dim]")
     if handoff_result.warnings:
@@ -1863,16 +1727,12 @@ def _resume_fresh(
             console.print(f"[yellow]Warning:[/yellow] {warning}")
     console.print()
 
-    console.print(
-        f"Created derived session [green]{child_manifest.name}[/green] from [cyan]{parent}[/cyan]"
-    )
+    console.print(f"Created derived session [green]{child_manifest.name}[/green] from [cyan]{parent}[/cyan]")
     console.print(f"[dim]Strategy: {strategy}, Depth: {depth}[/dim]")
     console.print()
 
     # Launch Claude as a NEW session (not resuming parent's conversation)
-    child_worktree = (
-        Path(child_manifest.worktree.path) if child_manifest.worktree else Path.cwd()
-    )
+    child_worktree = Path(child_manifest.worktree.path) if child_manifest.worktree else Path.cwd()
     prompt_files: list[Path] = []
     configured_prompt = _resolve_manifest_prompt_file(child_manifest)
     if configured_prompt is not None:
@@ -1885,24 +1745,16 @@ def _resume_fresh(
         prompt_files=prompt_files,
     )
 
-    launch_template, launch_base_url, launch_proxy_id = (
-        _get_effective_proxy_for_session(child_manifest)
-    )
+    launch_template, launch_base_url, launch_proxy_id = _get_effective_proxy_for_session(child_manifest)
 
     use_sidecar, mounts, image = _get_launch_preferences(child_manifest)
-    runtime_base_url = _get_runtime_base_url(
-        use_sidecar=use_sidecar, effective_url=launch_base_url
-    )
+    runtime_base_url = _get_runtime_base_url(use_sidecar=use_sidecar, effective_url=launch_base_url)
 
     pre_seeded_uuid = str(_uuid.uuid4())
     try:
         from forge.session import SessionStore
 
-        _store_root = (
-            Path(child_manifest.forge_root)
-            if child_manifest.forge_root
-            else child_worktree_path
-        )
+        _store_root = Path(child_manifest.forge_root) if child_manifest.forge_root else child_worktree_path
         _store = SessionStore(str(_store_root), child_manifest.name)
         _store.update(
             timeout_s=5.0,
@@ -1956,9 +1808,7 @@ def _resume_fresh_native(
     elif direct:
         effective_proxy_ref = None
     else:
-        effective_template, _, effective_proxy_id = _get_effective_proxy_for_session(
-            parent_state
-        )
+        effective_template, _, effective_proxy_id = _get_effective_proxy_for_session(parent_state)
         effective_proxy_ref = effective_proxy_id or effective_template
 
     context_limit = _sess()._resolve_context_limit(effective_proxy_ref)
@@ -1974,39 +1824,25 @@ def _resume_fresh_native(
         _handle_error(e)
         return
 
-    child_worktree_path = (
-        Path(child_manifest.worktree.path) if child_manifest.worktree else Path.cwd()
-    )
+    child_worktree_path = Path(child_manifest.worktree.path) if child_manifest.worktree else Path.cwd()
     _persist_routing_override(
-        forge_root=Path(child_manifest.forge_root)
-        if child_manifest.forge_root
-        else child_worktree_path,
+        forge_root=Path(child_manifest.forge_root) if child_manifest.forge_root else child_worktree_path,
         session_name=child_manifest.name,
         routing=routing,
         direct=direct,
     )
-    _apply_routing_override_to_state(
-        state=child_manifest, routing=routing, direct=direct
-    )
+    _apply_routing_override_to_state(state=child_manifest, routing=routing, direct=direct)
 
     parent_uuid = parent_state.confirmed.claude_session_id
     assert parent_uuid is not None  # caller validated
 
-    console.print(
-        f"Created derived session [green]{child_manifest.name}[/green] from [cyan]{parent}[/cyan]"
-    )
-    console.print(
-        "[dim]Mode: Native resume (full conversation history via --fork-session)[/dim]"
-    )
+    console.print(f"Created derived session [green]{child_manifest.name}[/green] from [cyan]{parent}[/cyan]")
+    console.print("[dim]Mode: Native resume (full conversation history via --fork-session)[/dim]")
     console.print()
 
-    launch_template, launch_base_url, launch_proxy_id = (
-        _get_effective_proxy_for_session(child_manifest)
-    )
+    launch_template, launch_base_url, launch_proxy_id = _get_effective_proxy_for_session(child_manifest)
     use_sidecar, mounts, image = _get_launch_preferences(child_manifest)
-    runtime_base_url = _get_runtime_base_url(
-        use_sidecar=use_sidecar, effective_url=launch_base_url
-    )
+    runtime_base_url = _get_runtime_base_url(use_sidecar=use_sidecar, effective_url=launch_base_url)
 
     _print_routing_summary(template=launch_template, base_url=runtime_base_url)
     console.print()
@@ -2058,17 +1894,11 @@ def _resume_fresh_native(
     type=click.Path(exists=True),
     help="Append system prompt from file",
 )
-@click.option(
-    "--worktree", "-w", is_flag=True, help="Create git worktree for session isolation"
-)
+@click.option("--worktree", "-w", is_flag=True, help="Create git worktree for session isolation")
 @click.option("--branch", "-b", help="Override branch name (requires --worktree)")
-@click.option(
-    "--sidecar", is_flag=True, help="Run with bundled proxy in Docker container"
-)
+@click.option("--sidecar", is_flag=True, help="Run with bundled proxy in Docker container")
 @click.option("--host-proxy", is_flag=True, help="Use host proxy (overrides config)")
-@click.option(
-    "--mount", "mounts", multiple=True, help="Extra mounts (host:container[:ro|rw])"
-)
+@click.option("--mount", "mounts", multiple=True, help="Extra mounts (host:container[:ro|rw])")
 @click.option("--image", default=None, help="Docker image for sidecar mode")
 @click.option(
     "--extensions/--no-extensions",
@@ -2121,9 +1951,7 @@ def incognito(
 
     if name is None:
         _fr = _sess()._cwd_forge_root()
-        existing = {
-            n for n, _ in _sess().SessionManager().list_sessions(forge_root_filter=_fr)
-        }
+        existing = {n for n, _ in _sess().SessionManager().list_sessions(forge_root_filter=_fr)}
         name = _sess().generate_unique_name(existing)
 
     # Incognito cleanup is handled inside launch_new_session() so that

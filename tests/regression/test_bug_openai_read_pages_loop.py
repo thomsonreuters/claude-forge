@@ -12,7 +12,7 @@ from forge.proxy.converters import (
     convert_openai_to_anthropic_sse,
     sanitize_tool_input,
 )
-from forge.proxy.data_models import MessagesRequest
+from forge.proxy.data_models import ContentBlockToolUse, Message, MessagesRequest
 
 pytestmark = pytest.mark.regression
 
@@ -103,8 +103,10 @@ def test_non_streaming_openai_tool_call_sanitizes_read_pages() -> None:
     with patch("forge.proxy.converters.asyncio.create_task", side_effect=lambda coro: coro.close()):
         result = convert_openai_to_anthropic(response, "claude-sonnet-4-6")
 
+    assert result is not None
     tool_blocks = [block for block in result.content if block.type == "tool_use"]
     assert len(tool_blocks) == 1
+    assert isinstance(tool_blocks[0], ContentBlockToolUse)
     assert tool_blocks[0].input == {"file_path": "/workspace/README.md"}
 
 
@@ -156,9 +158,7 @@ def test_non_streaming_sanitized_read_logs_stripped_params_event() -> None:
     ):
         convert_openai_to_anthropic(response, "claude-sonnet-4-6")
 
-    sanitized_events = [
-        event for event in captured_events if event["details"].get("event") == "tool_args_sanitized"
-    ]
+    sanitized_events = [event for event in captured_events if event["details"].get("event") == "tool_args_sanitized"]
     assert len(sanitized_events) == 1
     assert sanitized_events[0]["tool_name"] == "Read"
     assert sanitized_events[0]["status"] == "success"
@@ -173,7 +173,7 @@ def test_non_streaming_sanitized_read_logs_stripped_params_event() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_openai_tool_call_sanitizes_read_pages() -> None:
-    chunks = [
+    chunks: list[dict] = [
         {
             "choices": [
                 {
@@ -234,7 +234,7 @@ async def test_streaming_sanitized_read_logs_stripped_params_event() -> None:
     async def capture_tool_event(**kwargs) -> None:
         captured_events.append(kwargs)
 
-    chunks = [
+    chunks: list[dict] = [
         {
             "choices": [
                 {
@@ -281,9 +281,7 @@ async def test_streaming_sanitized_read_logs_stripped_params_event() -> None:
         await _collect_sse_events(chunks)
         await asyncio.sleep(0)
 
-    sanitized_events = [
-        event for event in captured_events if event["details"].get("event") == "tool_args_sanitized"
-    ]
+    sanitized_events = [event for event in captured_events if event["details"].get("event") == "tool_args_sanitized"]
     assert len(sanitized_events) == 1
     assert sanitized_events[0]["tool_name"] == "Read"
     assert sanitized_events[0]["status"] == "success"
@@ -299,7 +297,7 @@ async def test_streaming_sanitized_read_logs_stripped_params_event() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_unknown_tool_keeps_incremental_argument_deltas() -> None:
-    chunks = [
+    chunks: list[dict] = [
         {
             "choices": [
                 {
@@ -369,7 +367,7 @@ async def _collect_sse_events(chunks: list[dict]) -> list[dict]:
 
     request = MessagesRequest(
         model="claude-sonnet-4-6",
-        messages=[{"role": "user", "content": "read README"}],
+        messages=[Message(role="user", content="read README")],
         max_tokens=100,
         stream=True,
     )

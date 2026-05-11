@@ -44,9 +44,7 @@ class ModelSpec:
     max_thinking_tokens: int | None = None
 
     # Display
-    short_name: str | None = (
-        None  # Compact display name (e.g., "gemini-flash"); None = derive algorithmically
-    )
+    short_name: str | None = None  # Compact display name (e.g., "gemini-flash"); None = derive algorithmically
 
     # Capability flags
     supports_thinking: bool = False
@@ -58,9 +56,7 @@ class ModelSpec:
 
     # Temperature configuration
     temperature_constraint: Literal["fixed", "range"] = "range"
-    temperature: TemperatureSpec = field(
-        default_factory=lambda: TemperatureSpec(0.0, 1.0, 2.0)
-    )
+    temperature: TemperatureSpec = field(default_factory=lambda: TemperatureSpec(0.0, 1.0, 2.0))
 
     # Verbosity configuration (GPT-5 non-Codex models via Responses API)
     verbosity_levels: tuple[str, ...] | None = None
@@ -93,25 +89,15 @@ class ModelSpec:
 
     def __post_init__(self) -> None:
         if self.context_window_tokens <= 0:
-            raise ValueError(
-                f"context_window_tokens must be > 0, got {self.context_window_tokens}"
-            )
+            raise ValueError(f"context_window_tokens must be > 0, got {self.context_window_tokens}")
         if self.max_output_tokens <= 0:
-            raise ValueError(
-                f"max_output_tokens must be > 0, got {self.max_output_tokens}"
-            )
+            raise ValueError(f"max_output_tokens must be > 0, got {self.max_output_tokens}")
         if self.max_thinking_tokens is not None and self.max_thinking_tokens <= 0:
-            raise ValueError(
-                f"max_thinking_tokens must be > 0 or null, got {self.max_thinking_tokens}"
-            )
+            raise ValueError(f"max_thinking_tokens must be > 0 or null, got {self.max_thinking_tokens}")
         if not (0 <= self.intelligence_score <= 100):
-            raise ValueError(
-                f"intelligence_score must be 0-100, got {self.intelligence_score}"
-            )
+            raise ValueError(f"intelligence_score must be 0-100, got {self.intelligence_score}")
         if self.token_estimate_multiplier <= 0:
-            raise ValueError(
-                f"token_estimate_multiplier must be > 0, got {self.token_estimate_multiplier}"
-            )
+            raise ValueError(f"token_estimate_multiplier must be > 0, got {self.token_estimate_multiplier}")
         if self.temperature_constraint == "fixed":
             if self.temperature.min != self.temperature.max:
                 raise ValueError(
@@ -134,9 +120,7 @@ class ModelCatalog:
     schema_version: int
     models: dict[str, ModelSpec]
     aliases: dict[str, str]
-    defaults: dict[str, dict[str, str]] = field(
-        default_factory=dict
-    )  # provider -> tier -> canonical model ID
+    defaults: dict[str, dict[str, str]] = field(default_factory=dict)  # provider -> tier -> canonical model ID
 
     def resolve(self, model_or_alias: str) -> str:
         """Resolve a model ID or alias to its canonical ID.

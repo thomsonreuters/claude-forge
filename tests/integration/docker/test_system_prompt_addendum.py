@@ -20,13 +20,9 @@ def _allocate_container_port(workspace: ContainerLike) -> int:
     return int(result.stdout.strip())
 
 
-def _start_proxy_health_stub(
-    workspace: ContainerLike, *, proxy_id: str, template: str, port: int
-) -> None:
+def _start_proxy_health_stub(workspace: ContainerLike, *, proxy_id: str, template: str, port: int) -> None:
     """Start a minimal proxy truth endpoint for CLI health checks."""
-    payload = json.dumps(
-        {"is_proxy": True, "template": template, "proxy": {"proxy_id": proxy_id}}
-    )
+    payload = json.dumps({"is_proxy": True, "template": template, "proxy": {"proxy_id": proxy_id}})
     workspace.write_file(
         "/tmp/addendum-health-stub.py",
         f"""import http.server
@@ -106,9 +102,7 @@ def test_proxy_session_start_injects_openai_addendum(
     port = _allocate_container_port(forge_workspace)
     _write_openai_proxy(forge_workspace, proxy_id=proxy_id, port=port)
 
-    result = forge_workspace.exec(
-        f"cd /workspace && forge session start addendum-e2e --proxy {proxy_id}"
-    )
+    result = forge_workspace.exec(f"cd /workspace && forge session start addendum-e2e --proxy {proxy_id}")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"Proxy: {proxy_id}" in result.stdout

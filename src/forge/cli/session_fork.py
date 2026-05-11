@@ -12,6 +12,10 @@ from pathlib import Path
 
 import click
 
+from forge.cli.session_addendum import (
+    resolve_addendum_content_for_proxy,
+    write_managed_addendum,
+)
 from forge.core.paths import display_path
 from forge.session import (
     LAUNCH_MODE_HOST,
@@ -29,11 +33,6 @@ from forge.session.exceptions import (
     InvalidBranchNameError,
     SessionNotFoundError,
     WorktreePathExistsError,
-)
-
-from forge.cli.session_addendum import (
-    resolve_addendum_content_for_proxy,
-    write_managed_addendum,
 )
 
 
@@ -67,7 +66,6 @@ from forge.cli.session_lifecycle import (  # noqa: E402
     session,
 )
 
-
 __all__ = ["fork"]
 
 
@@ -100,9 +98,7 @@ __all__ = ["fork"]
     help="Deprecated alias for --no-proxy",
 )
 @click.option("--incognito", "-i", is_flag=True, help="Auto-delete fork on exit")
-@click.option(
-    "--worktree", "-w", is_flag=True, help="Create git worktree for fork isolation"
-)
+@click.option("--worktree", "-w", is_flag=True, help="Create git worktree for fork isolation")
 @click.option("--branch", "-b", help="Override branch name (implies --worktree)")
 @click.option("--no-launch", is_flag=True, help="Create fork without launching Claude")
 @click.option(
@@ -196,14 +192,10 @@ def fork(
         console.print("[red]Error:[/red] --no-proxy and --proxy are mutually exclusive")
         sys.exit(1)
     if supervisor_proxy and supervisor_direct:
-        console.print(
-            "[red]Error:[/red] --supervisor-proxy and --no-supervisor-proxy are mutually exclusive"
-        )
+        console.print("[red]Error:[/red] --supervisor-proxy and --no-supervisor-proxy are mutually exclusive")
         sys.exit(1)
     if (supervisor_proxy or supervisor_direct) and not supervise_target:
-        console.print(
-            "[red]Error:[/red] --supervisor-proxy/--no-supervisor-proxy require --supervise"
-        )
+        console.print("[red]Error:[/red] --supervisor-proxy/--no-supervisor-proxy require --supervise")
         sys.exit(1)
 
     if branch:
@@ -215,14 +207,10 @@ def fork(
     into_target_common: str | None = None
     if into_path is not None:
         if worktree:
-            console.print(
-                "[red]Error:[/red] --into and --worktree are mutually exclusive"
-            )
+            console.print("[red]Error:[/red] --into and --worktree are mutually exclusive")
             sys.exit(1)
         if branch:
-            console.print(
-                "[red]Error:[/red] --into and --branch are mutually exclusive"
-            )
+            console.print("[red]Error:[/red] --into and --branch are mutually exclusive")
             sys.exit(1)
 
         import subprocess as _sp
@@ -235,9 +223,7 @@ def fork(
                 check=True,
             ).stdout.strip()
         except _sp.CalledProcessError:
-            console.print(
-                f"[red]Error:[/red] '{display_path(into_path)}' is not inside a git repository"
-            )
+            console.print(f"[red]Error:[/red] '{display_path(into_path)}' is not inside a git repository")
             sys.exit(1)
 
         # Resolve git-common-dir for the target (absolute, to avoid .git relative path bug)
@@ -251,9 +237,7 @@ def fork(
             # git returns relative paths from the checkout root; resolve against it
             target_common = str((Path(into_resolved) / target_common_raw).resolve())
         except _sp.CalledProcessError:
-            console.print(
-                "[red]Error:[/red] Failed to resolve git repository for --into target"
-            )
+            console.print("[red]Error:[/red] Failed to resolve git repository for --into target")
             sys.exit(1)
 
         # Store for deferred comparison after parent session is loaded
@@ -271,11 +255,7 @@ def fork(
             ).stdout.strip()
             main_git_dir_abs = (Path(into_resolved) / main_git_dir).resolve()
             # Main repo root is the parent of the .git directory
-            main_repo_root = (
-                main_git_dir_abs.parent
-                if main_git_dir_abs.name == ".git"
-                else main_git_dir_abs
-            )
+            main_repo_root = main_git_dir_abs.parent if main_git_dir_abs.name == ".git" else main_git_dir_abs
             if Path(into_resolved).resolve() == main_repo_root:
                 console.print(
                     "[red]Error:[/red] --into targets existing worktrees, not the main checkout. "
@@ -305,13 +285,8 @@ def fork(
             require_repo_root()
 
     ctx = click.get_current_context()
-    _strategy_explicit = (
-        ctx.get_parameter_source("strategy") == click.core.ParameterSource.COMMANDLINE
-    )
-    _inline_plan_explicit = (
-        ctx.get_parameter_source("inline_plan")
-        == click.core.ParameterSource.COMMANDLINE
-    )
+    _strategy_explicit = ctx.get_parameter_source("strategy") == click.core.ParameterSource.COMMANDLINE
+    _inline_plan_explicit = ctx.get_parameter_source("inline_plan") == click.core.ParameterSource.COMMANDLINE
 
     manager = _sess().SessionManager()
     _fr = _sess()._cwd_forge_root()
@@ -322,9 +297,7 @@ def fork(
 
         try:
             parent_state_pre = manager.get_session(parent, forge_root=_fr)
-            parent_wt_pre = (
-                parent_state_pre.worktree.path if parent_state_pre.worktree else None
-            )
+            parent_wt_pre = parent_state_pre.worktree.path if parent_state_pre.worktree else None
             if parent_wt_pre:
                 parent_common_raw = _sp2.run(
                     ["git", "-C", parent_wt_pre, "rev-parse", "--git-common-dir"],
@@ -349,9 +322,7 @@ def fork(
     # Resolve --proxy early for preflight (reuses routing resolved later for launch)
     _preflight_routing: ResolvedRouting | None = None
     if proxy_name:
-        _preflight_routing = _sess()._resolve_routing_from_cli(
-            proxy_name=proxy_name, direct=False
-        )
+        _preflight_routing = _sess()._resolve_routing_from_cli(proxy_name=proxy_name, direct=False)
     if is_cross_dir and strategy == "full" and not direct:
         try:
             from forge.session.artifacts import resolve_artifact_path
@@ -361,32 +332,21 @@ def fork(
             if _preflight_routing:
                 preflight_ref = _preflight_routing.proxy_id
             else:
-                child_template = (
-                    parent_state.intent.proxy.template
-                    if parent_state.intent.proxy
-                    else None
-                )
+                child_template = parent_state.intent.proxy.template if parent_state.intent.proxy else None
                 preflight_ref = child_template
             context_limit_preflight = _sess()._resolve_context_limit(preflight_ref)
             if context_limit_preflight is not None:
                 from forge.session.handoff import estimate_transcript_tokens
 
-                artifact_root = _resolve_session_artifact_root(
-                    manager=manager, state=parent_state
-                )
+                artifact_root = _resolve_session_artifact_root(manager=manager, state=parent_state)
                 transcripts = parent_state.confirmed.artifacts.get("transcripts", [])
                 if transcripts and isinstance(transcripts, list):
                     latest = transcripts[-1]
                     if isinstance(latest, dict):
                         copied_path = latest.get("copied_path")
                         if isinstance(copied_path, str):
-                            transcript_path = resolve_artifact_path(
-                                artifact_root, copied_path
-                            )
-                            if (
-                                transcript_path is not None
-                                and transcript_path.is_file()
-                            ):
+                            transcript_path = resolve_artifact_path(artifact_root, copied_path)
+                            if transcript_path is not None and transcript_path.is_file():
                                 token_est = estimate_transcript_tokens(transcript_path)
                                 if token_est > context_limit_preflight:
                                     if force:
@@ -438,21 +398,15 @@ def fork(
         sys.exit(1)
     except BranchInUseError as e:
         console.print(f"[red]Error:[/red] {e}")
-        console.print(
-            "\n[dim]Tip: The branch is checked out in another worktree. Remove that worktree first.[/dim]"
-        )
+        console.print("\n[dim]Tip: The branch is checked out in another worktree. Remove that worktree first.[/dim]")
         sys.exit(1)
     except BranchNotMergedError as e:
         console.print(f"[red]Error:[/red] {e}")
-        console.print(
-            "\n[dim]Tip: Merge or delete the branch manually before using --force.[/dim]"
-        )
+        console.print("\n[dim]Tip: Merge or delete the branch manually before using --force.[/dim]")
         sys.exit(1)
     except WorktreePathExistsError as e:
         console.print(f"[red]Error:[/red] {e}")
-        console.print(
-            "\n[dim]Tip: Remove the directory or use a different fork name.[/dim]"
-        )
+        console.print("\n[dim]Tip: Remove the directory or use a different fork name.[/dim]")
         sys.exit(1)
     except InvalidBranchNameError as e:
         console.print(f"[red]Error:[/red] {e}")
@@ -466,20 +420,14 @@ def fork(
         return
 
     # Persist routing override to manifest (ensures --no-launch retains proxy choice)
-    fork_worktree_path = (
-        Path(fork_manifest.worktree.path) if fork_manifest.worktree else Path.cwd()
-    )
+    fork_worktree_path = Path(fork_manifest.worktree.path) if fork_manifest.worktree else Path.cwd()
     _persist_routing_override(
-        forge_root=Path(fork_manifest.forge_root)
-        if fork_manifest.forge_root
-        else fork_worktree_path,
+        forge_root=Path(fork_manifest.forge_root) if fork_manifest.forge_root else fork_worktree_path,
         session_name=fork_manifest.name,
         routing=_preflight_routing,
         direct=direct,
     )
-    _apply_routing_override_to_state(
-        state=fork_manifest, routing=_preflight_routing, direct=direct
-    )
+    _apply_routing_override_to_state(state=fork_manifest, routing=_preflight_routing, direct=direct)
 
     # --- wire supervisor (if --supervise flag set) ---
     if supervise_target:
@@ -500,18 +448,12 @@ def fork(
             parent_manifest,
             supervisor_proxy=supervisor_proxy,
             supervisor_direct=supervisor_direct,
-            current_proxy_id=_preflight_routing.proxy_id
-            if _preflight_routing
-            else None,
-            current_template=_preflight_routing.template
-            if _preflight_routing
-            else None,
+            current_proxy_id=_preflight_routing.proxy_id if _preflight_routing else None,
+            current_template=_preflight_routing.template if _preflight_routing else None,
             current_direct=direct,
         )
         fork_store = SessionStore(fork_forge_root, fork_manifest.name)
-        fork_store.update(
-            timeout_s=5.0, mutate=lambda m: apply_supervisor_to_intent(m, sup_config)
-        )
+        fork_store.update(timeout_s=5.0, mutate=lambda m: apply_supervisor_to_intent(m, sup_config))
         fork_manifest = fork_store.read()
 
     if _preflight_routing:
@@ -524,18 +466,12 @@ def fork(
         effective_url = routing.base_url
         effective_proxy_id = routing.proxy_id
     else:
-        effective_template, effective_url, effective_proxy_id = (
-            _get_effective_proxy_for_session(fork_manifest)
-        )
+        effective_template, effective_url, effective_proxy_id = _get_effective_proxy_for_session(fork_manifest)
 
     # Compute context limit (uses exact proxy_id when available for deterministic result)
-    context_limit = _sess()._resolve_context_limit(
-        effective_proxy_id or effective_template
-    )
+    context_limit = _sess()._resolve_context_limit(effective_proxy_id or effective_template)
 
-    console.print(
-        f"Forked [cyan]{parent}[/cyan] -> [green]{fork_manifest.name}[/green]"
-    )
+    console.print(f"Forked [cyan]{parent}[/cyan] -> [green]{fork_manifest.name}[/green]")
     _print_routing_summary(template=effective_template, base_url=effective_url)
     if fork_manifest.worktree and fork_manifest.worktree.is_worktree:
         console.print(f"  Worktree: {display_path(fork_manifest.worktree.path)}")
@@ -564,17 +500,11 @@ def fork(
         subprocess_proxy=fork_manifest.intent.subprocess_proxy,
     )
     fork_name = fork_manifest.name  # Capture for cleanup
-    is_worktree_fork = bool(
-        fork_manifest.worktree and fork_manifest.worktree.is_worktree
-    )
+    is_worktree_fork = bool(fork_manifest.worktree and fork_manifest.worktree.is_worktree)
     if effective_url is None:
         from forge.runtime_config import get_default_direct_model
 
-        fork_direct_model = (
-            fork_manifest.intent.launch.direct_model
-            if fork_manifest.intent.launch
-            else None
-        )
+        fork_direct_model = fork_manifest.intent.launch.direct_model if fork_manifest.intent.launch else None
         fork_direct_model = fork_direct_model or get_default_direct_model()
         error = apply_direct_model_env(env_vars, fork_direct_model)
         if error:
@@ -629,22 +559,14 @@ def fork(
                 context_path=fork_context,
             )
         except Exception:
-            logger.warning(
-                "Failed to persist fork derivation handoff details", exc_info=True
-            )
+            logger.warning("Failed to persist fork derivation handoff details", exc_info=True)
 
         _fork_uuid = str(_uuid.uuid4())
         try:
             from forge.session import SessionStore as _ForkStore
 
-            _fork_wt = (
-                Path(fork_manifest.worktree.path)
-                if fork_manifest.worktree
-                else Path.cwd()
-            )
-            _fork_store_root = (
-                Path(fork_manifest.forge_root) if fork_manifest.forge_root else _fork_wt
-            )
+            _fork_wt = Path(fork_manifest.worktree.path) if fork_manifest.worktree else Path.cwd()
+            _fork_store_root = Path(fork_manifest.forge_root) if fork_manifest.forge_root else _fork_wt
             _fork_store = _ForkStore(str(_fork_store_root), fork_manifest.name)
             from forge.session.claude.paths import (
                 resolve_claude_project_root as _resolve_fork_root_preseed,
@@ -657,13 +579,9 @@ def fork(
                 m.confirmed.claude_project_root = _fork_cwd_preseed
 
             _fork_store.update(timeout_s=5.0, mutate=_preseed_mutate)
-            manager.index_store.sync_uuid_from_state(
-                fork_manifest.name, _fork_store.read()
-            )
+            manager.index_store.sync_uuid_from_state(fork_manifest.name, _fork_store.read())
         except Exception:
-            logger.debug(
-                "Pre-seed UUID write failed (hook will reconcile)", exc_info=True
-            )
+            logger.debug("Pre-seed UUID write failed (hook will reconcile)", exc_info=True)
 
         from forge.session.claude.paths import (
             resolve_claude_project_root as _resolve_fork_root,
@@ -674,14 +592,8 @@ def fork(
         _wt_addendum = resolve_addendum_content_for_proxy(effective_proxy_id)
         _wt_prompt = prompt_file
         if _wt_addendum:
-            _wt_forge_root = (
-                Path(fork_manifest.forge_root)
-                if fork_manifest.forge_root
-                else Path.cwd()
-            )
-            _wt_addendum_path = write_managed_addendum(
-                _wt_forge_root, fork_manifest.name, _wt_addendum
-            )
+            _wt_forge_root = Path(fork_manifest.forge_root) if fork_manifest.forge_root else Path.cwd()
+            _wt_addendum_path = write_managed_addendum(_wt_forge_root, fork_manifest.name, _wt_addendum)
             _wt_files: list[Path] = [_wt_addendum_path]
             if _wt_prompt:
                 _wt_files.append(Path(_wt_prompt))
@@ -712,16 +624,8 @@ def fork(
         _samedir_addendum = resolve_addendum_content_for_proxy(effective_proxy_id)
         _samedir_prompt: str | None = None
         if _samedir_addendum:
-            _samedir_forge_root = (
-                Path(fork_manifest.forge_root)
-                if fork_manifest.forge_root
-                else Path.cwd()
-            )
-            _samedir_prompt = str(
-                write_managed_addendum(
-                    _samedir_forge_root, fork_manifest.name, _samedir_addendum
-                )
-            )
+            _samedir_forge_root = Path(fork_manifest.forge_root) if fork_manifest.forge_root else Path.cwd()
+            _samedir_prompt = str(write_managed_addendum(_samedir_forge_root, fork_manifest.name, _samedir_addendum))
 
         def _invoke_fork() -> int:
             return _sess().invoke_claude(
@@ -744,14 +648,9 @@ def fork(
             try:
                 from forge.install.tracking import TrackingStore as _TSCheck
 
-                if (
-                    _TSCheck().get_installation("local", str(extension_root))
-                    is not None
-                ):
+                if _TSCheck().get_installation("local", str(extension_root)) is not None:
                     _skip_extensions = True
-                    logger.debug(
-                        "Skipping auto-install: target worktree has existing local install"
-                    )
+                    logger.debug("Skipping auto-install: target worktree has existing local install")
             except Exception:
                 pass
 
@@ -761,11 +660,7 @@ def fork(
             # forge_root != checkout_root (e.g., nested .claude/ in a subdirectory).
             _parent_forge_root = Path(
                 parent_manifest.forge_root
-                or (
-                    parent_manifest.worktree.path
-                    if parent_manifest.worktree
-                    else str(Path.cwd())
-                )
+                or (parent_manifest.worktree.path if parent_manifest.worktree else str(Path.cwd()))
             )
             _sess()._auto_install_extensions(
                 install_root=extension_root,
@@ -782,9 +677,7 @@ def fork(
         sys.exit(0)
 
     use_sidecar, mounts, image = _get_launch_preferences(fork_manifest)
-    runtime_base_url = _get_runtime_base_url(
-        use_sidecar=use_sidecar, effective_url=effective_url
-    )
+    runtime_base_url = _get_runtime_base_url(use_sidecar=use_sidecar, effective_url=effective_url)
 
     if use_sidecar:
         exit_code = 0
@@ -807,9 +700,7 @@ def fork(
             )
         finally:
             if incognito:
-                console.print(
-                    f"\n[dim]Cleaning up incognito fork '{fork_name}'...[/dim]"
-                )
+                console.print(f"\n[dim]Cleaning up incognito fork '{fork_name}'...[/dim]")
                 try:
                     manager.delete_session(
                         fork_name,
@@ -822,13 +713,9 @@ def fork(
                     console.print(f"[yellow]Cleanup warning:[/yellow] {e}")
         sys.exit(exit_code)
 
-    fork_worktree = (
-        Path(fork_manifest.worktree.path) if fork_manifest.worktree else Path.cwd()
-    )
+    fork_worktree = Path(fork_manifest.worktree.path) if fork_manifest.worktree else Path.cwd()
     # Check hooks from forge_root (where .claude/ lives), not checkout root
-    _fork_forge_root = (
-        Path(fork_manifest.forge_root) if fork_manifest.forge_root else fork_worktree
-    )
+    _fork_forge_root = Path(fork_manifest.forge_root) if fork_manifest.forge_root else fork_worktree
     _sess()._warn_if_hooks_missing(_fork_forge_root)
     _sess()._warn_if_version_outdated()
     active_claude_session_id = _fork_uuid if is_worktree_fork else None

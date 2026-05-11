@@ -88,9 +88,7 @@ def log_request_beautifully(
         status_str = f"{status_color}{status_symbol} {status_code}{Colors.RESET}"
 
         log_line = f"{Colors.BOLD}{method} {endpoint}{Colors.RESET} {status_str}"
-        model_line = (
-            f"  {original_display} → {mapped_display} ({messages_str}, {tools_str})"
-        )
+        model_line = f"  {original_display} → {mapped_display} ({messages_str}, {tools_str})"
 
         # Never write ANSI-colored output to file logs.
         # Only emit these lines to an interactive terminal.
@@ -122,18 +120,12 @@ def log_request_beautifully(
         )
 
 
-def smart_format_str(
-    obj: object, max_string: int = 500, max_length: int = 100, indent: int = 2
-) -> str:
+def smart_format_str(obj: object, max_string: int = 500, max_length: int = 100, indent: int = 2) -> str:
     """Format an object to a string with rich formatting."""
-    return pretty_repr(
-        obj, max_string=max_string, max_length=max_length, indent_size=indent
-    )
+    return pretty_repr(obj, max_string=max_string, max_length=max_length, indent_size=indent)
 
 
-def smart_format_proto_str(
-    obj: object, max_string: int = 500, max_length: int = 100, indent: int = 2
-) -> str:
+def smart_format_proto_str(obj: object, max_string: int = 500, max_length: int = 100, indent: int = 2) -> str:
     """Format a proto object to a string with rich formatting."""
     formatted_obj = proto_to_dict(obj)
     return smart_format_str(formatted_obj, max_string, max_length, indent)
@@ -230,9 +222,7 @@ async def log_tool_event(
         )
     except Exception as e:
         # Log error but don't fail the request
-        _logger.error(
-            "Failed to log tool event: %s (request_id=%s)", e, request_id, exc_info=True
-        )
+        _logger.error("Failed to log tool event: %s (request_id=%s)", e, request_id, exc_info=True)
 
 
 # Tool Failure Logger — opt-in via RuntimeConfig.log_tool_failures
@@ -251,9 +241,7 @@ _TOOL_INPUT_MAX_DEPTH = 8
 _ERROR_MAX_LEN = 2000
 
 
-def _truncate_for_log(
-    value: str | dict | list | None, max_len: int
-) -> str | dict | list | None:
+def _truncate_for_log(value: str | dict | list | None, max_len: int) -> str | dict | list | None:
     """Truncate a top-level string value (used for the error field)."""
     if isinstance(value, str) and len(value) > max_len:
         return value[:max_len] + f"... ({len(value)} chars)"
@@ -277,10 +265,7 @@ def _truncate_recursive(
             return value[:max_str_len] + f"... ({len(value)} chars)"
         return value
     if isinstance(value, dict):
-        return {
-            k: _truncate_recursive(v, max_str_len, max_depth - 1)
-            for k, v in value.items()
-        }
+        return {k: _truncate_recursive(v, max_str_len, max_depth - 1) for k, v in value.items()}
     if isinstance(value, list):
         return [_truncate_recursive(v, max_str_len, max_depth - 1) for v in value]
     return value
@@ -437,8 +422,7 @@ async def log_request_response(
             )
         else:
             _logger.debug(
-                "[%s] Request/Response logged: status=%s, model=%s->%s, "
-                "messages=%s, tools=%s, duration=%sms",
+                "[%s] Request/Response logged: status=%s, model=%s->%s, " "messages=%s, tools=%s, duration=%sms",
                 request_id,
                 status_code,
                 original_model,

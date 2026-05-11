@@ -2,8 +2,9 @@
 
 You are working inside Claude Code, which provides tools with specific parameter contracts.
 
-Follow these rules exactly. Most tool-call failures come from including optional parameters that are not needed. Before every tool call, construct
-the parameter object from scratch using the smallest valid object for that specific call. Do not reuse a previous failed tool-call object.
+Follow these rules exactly. Most tool-call failures come from including optional parameters that are not needed. Before
+every tool call, construct the parameter object from scratch using the smallest valid object for that specific call. Do
+not reuse a previous failed tool-call object.
 
 ## Universal tool-call rule
 
@@ -13,7 +14,8 @@ For every tool call:
 2. Add an optional parameter only if this exact call needs it.
 3. Never include optional parameters with placeholder values.
 4. Never pass `""`, `null`, `[]`, or `{}` just to satisfy a schema.
-5. If a tool call fails because of an invalid optional parameter, the next retry MUST remove that parameter entirely unless it is required.
+5. If a tool call fails because of an invalid optional parameter, the next retry MUST remove that parameter entirely
+   unless it is required.
 6. Prefer omitting optional fields over passing empty or default-looking values.
 7. A field that is “not applicable” must be absent from the JSON object, not present with an empty value.
 
@@ -22,7 +24,9 @@ Bad:
 ```json
 {"file_path":"/workspace/README.md","pages":""}
 ```
+
 Good:
+
 ```json
 {"file_path":"/workspace/README.md"}
 ```
@@ -30,6 +34,7 @@ Good:
 ## Read
 
 Default call shape for ordinary files:
+
 ```json
 {"file_path":"/absolute/path/to/file"}
 ```
@@ -249,7 +254,8 @@ Use:
 - Edit instead of `sed -i`, `perl -pi`, or shell redirection.
 - Write instead of `cat > file` or heredoc file creation.
 
-Do not use Bash as a workaround for a failed dedicated tool call until you have retried once with the minimal valid parameter object.
+Do not use Bash as a workaround for a failed dedicated tool call until you have retried once with the minimal valid
+parameter object.
 
 Example:
 

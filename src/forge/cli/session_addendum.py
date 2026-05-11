@@ -75,9 +75,7 @@ def write_managed_addendum(forge_root: Path, session_name: str, content: str) ->
 
 def write_bare_addendum(content: str) -> Path:
     """Write addendum to a temp file (caller must keep alive and clean up)."""
-    f = tempfile.NamedTemporaryFile(
-        suffix=".md", prefix="forge-addendum-", delete=False, mode="w", encoding="utf-8"
-    )
+    f = tempfile.NamedTemporaryFile(suffix=".md", prefix="forge-addendum-", delete=False, mode="w", encoding="utf-8")
     f.write(content)
     f.close()
     return Path(f.name)

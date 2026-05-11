@@ -413,7 +413,9 @@ def convert_anthropic_to_openai(request: MessagesRequest, provider: str = "gemin
                     )
                     logger.debug("Image block added to intermediate format.")
                 elif block.type == "tool_use" and msg.role == "assistant":
-                    cleaned_input = sanitize_tool_input(block.name, block.input) if isinstance(block.input, dict) else block.input
+                    cleaned_input = (
+                        sanitize_tool_input(block.name, block.input) if isinstance(block.input, dict) else block.input
+                    )
                     tool_calls_list.append(
                         {
                             "id": block.id,

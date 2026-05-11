@@ -18,35 +18,6 @@ import asyncio
 import json
 import logging
 import traceback
-from typing import Any
-
-
-# Tool parameters that non-Claude models compulsively fill with empty values.
-# Stripped before forwarding to Claude Code to prevent validation errors.
-_STRIP_EMPTY_PARAMS: dict[str, set[str]] = {
-    "Read": {"pages", "offset", "limit"},
-}
-
-
-def sanitize_tool_input(tool_name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
-    """Strip empty optional parameters that non-Claude models add compulsively.
-
-    GPT-5.5 fills every optional schema field with "" or null even when not
-    needed (e.g., pages="" on Read for non-PDF files). Claude Code rejects
-    these, causing an unrecoverable retry loop.
-    """
-    params_to_check = _STRIP_EMPTY_PARAMS.get(tool_name)
-    if not params_to_check:
-        return tool_input
-
-    cleaned = dict(tool_input)
-    for param in params_to_check:
-        if param in cleaned:
-            val = cleaned[param]
-            if val is None or val == "" or val == 0:
-                del cleaned[param]
-
-    return cleaned
 import uuid
 from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Union
 
@@ -67,6 +38,117 @@ logger = logging.getLogger(__name__)
 
 # on_complete(usage, failed, error_type) -- called when SSE stream finishes
 _OnCompleteCallback = Callable[[Dict[str, int], bool, Optional[str]], None]
+
+
+# Tool parameters that non-Claude models compulsively fill with empty values.
+# Stripped before forwarding to Claude Code to prevent validation errors.
+_STRIP_EMPTY_PARAMS: dict[str, dict[str, tuple[Any, ...]]] = {
+    "Read": {
+        "pages": (None, "", 0),
+        # Claude Code treats these as optional sectioning controls. GPT models
+        # often send 0 as a placeholder for "unset", which is better omitted.
+        "offset": (None, "", 0),
+        "limit": (None, "", 0),
+    },
+}
+
+
+def _is_pdf_path(value: Any) -> bool:
+    # Claude Code's Read tool accepts filesystem paths, so extension detection is sufficient here.
+    return isinstance(value, str) and value.lower().endswith(".pdf")
+
+
+def _should_buffer_streaming_tool_args(tool_name: str | None) -> bool:
+    return tool_name in _STRIP_EMPTY_PARAMS
+
+
+def sanitize_tool_input_with_report(tool_name: str, tool_input: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Strip optional parameters and report which parameter names were removed.
+
+    GPT-5.5 fills optional schema fields even when not needed (for example,
+    pages="" or pages="1" on Read for non-PDF files). Claude Code rejects
+    these, causing an unrecoverable retry loop.
+    """
+    params_to_check = _STRIP_EMPTY_PARAMS.get(tool_name)
+    if not params_to_check:
+        return tool_input, []
+
+    cleaned = dict(tool_input)
+    stripped_params: list[str] = []
+
+    def strip_param(param: str) -> None:
+        if param in cleaned:
+            del cleaned[param]
+            stripped_params.append(param)
+
+    if tool_name == "Read" and "pages" in cleaned and not _is_pdf_path(cleaned.get("file_path")):
+        strip_param("pages")
+
+    for param, empty_values in params_to_check.items():
+        if param in cleaned and cleaned[param] in empty_values:
+            strip_param(param)
+
+    return cleaned, stripped_params
+
+
+def sanitize_tool_input(tool_name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
+    """Strip optional parameters that non-Claude models add compulsively."""
+    cleaned, _stripped_params = sanitize_tool_input_with_report(tool_name, tool_input)
+    return cleaned
+
+
+def _sanitize_tool_arguments_json(tool_name: str | None, args_json: str) -> str:
+    """Sanitize complete tool-call JSON arguments while preserving malformed JSON."""
+    cleaned_json, _stripped_params = _sanitize_tool_arguments_json_with_report(tool_name, args_json)
+    return cleaned_json
+
+
+def _sanitize_tool_arguments_json_with_report(tool_name: str | None, args_json: str) -> tuple[str, list[str]]:
+    """Sanitize complete tool-call JSON arguments and report stripped parameter names."""
+    if not tool_name or tool_name not in _STRIP_EMPTY_PARAMS or not args_json:
+        return args_json, []
+    try:
+        parsed = json.loads(args_json)
+    except json.JSONDecodeError:
+        return args_json, []
+    if not isinstance(parsed, dict):
+        return args_json, []
+    cleaned, stripped_params = sanitize_tool_input_with_report(tool_name, parsed)
+    return json.dumps(cleaned, separators=(",", ":")), stripped_params
+
+
+def _schedule_tool_args_sanitized_event(
+    request_id: str,
+    tool_name: str | None,
+    stripped_params: list[str],
+    *,
+    tool_id: str | None,
+    streaming: bool,
+    block_index: int | None = None,
+) -> None:
+    """Emit debug-only telemetry when proxy sanitization changes model-generated tool args."""
+    if not tool_name or not stripped_params:
+        return
+
+    details: dict[str, Any] = {
+        "event": "tool_args_sanitized",
+        "streaming": streaming,
+        "stripped_params": stripped_params,
+    }
+    if tool_id is not None:
+        details["tool_id"] = tool_id
+    if block_index is not None:
+        details["block_index"] = block_index
+
+    asyncio.create_task(
+        log_tool_event(
+            request_id=request_id,
+            tool_name=tool_name,
+            status="success",
+            stage="client_response",
+            details=details,
+        )
+    )
 
 
 def enhance_tool_description(tool_name: str, original_description: str, schema: Dict) -> str:
@@ -567,7 +649,16 @@ def convert_openai_to_anthropic(
 
                         try:
                             args_input = json.loads(args_str)
-                            args_input = sanitize_tool_input(tool_name, args_input) if isinstance(args_input, dict) else args_input
+                            stripped_params: list[str] = []
+                            if isinstance(args_input, dict):
+                                args_input, stripped_params = sanitize_tool_input_with_report(tool_name, args_input)
+                                _schedule_tool_args_sanitized_event(
+                                    request_id,
+                                    tool_name,
+                                    stripped_params,
+                                    tool_id=tool_id,
+                                    streaming=False,
+                                )
                         except json.JSONDecodeError:
                             logger.warning(
                                 f"[{request_id}] Non-streaming: Failed to parse tool arguments JSON: {args_str}. Sending raw string."
@@ -712,6 +803,52 @@ async def convert_openai_to_anthropic_sse(
     _stream_error_type: Optional[str] = None
     final_stop_reason: Optional[str] = None
 
+    def _build_sanitized_args_delta(tool_info: Dict[str, Any]) -> dict[str, Any] | None:
+        block_idx = tool_info.get("block_idx")
+        args_json = tool_info.get("args", "")
+        if block_idx is None or not args_json:
+            return None
+        partial_json, stripped_params = _sanitize_tool_arguments_json_with_report(tool_info.get("name"), args_json)
+        if not partial_json:
+            return None
+        _schedule_tool_args_sanitized_event(
+            request_id,
+            tool_info.get("name"),
+            stripped_params,
+            tool_id=tool_info.get("id"),
+            streaming=True,
+            block_index=block_idx,
+        )
+        return {
+            "type": "content_block_delta",
+            "index": block_idx,
+            "delta": {
+                "type": "input_json_delta",
+                "partial_json": partial_json,
+            },
+        }
+
+    def _build_tool_block_close_events() -> list[tuple[str, dict[str, Any]]]:
+        events: list[tuple[str, dict[str, Any]]] = []
+        started_tools = [
+            tool_info for tool_info in tool_calls_buffer.values() if tool_info.get("block_idx") is not None
+        ]
+        for tool_info in sorted(started_tools, key=lambda item: item["block_idx"]):
+            if tool_info.get("buffer_args"):
+                args_delta_event = _build_sanitized_args_delta(tool_info)
+                if args_delta_event is not None:
+                    events.append(("content_block_delta", args_delta_event))
+            events.append(
+                (
+                    "content_block_stop",
+                    {
+                        "type": "content_block_stop",
+                        "index": tool_info["block_idx"],
+                    },
+                )
+            )
+        return events
+
     stop_reason_map = {
         "stop": "end_turn",
         "length": "max_tokens",
@@ -808,9 +945,10 @@ async def convert_openai_to_anthropic_sse(
                 # If currently in a tool_use block, stop it first
                 if current_block_type == "tool_use":
                     if tool_calls_buffer:
-                        last_tool_block_idx = tool_calls_buffer[max(tool_calls_buffer.keys())]["block_idx"]
-                        yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': last_tool_block_idx})}\n\n"
-                        logger.debug(f"[{request_id}] Stopped tool block {last_tool_block_idx} due to incoming text.")
+                        for event_name, event_data in _build_tool_block_close_events():
+                            yield f"event: {event_name}\ndata: {json.dumps(event_data)}\n\n"
+                        tool_calls_buffer.clear()
+                        logger.debug(f"[{request_id}] Stopped tool block(s) due to incoming text.")
                     else:
                         logger.warning(
                             f"[{request_id}] current_block_type is 'tool_use' but tool_calls_buffer is empty"
@@ -870,6 +1008,7 @@ async def convert_openai_to_anthropic_sse(
                                 "name": func_name,
                                 "args": "",
                                 "block_idx": content_block_index,
+                                "buffer_args": _should_buffer_streaming_tool_args(func_name),
                             }
                             start_event = {
                                 "type": "content_block_start",
@@ -907,6 +1046,7 @@ async def convert_openai_to_anthropic_sse(
                                 "name": None,
                                 "args": "",
                                 "block_idx": None,
+                                "buffer_args": False,
                             }
                             logger.debug(
                                 f"[{request_id}] Received tool ID {tc_id} first for index {tc_openai_index}, waiting for name."
@@ -929,6 +1069,7 @@ async def convert_openai_to_anthropic_sse(
                             current_block_type = "tool_use"
                             tool_info["name"] = func_name
                             tool_info["block_idx"] = content_block_index
+                            tool_info["buffer_args"] = _should_buffer_streaming_tool_args(func_name)
                             start_event = {
                                 "type": "content_block_start",
                                 "index": content_block_index,
@@ -956,18 +1097,23 @@ async def convert_openai_to_anthropic_sse(
                     ):
                         tool_info = tool_calls_buffer[tc_openai_index]
                         tool_info["args"] += args_delta
-                        delta_event = {
-                            "type": "content_block_delta",
-                            "index": tool_info["block_idx"],
-                            "delta": {
-                                "type": "input_json_delta",
-                                "partial_json": args_delta,
-                            },
-                        }
-                        yield f"event: content_block_delta\ndata: {json.dumps(delta_event)}\n\n"
-                        logger.debug(
-                            f"[{request_id}] Sent tool args delta for block {tool_info['block_idx']}: '{args_delta[:50]}...'"
-                        )
+                        if tool_info.get("buffer_args"):
+                            logger.debug(
+                                f"[{request_id}] Buffered tool args delta for block {tool_info['block_idx']}: '{args_delta[:50]}...'"
+                            )
+                        else:
+                            delta_event = {
+                                "type": "content_block_delta",
+                                "index": tool_info["block_idx"],
+                                "delta": {
+                                    "type": "input_json_delta",
+                                    "partial_json": args_delta,
+                                },
+                            }
+                            yield f"event: content_block_delta\ndata: {json.dumps(delta_event)}\n\n"
+                            logger.debug(
+                                f"[{request_id}] Sent tool args delta for block {tool_info['block_idx']}: '{args_delta[:50]}...'"
+                            )
 
             # --- Process Finish Reason ---
             if finish_reason:
@@ -983,17 +1129,10 @@ async def convert_openai_to_anthropic_sse(
             logger.debug(f"[{request_id}] Stopped final text block {content_block_index}")
         elif current_block_type == "tool_use":
             if tool_calls_buffer:
-                last_tool_block_idx = tool_calls_buffer[max(tool_calls_buffer.keys())]["block_idx"]
-                if last_tool_block_idx is not None:
-                    stop_event_data = {
-                        "type": "content_block_stop",
-                        "index": last_tool_block_idx,
-                    }
-                    logger.debug(
-                        f"[{request_id}] Yielding content_block_stop for tool_use: {json.dumps(stop_event_data)}"
-                    )
-                    yield f"event: content_block_stop\ndata: {json.dumps(stop_event_data)}\n\n"
-                    logger.debug(f"[{request_id}] Stopped final tool_use block {last_tool_block_idx}")
+                for event_name, event_data in _build_tool_block_close_events():
+                    logger.debug(f"[{request_id}] Yielding {event_name} for tool_use: {json.dumps(event_data)}")
+                    yield f"event: {event_name}\ndata: {json.dumps(event_data)}\n\n"
+                logger.debug(f"[{request_id}] Stopped final tool_use block(s)")
             else:
                 logger.warning(
                     f"[{request_id}] Current block type is tool_use, but buffer is empty. Cannot stop block."

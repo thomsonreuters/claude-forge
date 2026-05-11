@@ -12,6 +12,7 @@ import time
 from enum import Enum
 from threading import Lock
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from forge.config import config
 from forge.core.llm.types import ModelHyperparameters
@@ -31,8 +32,6 @@ _LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1")
 
 def _is_local_url(url: str) -> bool:
     """Check if a URL points to a local host."""
-    from urllib.parse import urlparse
-
     try:
         parsed = urlparse(url)
         return (parsed.hostname or "") in _LOCAL_HOSTS
@@ -124,6 +123,7 @@ class TierClientFactory:
 
         self._default_ttl = float(os.getenv("CREDENTIAL_CACHE_TTL", str(default_ttl)))  # 1 hour default
         self._litellm_ttl = float(os.getenv("LITELLM_CACHE_TTL", str(self._default_ttl)))
+        self._upstream_base_url_cache: tuple[str, str | None] | None = None
 
         self._refresh_lock = asyncio.Lock()
         self._initialized = True
@@ -194,12 +194,18 @@ class TierClientFactory:
         proxy_id = os.getenv("FORGE_PROXY_ID")
         if not proxy_id:
             return None
+        if self._upstream_base_url_cache and self._upstream_base_url_cache[0] == proxy_id:
+            return self._upstream_base_url_cache[1]
         try:
             from forge.config.loader import load_proxy_instance_config
 
             instance = load_proxy_instance_config(proxy_id)
-            return instance.upstream_base_url if instance else None
+            upstream = instance.upstream_base_url if instance else None
+            if upstream:
+                self._upstream_base_url_cache = (proxy_id, upstream)
+            return upstream
         except Exception:
+            logger.debug("Failed to resolve upstream base URL for proxy %s", proxy_id, exc_info=True)
             return None
 
     def _get_ttl_for_provider(self, provider: ModelProvider) -> float:

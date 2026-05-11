@@ -709,7 +709,8 @@ class TestConvertOpenaiToAnthropicSse:
             for e in events
             if e["event"] == "content_block_delta" and e["data"]["delta"]["type"] == "input_json_delta"
         ]
-        assert len(json_deltas) >= 2
+        assert len(json_deltas) == 1
+        assert json.loads(json_deltas[0]["data"]["delta"]["partial_json"]) == {"file_path": "/tmp/a"}
 
         # Final stop_reason should be tool_use
         msg_delta = [e for e in events if e["event"] == "message_delta"]

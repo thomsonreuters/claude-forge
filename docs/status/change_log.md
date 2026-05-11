@@ -1,5 +1,25 @@
 # Change Log
 
+## 2026-05-11
+
+### Follow-up: Make OpenRouter the OSS default for QA and workflows
+
+**Goal**: Remove remote/shared LiteLLM as the default path for OSS QA and workflow setup while preserving it for the
+remaining internal maintainer.
+
+**Key changes**:
+
+- Added an explicit QA provider profile split: default `openrouter`, opt-in `remote-litellm`.
+- Moved workflow GPT/Gemini defaults to `openrouter-openai` and `openrouter-gemini`.
+- Replaced QA checklist runtime proxy references with role-based `FORGE_QA_*` variables.
+- Added `remote_litellm` as the infrastructure-specific test marker and dropped the unused `paid` marker.
+
+**Verification**:
+`uv run pytest tests/src/review/test_models.py tests/src/review/test_engine.py tests/src/cli/test_workflow.py tests/src/review/test_skill_content.py tests/src/skills/test_walkthrough_state.py -q`;
+`uv run pytest tests/integration/cli/test_workflow_integration.py -q`;
+`uv run pytest tests/integration/proxy/test_proxy_remote_litellm_e2e.py --collect-only -q`; `uv run ruff check` on
+touched Python files; `bash -n src/skills/qa/scripts/start-container.sh`; `git diff --check`.
+
 ## 2026-05-08
 
 ### c74ccdc: Add verb cost attribution, CLI, and status line cost display

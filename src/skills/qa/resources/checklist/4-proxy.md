@@ -31,26 +31,35 @@ forge proxy template list
 
 ```bash
 # Clean up from previous runs
-forge proxy delete litellm-gemini --force 2>/dev/null || true
-forge proxy delete litellm-openai --force 2>/dev/null || true
+forge proxy delete "$FORGE_QA_GEMINI_PROXY" --force 2>/dev/null || true
+forge proxy delete "$FORGE_QA_OPENAI_PROXY" --force 2>/dev/null || true
+forge proxy delete "$FORGE_QA_ANTHROPIC_PROXY" --force 2>/dev/null || true
+forge proxy delete openrouter-gemini --force 2>/dev/null || true
+forge proxy delete openrouter-openai --force 2>/dev/null || true
 forge proxy delete test-proxy-nostart --force 2>/dev/null || true
 
-# Create a named remote proxy used by downstream session/review steps
-forge proxy create litellm-gemini --name litellm-gemini
+# Create named role proxies used by downstream session/review steps.
+forge proxy create "$FORGE_QA_GEMINI_TEMPLATE" --name "$FORGE_QA_GEMINI_PROXY"
 
 # Create a named review proxy with per-tier overrides
-forge proxy create litellm-openai --name litellm-openai --opus-reasoning high --sonnet-temperature 0.7
+forge proxy create "$FORGE_QA_OPENAI_TEMPLATE" --name "$FORGE_QA_OPENAI_PROXY" --opus-reasoning high
+
+# Create workflow-default aliases so section 14 exercises production default proxy IDs.
+# In remote-litellm profile these names intentionally point at remote LiteLLM-backed proxies.
+forge proxy create "$FORGE_QA_GEMINI_TEMPLATE" --no-start --name openrouter-gemini
+forge proxy create "$FORGE_QA_OPENAI_TEMPLATE" --no-start --name openrouter-openai
 
 # Create config only (don't start the server)
-forge proxy create litellm-openai --no-start --name test-proxy-nostart
+forge proxy create "$FORGE_QA_OPENAI_TEMPLATE" --no-start --name test-proxy-nostart
 
 # List proxies again
 forge proxy list
 ```
 
-- [ ] Named proxies `litellm-gemini` and `litellm-openai` created successfully (or note if skipped)
-- [ ] Named proxies and `test-proxy-nostart` appear in the list with expected base_url/port information
-- [ ] Per-tier overrides applied to `litellm-openai`
+- [ ] Named role proxies from `$FORGE_QA_*_TEMPLATE` created successfully (or note if skipped)
+- [ ] Named role proxies, workflow aliases, and `test-proxy-nostart` appear in the list with expected base_url/port
+  information
+- [ ] Per-tier overrides applied to `$FORGE_QA_OPENAI_PROXY`
 
 ### 4.3 Show Proxy Details
 
@@ -120,7 +129,7 @@ In the **container shell**, create a session bound to a proxy, then launch Claud
 forge session delete proxy-session --force 2>/dev/null || true
 
 # Create a session bound to the proxy created in 4.2 (accepts proxy_id or template name)
-forge session start proxy-session --proxy litellm-openai --no-launch
+forge session start proxy-session --proxy "$FORGE_QA_OPENAI_PROXY" --no-launch
 
 # Verify session recorded proxy identity
 cat .forge/sessions/proxy-session/forge.session.json | jq '.intent.proxy'
@@ -135,7 +144,7 @@ done verifying.
 
 ```
 # Launch Claude through the running proxy created in 4.2
-forge claude start --proxy litellm-openai -- --debug
+forge claude start --proxy "$FORGE_QA_OPENAI_PROXY" -- --debug
 # Claude should start with ANTHROPIC_BASE_URL pointing to the proxy
 # Verify by checking the status line or running: echo $ANTHROPIC_BASE_URL inside Claude
 # Exit Claude when done (Ctrl-C or /exit)
@@ -155,7 +164,7 @@ forge claude start --proxy litellm-openai -- --debug
 Now launch Claude (or reuse the session from 4.6):
 
 ```
-forge claude start --proxy litellm-openai -- --debug
+forge claude start --proxy "$FORGE_QA_OPENAI_PROXY" -- --debug
 ```
 
 In the **live Claude session**, type these prompts:
@@ -164,7 +173,7 @@ In the **live Claude session**, type these prompts:
 %help
 %session list
 %proxy list
-%proxy show litellm-openai
+%proxy show qa-openai
 ```
 
 - [ ] `%help` returns help text listing available `%` commands
@@ -190,15 +199,15 @@ In the **container shell**:
 # Clean up from previous runs
 forge proxy delete delete-test-proxy --force 2>/dev/null || true
 
-# Create an alias on the same shared port as litellm-openai
-forge proxy create litellm-openai --no-start --name delete-test-proxy
+# Create an alias on the same shared port as the QA OpenAI proxy
+forge proxy create "$FORGE_QA_OPENAI_TEMPLATE" --no-start --name delete-test-proxy
 
 # Try to delete the alias -- should prompt for confirmation and list the related proxy entry
 forge proxy delete delete-test-proxy
 # Choose N to cancel
 # Expected:
 # - confirmation prompt appears
-# - related proxies on the same port are listed (including litellm-openai)
+# - related proxies on the same port are listed (including qa-openai)
 # - no false warning about proxy-session/proxy-session-url just because they share port 8085
 
 # Verify alias still exists after cancelling
@@ -210,24 +219,24 @@ forge proxy delete delete-test-proxy
 # Choose y to confirm
 # Expected:
 # - "Deleted proxy 'delete-test-proxy'"
-# - shared server references are kept alive via litellm-openai
+# - shared server references are kept alive via qa-openai
 
-# Verify alias gone but litellm-openai still present
+# Verify alias gone but qa-openai still present
 forge proxy list
 
-# Finally test deleting the last alias on that port
-forge proxy delete litellm-openai
+# Finally test deleting the primary QA proxy while shared-port aliases remain
+forge proxy delete "$FORGE_QA_OPENAI_PROXY"
 # Choose N to cancel
 # Expected:
-# - warning lists related sessions on http://localhost:8085 (for example proxy-session / proxy-session-url)
-# - prompt makes clear this is the last shared-port proxy
+# - warning lists sessions that reference qa-openai (for example proxy-session / proxy-session-url)
+# - prompt makes clear other proxies share this port
 ```
 
 - [ ] `forge proxy delete` prompts for confirmation (not auto-deleted)
 - [ ] Deleting a non-terminal alias lists the related proxy entries sharing that port
 - [ ] Choosing N cancels the delete; alias still in `forge proxy list`
 - [ ] Choosing y deletes the alias while keeping the shared server alive
-- [ ] Deleting the last alias lists the related sessions affected on that port
+- [ ] Deleting the primary QA proxy lists related sessions and same-port aliases
 - [ ] No false warnings about sessions when deleting a non-terminal alias that merely shares the same port
 
 ### 4.9 Template Management
@@ -287,7 +296,7 @@ forge proxy validate test-proxy-nostart
 <!-- auto -->
 
 ```bash
-# test-proxy-nostart shares port 8085 with the running litellm-openai proxy.
+# test-proxy-nostart shares a port with the running QA OpenAI proxy.
 # Smart-pointer semantics prevent stopping the shared server without --force.
 forge proxy stop test-proxy-nostart 2>&1 || true
 
@@ -305,11 +314,11 @@ forge proxy stop test-proxy-nostart 2>&1; echo "EXIT=$?"
 <!-- auto -->
 
 ```bash
-# Metrics for a running proxy (litellm-gemini created in 4.2)
-forge proxy metrics litellm-gemini
+# Metrics for a running proxy (QA Gemini proxy created in 4.2)
+forge proxy metrics "$FORGE_QA_GEMINI_PROXY"
 
 # JSON output
-forge proxy metrics litellm-gemini --json
+forge proxy metrics "$FORGE_QA_GEMINI_PROXY" --json
 
 # All proxies
 forge proxy metrics --all
@@ -332,7 +341,7 @@ forge proxy metrics --all --json
 # Metrics for a non-existent proxy (not in registry)
 forge proxy metrics nonexistent-proxy 2>&1; echo "EXIT=$?"
 
-# Metrics for test-proxy-nostart: shares port 8085 with litellm-openai,
+# Metrics for test-proxy-nostart: shares a port with qa-openai,
 # so smart-pointer semantics mean it reports metrics from the shared server.
 forge proxy metrics test-proxy-nostart
 ```

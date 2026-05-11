@@ -657,7 +657,7 @@ def supervisor_cmd(
     Examples:
         forge guard supervisor -f src/foo.py -r abc-123 --json
         forge guard supervisor -f src/foo.py -r planning-session --json
-        forge guard supervisor -f src/foo.py -r abc-123 --proxy litellm-openai
+        forge guard supervisor -f src/foo.py -r abc-123 --proxy openrouter-openai
         forge guard supervisor -f src/foo.py -r abc-123 --no-proxy
     """
     direct = direct or direct_deprecated

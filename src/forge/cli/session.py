@@ -241,7 +241,7 @@ def _resolve_context_limit(proxy_ref: str | None) -> int:
     if no match, ambiguous, or config is malformed.
 
     Args:
-        proxy_ref: Proxy ID or template name (e.g., "litellm-gemini").
+        proxy_ref: Proxy ID or template name (e.g., "openrouter-gemini").
 
     Returns:
         Context window size in tokens, or _default_context_limit() if no match found.

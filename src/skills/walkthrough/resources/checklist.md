@@ -206,7 +206,7 @@ Try at least 2-3 commands. They all run in the sandbox — your real system is n
 <!-- auto -->
 
 ```bash
-bash "$SCRIPTS/run-in-repo.sh" forge proxy create litellm-openai
+bash "$SCRIPTS/run-in-repo.sh" forge proxy create openrouter-anthropic
 ```
 
 - [ ] Proxy created successfully
@@ -280,11 +280,12 @@ Look at the **status bar** at the bottom of Session B. You should see two lines 
 
 - **Session name** (`walkthrough-demo`) and branch info
 
-- **Proxy template** (`litellm-openai`) and **model mappings** (e.g., `[O:gpt-5.2 S:gpt-5.1-codex H:gpt-5-mini]`)
+- **Proxy template** (`openrouter-anthropic`) and **model mappings** (e.g.,
+  `[O:claude-opus S:claude-sonnet H:claude-haiku]`)
 
 - [ ] Status line shows session name (walkthrough-demo)
 
-- [ ] Status line shows proxy template (litellm-openai) and tier-to-model mappings
+- [ ] Status line shows proxy template (openrouter-anthropic) and tier-to-model mappings
 
 ---
 

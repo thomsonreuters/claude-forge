@@ -38,11 +38,11 @@ and stop.
 
 ## Models Used
 
-| Model                    | Strength                            | Via                  |
-| ------------------------ | ----------------------------------- | -------------------- |
-| `gpt-5.5`                | Logical problems, systematic review | litellm-openai proxy |
-| `gemini-3.1-pro-preview` | Balanced analysis, large context    | litellm-gemini proxy |
-| `claude-opus`            | Stable Claude Opus 4.6 reasoning    | Direct Anthropic     |
+| Model                    | Strength                            | Via                     |
+| ------------------------ | ----------------------------------- | ----------------------- |
+| `gpt-5.5`                | Logical problems, systematic review | openrouter-openai proxy |
+| `gemini-3.1-pro-preview` | Balanced analysis, large context    | openrouter-gemini proxy |
+| `claude-opus`            | Stable Claude Opus 4.6 reasoning    | Direct Anthropic        |
 
 Selectable direct Claude workers include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Use
 `claude-opus-4.7` as a bounded review/quorum worker when the prompt has a concrete target and should require file:line
@@ -124,5 +124,5 @@ result in the conversation. If `--output` was not specified, print the result in
 ## Requirements
 
 - **Forge CLI**: `forge` must be on PATH
-- **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create litellm-openai`)
+- **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create openrouter-openai`)
 - **List available models**: `forge workflow list-models`

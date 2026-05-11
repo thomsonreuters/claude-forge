@@ -56,10 +56,10 @@ class TestDefaultModels:
         assert "claude-opus" in DEFAULT_MODELS
 
     def test_gpt_uses_proxy(self):
-        assert DEFAULT_MODELS[OPENAI_DEFAULT].proxy == "litellm-openai"
+        assert DEFAULT_MODELS[OPENAI_DEFAULT].proxy == "openrouter-openai"
 
     def test_gemini_uses_proxy(self):
-        assert DEFAULT_MODELS[GEMINI_DEFAULT].proxy == "litellm-gemini"
+        assert DEFAULT_MODELS[GEMINI_DEFAULT].proxy == "openrouter-gemini"
 
     def test_compact_gemini_alias_is_accepted(self):
         assert MODEL_ALIASES[GEMINI_COMPACT] == GEMINI_DEFAULT

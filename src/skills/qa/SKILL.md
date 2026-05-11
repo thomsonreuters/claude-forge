@@ -2,7 +2,7 @@
 name: forge:qa
 description: Full Forge QA checklist in Docker container. Use for release validation or comprehensive verification of all Forge features.
 disable-model-invocation: true
-argument-hint: '[--from X.Y] [--to X.Y] [--reset] [--stop] [--keep] [categories...]'
+argument-hint: '[--provider-profile openrouter|remote-litellm] [--from X.Y] [--to X.Y] [--reset] [--stop] [--keep] [categories...]'
 allowed-tools: Read, Bash, Glob  # AskUserQuestion deliberately omitted — listing it triggers CC auto-approve bug (github.com/anthropics/claude-code/issues/29547). The tool remains available; omitting it preserves the interactive dialog.
 ---
 
@@ -18,6 +18,8 @@ Full Forge QA checklist inside a Docker container. The container IS the sandbox 
 /forge:qa --from 4.1               Resume from section 4.1
 /forge:qa --from 4.1 --to 7        Run sections 4.1 through 6.x (excludes 7)
 /forge:qa --from 10 --to 13        Run sections 10 through 12 (13 is excluded)
+/forge:qa --provider-profile remote-litellm
+                                   Use remote/shared LiteLLM instead of default OpenRouter
 /forge:qa --reset                Kill container, remove image, rebuild from scratch
 /forge:qa --stop                   Stop and remove the QA container
 /forge:qa --keep                   Keep container running after completion
@@ -25,14 +27,15 @@ Full Forge QA checklist inside a Docker container. The container IS the sandbox 
 
 ## Arguments
 
-| Argument     | Description                                                                                                                                                                                                                                 |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--from X.Y` | Resume from section X subsection Y.                                                                                                                                                                                                         |
-| `--to X.Y`   | Stop before section X subsection Y (exclusive). Example: `--from 10 --to 13` runs sections 10-12 and stops before 13.                                                                                                                       |
-| `--reset`    | Kill container, remove image, rebuild from scratch. Use when auto-staleness detection is insufficient: Dockerfile changes, Claude Code version upgrades, corrupt image layers, or persistent container state not cleared by workspace init. |
-| `--stop`     | Stop and remove the QA Docker container.                                                                                                                                                                                                    |
-| `--keep`     | Keep the container running after completion.                                                                                                                                                                                                |
-| `categories` | One or more category names to run (see allowlist below).                                                                                                                                                                                    |
+| Argument                                        | Description                                                                                                                                                                                                                                 |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--from X.Y`                                    | Resume from section X subsection Y.                                                                                                                                                                                                         |
+| `--to X.Y`                                      | Stop before section X subsection Y (exclusive). Example: `--from 10 --to 13` runs sections 10-12 and stops before 13.                                                                                                                       |
+| `--provider-profile openrouter\|remote-litellm` | Select the proxy backend family used by provider-dependent QA steps. Defaults to `openrouter`; `remote-litellm` is for shared/internal LiteLLM infrastructure.                                                                              |
+| `--reset`                                       | Kill container, remove image, rebuild from scratch. Use when auto-staleness detection is insufficient: Dockerfile changes, Claude Code version upgrades, corrupt image layers, or persistent container state not cleared by workspace init. |
+| `--stop`                                        | Stop and remove the QA Docker container.                                                                                                                                                                                                    |
+| `--keep`                                        | Keep the container running after completion.                                                                                                                                                                                                |
+| `categories`                                    | One or more category names to run (see allowlist below).                                                                                                                                                                                    |
 
 ## Execution
 
@@ -40,8 +43,9 @@ Follow these steps in order. Do not skip steps.
 
 ### Step 1: Parse Arguments and Route
 
-Parse `$ARGUMENTS` to extract flags: `--from X.Y`, `--to X.Y`, `--reset`, `--stop`, `--keep`. Any remaining words after
-flags are category names.
+Parse `$ARGUMENTS` to extract flags: `--provider-profile <profile>`, `--from X.Y`, `--to X.Y`, `--reset`, `--stop`,
+`--keep`. Any remaining words after flags are category names. Default `--provider-profile` to `openrouter`. Valid
+provider profiles are `openrouter` and `remote-litellm`; reject any other value before starting the container.
 
 **Greet the user:**
 
@@ -72,6 +76,11 @@ and rebuilds from scratch). Continue with the normal flow after that. The script
 the image's git rev label to `HEAD`) handles most cases automatically; `--reset` is the manual escape hatch for
 situations where the label matches but the image is wrong (see the `--reset` argument description above).
 
+**Provider profile**: Pass the selected provider profile to `start-container.sh`. The script validates required
+credentials and exports the QA template/proxy variables into the container environment. If a running container was
+created with a different provider profile, `start-container.sh` fails with a reset/stop hint; surface that message and
+stop.
+
 **Category name allowlist** (exact match only -- reject unknown names):
 
 | Name       | Section | Name        | Section |
@@ -98,8 +107,9 @@ categories: enable, preflight, extensions, ..."
 Run `start-container.sh` to get a Docker container:
 
 ```bash
-# Pass --reset if the user requested a full image rebuild
-CONTAINER=$(bash "$SCRIPTS/start-container.sh" ${REBUILD:+--reset})
+# Pass --reset if the user requested a full image rebuild.
+# PROVIDER_PROFILE is the parsed --provider-profile value, defaulting to openrouter.
+CONTAINER=$(bash "$SCRIPTS/start-container.sh" --provider-profile "$PROVIDER_PROFILE" ${REBUILD:+--reset})
 
 # `start-container.sh` prints the container name on stdout
 if [ -z "$CONTAINER" ]; then
@@ -132,7 +142,7 @@ Phase 1 with the fresh container. Do **not** try to scrub the live container in 
 
 ```bash
 bash "$SCRIPTS/start-container.sh" --stop
-CONTAINER=$(bash "$SCRIPTS/start-container.sh" ${REBUILD:+--reset})
+CONTAINER=$(bash "$SCRIPTS/start-container.sh" --provider-profile "$PROVIDER_PROFILE" ${REBUILD:+--reset})
 
 if [ -z "$CONTAINER" ]; then
   echo "ERROR: start-container.sh returned empty container name after reset."
@@ -179,10 +189,10 @@ bookkeeping -- the agent never constructs state JSON manually.
 
 **Run infrastructure probes.** These drive `<!-- requires: X -->` skip decisions for the entire run:
 
-| Probe     | Command                                                                                 | Stored as       | Meaning                                       |
-| --------- | --------------------------------------------------------------------------------------- | --------------- | --------------------------------------------- |
-| `docker`  | `docker exec $CONTAINER command -v docker`                                              | `INFRA_DOCKER`  | Docker client in container (docker-in-docker) |
-| `api_key` | `docker exec $CONTAINER bash -lc 'test -n "${GEMINI_API_KEY:-}${ANTHROPIC_API_KEY:-}"'` | `INFRA_API_KEY` | API keys available in container env           |
+| Probe     | Command                                                                                                                                                                                                                           | Stored as       | Meaning                                       |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | --------------------------------------------- |
+| `docker`  | `docker exec $CONTAINER command -v docker`                                                                                                                                                                                        | `INFRA_DOCKER`  | Docker client in container (docker-in-docker) |
+| `api_key` | `docker exec $CONTAINER bash -lc 'case "${FORGE_QA_PROVIDER_PROFILE:-openrouter}" in openrouter) test -n "${OPENROUTER_API_KEY:-}" ;; remote-litellm) test -n "${LITELLM_API_KEY:-}" && test -n "${LITELLM_BASE_URL:-}" ;; esac'` | `INFRA_API_KEY` | Selected provider credentials are available   |
 
 Store probe results in the state file:
 

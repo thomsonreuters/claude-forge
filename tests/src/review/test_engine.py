@@ -357,29 +357,29 @@ class TestPreflightCheck:
 
     @patch("forge.review.engine.check_model_availability")
     def test_all_ready_returns_empty(self, mock_avail) -> None:
-        specs = [_spec("a", proxy="litellm-openai"), _spec("b", proxy="litellm-gemini")]
+        specs = [_spec("a", proxy="openrouter-openai"), _spec("b", proxy="openrouter-gemini")]
         mock_avail.return_value = [_avail(s) for s in specs]
         assert preflight_check(specs) == []
 
     @patch("forge.review.engine.check_model_availability")
     def test_unavailable_proxy_returns_error(self, mock_avail) -> None:
-        spec = _spec("a", proxy="litellm-openai")
+        spec = _spec("a", proxy="openrouter-openai")
         mock_avail.return_value = [
-            _avail(spec, status="unavailable", reason="Proxy 'litellm-openai' not responding"),
+            _avail(spec, status="unavailable", reason="Proxy 'openrouter-openai' not responding"),
         ]
         errors = preflight_check([spec])
         assert len(errors) == 1
-        assert "litellm-openai" in errors[0]
+        assert "openrouter-openai" in errors[0]
         assert "not responding" in errors[0]
 
     @patch("forge.review.engine.check_model_availability")
     def test_unavailable_proxy_includes_create_hint(self, mock_avail) -> None:
-        spec = _spec("a", proxy="litellm-openai")
+        spec = _spec("a", proxy="openrouter-openai")
         mock_avail.return_value = [
             _avail(spec, status="unavailable", reason="not found"),
         ]
         errors = preflight_check([spec])
-        assert "forge proxy create litellm-openai" in errors[0]
+        assert "forge proxy create openrouter-openai" in errors[0]
 
     @patch("forge.review.engine.check_model_availability")
     def test_direct_unavailable_includes_auth_hint(self, mock_avail) -> None:
@@ -395,8 +395,8 @@ class TestPreflightCheck:
 
     @patch("forge.review.engine.check_model_availability")
     def test_mixed_ready_and_unavailable(self, mock_avail) -> None:
-        spec_ok = _spec("a", proxy="litellm-openai")
-        spec_bad = _spec("b", proxy="litellm-gemini")
+        spec_ok = _spec("a", proxy="openrouter-openai")
+        spec_bad = _spec("b", proxy="openrouter-gemini")
         mock_avail.return_value = [
             _avail(spec_ok),
             _avail(spec_bad, status="unavailable", reason="not found"),

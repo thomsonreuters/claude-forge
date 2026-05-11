@@ -19,8 +19,8 @@ tracking state across sessions, and enforcing policies.
 forge session start
 
 # Or route through different model providers (after creating proxies -- see Quick Start)
-forge session start planner --proxy litellm-openai    # GPT for planning
-forge session start --proxy litellm-gemini            # Gemini for review
+forge session start planner --proxy openrouter-openai    # GPT for planning
+forge session start --proxy openrouter-gemini            # Gemini for review
 ```
 
 ## Why Forge?
@@ -66,8 +66,8 @@ Claude Code  -->  Forge Proxy (local)  -->  OpenRouter / LiteLLM  -->  Any LLM p
                   Session state, policies, artifacts
 ```
 
-**OpenRouter** (`openrouter` template) calls the OpenRouter API directly -- no LiteLLM needed. One API key gives access
-to Anthropic, OpenAI, Google, Meta, and other models. **LiteLLM** templates route through a
+**OpenRouter** templates call the OpenRouter API directly -- no LiteLLM needed. One API key gives access to Anthropic,
+OpenAI, Google, Meta, and other models. **LiteLLM** templates route through a
 [LiteLLM](https://github.com/BerriAI/litellm) proxy (remote or local subprocess).
 
 **Direct mode** (the default) skips the proxy and talks to Anthropic directly. `forge session start` gives you session
@@ -79,7 +79,8 @@ tracking, hooks, and all Forge features except multi-model routing. Use `--proxy
 - **Python**: 3.11–3.13 (3.14 blocked on upstream `uvloop` wheels — see #1)
 - **Claude Code**: installed and on PATH
 - **Provider auth**: Claude Code login is enough for direct interactive sessions. Proxies and headless workflows need a
-  supported API or gateway credential such as `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, or LiteLLM auth.
+  supported API or gateway credential such as `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
+  `OPENAI_API_KEY`, or LiteLLM auth.
 
 ## Quick Start
 
@@ -98,13 +99,17 @@ forge extension enable
 forge session start
 
 # Or with multi-model routing via OpenRouter (easiest, no LiteLLM):
-forge authentication login -p openrouter         # Store OPENROUTER_API_KEY
-forge proxy create openrouter                    # Create and start proxy
-forge session start --proxy openrouter
+forge authentication login -p openrouter              # Store OPENROUTER_API_KEY
+forge proxy create openrouter-anthropic               # Create and start a Claude-family proxy
+forge session start --proxy openrouter-anthropic
 
-# Alternative: LiteLLM-based routing (remote or local):
+# Optional: create default workflow proxies for GPT/Gemini review workers
+forge proxy create openrouter-openai
+forge proxy create openrouter-gemini
+
+# Alternative: LiteLLM-based routing (shared/internal or local):
 # forge authentication login -p litellm-remote   # Store API key + base URL
-# forge proxy create litellm-openai              # Connects to shared LiteLLM
+# forge proxy create litellm-openai              # Connects to shared/internal LiteLLM
 # forge proxy create litellm-openai-local        # Or start local LiteLLM
 ```
 
@@ -126,7 +131,7 @@ With proxies configured, a typical feature workflow looks like:
 
 ```bash
 # 1. Start a planning session with a high-reasoning model
-forge session start planner --proxy litellm-openai
+forge session start planner --proxy openrouter-openai
 # ... Claude creates a plan, you approve it, /exit
 
 # 2. Fork the planner into a worktree with plan supervision

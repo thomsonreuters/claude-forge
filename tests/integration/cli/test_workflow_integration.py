@@ -31,7 +31,7 @@ def _write_proxy_registry(workspace: ContainerLike, *, proxy_id: str, base_url: 
             "proxies": {
                 proxy_id: {
                     "proxy_id": proxy_id,
-                    "template": "litellm-openai",
+                    "template": proxy_id,
                     "base_url": base_url,
                     "port": port,
                     "pid": None,
@@ -58,7 +58,7 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({{"is_proxy": True, "template": "litellm-openai", "proxy": {{"proxy_id": "{proxy_id}"}}}}).encode())
+        self.wfile.write(json.dumps({{"is_proxy": True, "template": "{proxy_id}", "proxy": {{"proxy_id": "{proxy_id}"}}}}).encode())
     def log_message(self, *a):
         pass
 http.server.HTTPServer(("127.0.0.1", {port}), H).serve_forever()
@@ -96,7 +96,7 @@ class TestRunMultiReviewE2E:
     ) -> None:
         _write_proxy_registry(
             mock_claude_workspace,
-            proxy_id="litellm-openai",
+            proxy_id="openrouter-openai",
             base_url="http://127.0.0.1:4001",
             port=4001,
         )
@@ -119,7 +119,7 @@ class TestRunMultiReviewE2E:
     def test_context_resume_adds_resume_flag(self, mock_claude_workspace: ContainerLike) -> None:
         _write_proxy_registry(
             mock_claude_workspace,
-            proxy_id="litellm-openai",
+            proxy_id="openrouter-openai",
             base_url="http://127.0.0.1:4001",
             port=4001,
         )
@@ -287,7 +287,7 @@ class TestRunPanelCodeE2E:
     ) -> None:
         _write_proxy_registry(
             mock_claude_workspace,
-            proxy_id="litellm-openai",
+            proxy_id="openrouter-openai",
             base_url="http://127.0.0.1:4001",
             port=4001,
         )

@@ -191,22 +191,21 @@ Shows:
 
 ```bash
 # Create from template (reuse/adopt/spawn as needed)
-forge proxy create litellm-openai
-# → Proxy created at http://localhost:8085
+forge proxy create openrouter-openai
+# → Proxy created at http://localhost:8096
 
 # Create with per-tier overrides
-forge proxy create litellm-openai \
-  --opus-reasoning high \
-  --sonnet-temperature 0.7
+forge proxy create openrouter-openai \
+  --opus-reasoning high
 
 # Create with custom name
-forge proxy create litellm-openai --name my-high-reasoning
+forge proxy create openrouter-openai --name my-high-reasoning
 
 # Create config only (don't start the server)
-forge proxy create litellm-openai --no-start
+forge proxy create openrouter-openai --no-start
 
 # Start and verify upstream connectivity (sends a real request)
-forge proxy start litellm-openai --smoke-test
+forge proxy start openrouter-openai --smoke-test
 ```
 
 **Semantics (reuse/adopt/spawn):**
@@ -260,7 +259,7 @@ forge proxy validate <proxy_id>
 Specify per-tier overrides when creating a proxy:
 
 ```bash
-forge proxy create litellm-openai \
+forge proxy create openrouter-openai \
   --opus-reasoning high \
   --sonnet-reasoning medium \
   --sonnet-temperature 0.7
@@ -294,18 +293,18 @@ directly. The key fields you'll typically customize are `default_tier` and `tier
 ```yaml
 # ~/.forge/proxies/<proxy_id>/proxy.yaml
 proxy_format: 1
-template: litellm-openai
+template: openrouter-openai
 template_digest: abc123...
 
-provider: litellm
-proxy_endpoint: http://localhost:8085
-port: 8085
-upstream_base_url: http://localhost:4000
+provider: openrouter
+proxy_endpoint: http://localhost:8096
+port: 8096
+upstream_base_url: https://openrouter.ai/api/v1
 
 tiers:
-  haiku: gpt-5.4-mini
-  sonnet: gpt-5.3-codex
-  opus: gpt-5.5
+  haiku: openai/gpt-5.4-mini
+  sonnet: openai/gpt-5.5
+  opus: openai/gpt-5.5
 
 default_tier: sonnet
 
@@ -355,7 +354,7 @@ routing scope.
 
 ```bash
 # Safe: create a separate proxy for different config
-forge proxy create litellm-openai --opus-reasoning high
+forge proxy create openrouter-openai --opus-reasoning high
 
 # Careful: modifying an existing proxy affects everyone using it
 forge proxy edit shared-proxy
@@ -365,7 +364,7 @@ forge proxy edit shared-proxy
 
 ## Canonical workflow: Plan -> Execute -> Panel
 
-1. Create a **planning proxy** (`litellm-openai`) and start Session A with that template.
+1. Create a **planning proxy** (`openrouter-openai`) and start Session A with that template.
 2. Approve plan; stop.
 3. Fork to Session B and relaunch Claude against an **execution proxy** (`forge claude start --proxy <proxy_id>`).
 4. Fork to Session C and relaunch Claude against a **review proxy** the same way.

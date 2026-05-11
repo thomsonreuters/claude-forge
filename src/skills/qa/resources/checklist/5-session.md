@@ -97,7 +97,7 @@ forge session delete test-session-forked --force 2>/dev/null || true
 
 # Start the parent session through the proxy provisioned in 4.2.
 # Interact briefly ("hello"), then exit (/exit).
-forge session start test-session-parent --proxy litellm-openai
+forge session start test-session-parent --proxy "$FORGE_QA_OPENAI_PROXY"
 
 # Fork the parent session (default: same directory, no worktree).
 # Claude should resume the conversation via --fork-session.
@@ -175,7 +175,7 @@ forge session delete test-incognito --force 2>/dev/null || true
 
 # Launch an incognito session (auto-deletes on exit).
 # Say "hello", then exit with /exit.
-forge session incognito test-incognito --proxy litellm-openai
+forge session incognito test-incognito --proxy "$FORGE_QA_OPENAI_PROXY"
 
 # After exiting Claude, verify auto-cleanup removed the session
 forge session list
@@ -284,7 +284,7 @@ forge session delete test-session-system-prompt --force 2>/dev/null || true
 
 # Launch a session with an inline system prompt.
 # Say "hello", then exit with /exit.
-forge session start test-session-system-prompt --proxy litellm-openai --system-prompt "FORGE_MANUAL_TEST_SYSTEM_PROMPT"
+forge session start test-session-system-prompt --proxy "$FORGE_QA_OPENAI_PROXY" --system-prompt "FORGE_MANUAL_TEST_SYSTEM_PROMPT"
 
 # After exiting Claude, verify the generated file
 test -f .claude/forge.system-prompt.generated.md && echo "FILE_EXISTS=true" || echo "FILE_EXISTS=false"
@@ -461,7 +461,7 @@ cat /workspace-test-into-target/.forge/sessions/test-fork-into/forge.session.jso
 forge session delete test-subprocess-proxy --force 2>/dev/null || true
 
 # Create a session with --subprocess-proxy (direct main, proxied subprocesses)
-forge session start test-subprocess-proxy --subprocess-proxy litellm-gemini --no-launch
+forge session start test-subprocess-proxy --subprocess-proxy "$FORGE_QA_GEMINI_PROXY" --no-launch
 
 # Verify intent recorded in session manifest
 jq '.intent.subprocess_proxy' .forge/sessions/test-subprocess-proxy/forge.session.json
@@ -472,7 +472,7 @@ jq '{proxy: .intent.proxy, started_with_proxy: .confirmed.started_with_proxy}' \
 ```
 
 - [ ] Session created with `--subprocess-proxy` flag (exit 0)
-- [ ] `intent.subprocess_proxy` is `"litellm-gemini"` in session manifest
+- [ ] `intent.subprocess_proxy` matches `$FORGE_QA_GEMINI_PROXY` in session manifest
 - [ ] `intent.proxy` is null (main session is direct mode)
 - [ ] `confirmed.started_with_proxy` is null (no proxy for main session)
 
@@ -483,7 +483,7 @@ jq '{proxy: .intent.proxy, started_with_proxy: .confirmed.started_with_proxy}' \
 ```bash
 # Try combining --subprocess-proxy with --proxy (should error)
 forge session start test-invalid-subproxy \
-  --subprocess-proxy litellm-gemini --proxy litellm-openai --no-launch 2>&1
+  --subprocess-proxy "$FORGE_QA_GEMINI_PROXY" --proxy "$FORGE_QA_OPENAI_PROXY" --no-launch 2>&1
 echo "EXIT=$?"
 ```
 
@@ -515,7 +515,7 @@ forge session delete test-fork-subproxy --force 2>/dev/null || true
 ```
 
 - [ ] Forked session inherits `subprocess_proxy` from parent
-- [ ] Child `intent.subprocess_proxy` is `"litellm-gemini"`
+- [ ] Child `intent.subprocess_proxy` matches `$FORGE_QA_GEMINI_PROXY`
 - [ ] Both test sessions cleaned up
 
 ---

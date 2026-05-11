@@ -95,7 +95,7 @@ testpaths = ["tests"]
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "slow: marks tests as slow (require network/API access, deselect with '-m \"not slow\"')",
-    "paid: marks tests that make paid upstream LLM API calls",
+    "remote_litellm: marks tests that require remote/shared LiteLLM infrastructure",
     "regression: marks tests as regression/bug-fix tests (run with '-m regression')",
     "docker_in: tests that exec commands inside a container (use '-m \"not docker_in\"' to skip)",
     "docker_host: tests that spawn containers from host - sandbox tests (use '-m \"not docker_host\"' to skip)",

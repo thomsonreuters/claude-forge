@@ -7,7 +7,7 @@ Validates workflow runners + skill architecture.
 - `forge workflow panel` is the fan-out runner CLI (supports `--code`, `--context`, and `--check`).
 - `/forge:analyze` is a skill that calls `forge workflow analyze` (N=1 model).
 - `/forge:debate` is a skill that calls `forge workflow debate` (supports `--code` for code evaluation).
-- This section uses the named proxies created in 4.2: `litellm-openai` and `litellm-gemini`.
+- This section uses the workflow-default proxy aliases created in 4.2: `openrouter-openai` and `openrouter-gemini`.
 - Omitting `--models` uses all configured defaults (from `forge workflow list-models`).
 
 ### 14.1 List Available Workflow Models

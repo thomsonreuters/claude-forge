@@ -1379,7 +1379,7 @@ def find_available_port(start_port: int, max_attempts: int = 10) -> int:
     "--template",
     type=str,
     required=True,
-    help="Configuration template to use (e.g., litellm-gemini, litellm-openai, litellm-anthropic)",
+    help="Configuration template to use (e.g., openrouter-gemini, openrouter-openai, openrouter-anthropic)",
 )
 @click.option("--port", type=int, default=8082, help="Port to run the server on (default: 8082)")
 @click.option("--host", default="0.0.0.0", help="Host to bind the server to (default: 0.0.0.0)")

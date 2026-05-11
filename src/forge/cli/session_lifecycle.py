@@ -1066,7 +1066,7 @@ def start(
     Examples:
         forge session start                                      # Auto-named, no proxy
         forge session start my-feature                           # Named session, no proxy
-        forge session start my-feature --proxy litellm-gemini    # With proxy routing
+        forge session start my-feature --proxy openrouter-gemini # With proxy routing
         forge session start my-feature --worktree                # Isolated worktree
         forge session start my-feature --supervise planner       # With plan supervision
     """
@@ -1928,7 +1928,7 @@ def incognito(
     \b
     Examples:
         forge session incognito                          # Auto-named
-        forge session incognito --proxy litellm-gemini   # With proxy
+        forge session incognito --proxy openrouter-gemini # With proxy
         forge session incognito my-test                  # Custom name
     """
     direct = direct or direct_deprecated

@@ -36,8 +36,8 @@ forge workflow consensus "Should we adopt gRPC for internal services?"
 
 Unless you pass `-m`, the multi-model workflows use this built-in worker set:
 
-- `gpt-5.5` -> proxy id `litellm-openai`
-- `gemini-3.1-pro-preview` -> proxy id `litellm-gemini`
+- `gpt-5.5` -> proxy id `openrouter-openai`
+- `gemini-3.1-pro-preview` -> proxy id `openrouter-gemini`
 - `claude-opus` -> direct Anthropic, pinned to stable Claude Opus 4.6
 
 Selectable direct Claude workers also include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Use
@@ -213,16 +213,16 @@ your decision rather than the executor freelancing.
 
 ### "No active proxy found" or a worker fails immediately
 
-The built-in `gpt-5.5` and `gemini-3.1-pro-preview` workers expect active proxies with ids `litellm-openai` and
-`litellm-gemini`. Check availability and create missing proxies:
+The built-in `gpt-5.5` and `gemini-3.1-pro-preview` workers expect active proxies with ids `openrouter-openai` and
+`openrouter-gemini`. Check availability and create missing proxies:
 
 ```bash
 # See which models are ready vs unavailable
 forge workflow list-models
 
 # Create missing proxies
-forge proxy create litellm-openai
-forge proxy create litellm-gemini
+forge proxy create openrouter-openai
+forge proxy create openrouter-gemini
 
 # Filter to only ready models (useful for scripting)
 forge workflow list-models --available

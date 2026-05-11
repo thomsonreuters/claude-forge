@@ -109,4 +109,4 @@ When `--code` is specified, models evaluate the target code from adversarial per
 ## Requirements
 
 - **Forge CLI**: `forge` must be on PATH
-- **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create litellm-openai`)
+- **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create openrouter-openai`)

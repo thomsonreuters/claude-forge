@@ -139,7 +139,7 @@ Evaluate a file against an approved plan via the semantic supervisor. Fail-close
 
 ```bash
 forge guard supervisor -f src/foo.py -r <session-uuid>
-forge guard supervisor -f src/foo.py -r <session-uuid> --proxy litellm-openai --json
+forge guard supervisor -f src/foo.py -r <session-uuid> --proxy openrouter-openai --json
 ```
 
 - `--file` / `-f` — file to evaluate (required)

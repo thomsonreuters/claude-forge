@@ -26,4 +26,5 @@
 
 - [ ] Consider a one-time test patch refactor away from `forge.cli.session` wildcard compatibility exports
 - [ ] Add debug timing around multi-proxy metrics snapshots if users report slow status panels
-- [ ] Decide whether paid E2E tests should carry the `paid` pytest marker in addition to `integration` and `slow`
+- [x] Decide not to add a redundant `paid` marker; use `slow` for real API calls and `remote_litellm` for shared LiteLLM
+  infrastructure

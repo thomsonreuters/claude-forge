@@ -135,6 +135,9 @@ uv run pytest -m integration
 # Regression tests
 uv run pytest -m regression
 
+# Shared/remote LiteLLM infrastructure tests
+uv run pytest -m remote_litellm
+
 # Specific file
 uv run pytest tests/src/session/test_store.py -v
 
@@ -168,6 +171,12 @@ session lifecycle, and supervisor flows that can't be tested with mock Claude.
 - Use shared helpers `setup_real_claude()` and `run_claude_print()` from `tests/integration/docker/conftest.py`
 - Keep prompts minimal to reduce cost and execution time (~30-60s per test)
 - These are for **release validation**, not CI gating
+
+### Remote LiteLLM E2E Tests (`@pytest.mark.remote_litellm`)
+
+Remote LiteLLM tests are the opt-in path for maintainers with shared/internal LiteLLM infrastructure. They require
+`LITELLM_API_KEY` and `LITELLM_BASE_URL`, and should also be marked `integration` and `slow`. OpenRouter real-API tests
+use the existing `slow` marker; do not add a separate paid marker.
 
 **Current real-Claude tests:**
 

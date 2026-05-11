@@ -107,13 +107,13 @@ def _build_available_models() -> dict[str, ModelSpec]:
     return {
         openai_opus: ModelSpec(
             name=openai_opus,
-            proxy="litellm-openai",
+            proxy="openrouter-openai",
             model_flag=None,
             description="Logical problems, systematic code review",
         ),
         gemini_opus: ModelSpec(
             name=gemini_opus,
-            proxy="litellm-gemini",
+            proxy="openrouter-gemini",
             model_flag=None,
             description="Balanced analysis, pragmatic suggestions, large context",
         ),

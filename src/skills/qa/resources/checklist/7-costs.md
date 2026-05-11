@@ -131,16 +131,16 @@ echo "EXIT=$?"
 
 ```bash
 # Set spend caps on the test proxy from section 4
-forge proxy set litellm-gemini costs.caps.per_day=20.00
-forge proxy set litellm-gemini costs.caps.per_month=100.00
-forge proxy set litellm-gemini costs.cap_mode=post
-forge proxy set litellm-gemini costs.on_cap_hit=reject
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.caps.per_day=20.00
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.caps.per_month=100.00
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.cap_mode=post
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.on_cap_hit=reject
 
 # Validate config is healthy after cap changes
-forge proxy validate litellm-gemini
+forge proxy validate "$FORGE_QA_GEMINI_PROXY"
 
 # Show raw YAML to verify caps appear
-forge proxy show litellm-gemini --raw
+forge proxy show "$FORGE_QA_GEMINI_PROXY" --raw
 ```
 
 - [ ] `costs.caps.per_day` appears in raw YAML as `20.0` (float, not string `"20.00"`)
@@ -158,10 +158,10 @@ forge proxy show litellm-gemini --raw
 
 ```bash
 # Invalid cap_mode -- should be rejected
-forge proxy set litellm-gemini costs.cap_mode=invalid 2>&1; echo "EXIT=$?"
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.cap_mode=invalid 2>&1; echo "EXIT=$?"
 
 # Invalid on_cap_hit -- should be rejected
-forge proxy set litellm-gemini costs.on_cap_hit=invalid 2>&1; echo "EXIT=$?"
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.on_cap_hit=invalid 2>&1; echo "EXIT=$?"
 ```
 
 - [ ] Invalid `cap_mode` rejected with validation error (exit non-zero)
@@ -181,25 +181,25 @@ rejection. This avoids depending on a real request landing above a tiny cap (whi
 models).
 
 ```
-# Set a low daily cap on litellm-openai (the working proxy in the container)
-forge proxy set litellm-openai costs.caps.per_day=0.01
-forge proxy set litellm-openai costs.on_cap_hit=reject
-forge proxy set litellm-openai costs.cap_mode=post
+# Set a low daily cap on the working QA OpenAI proxy in the container
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.caps.per_day=0.01
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.on_cap_hit=reject
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.cap_mode=post
 
 # Seed a cost log with a current timestamp so the tracker bootstraps above the cap.
 # The tracker reads YYYY-MM_*.jsonl files on startup (bootstrap_from_logs).
 mkdir -p ~/.forge/costs/requests
 MONTH=$(date -u +%Y-%m)
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "{\"ts\":\"$TS\",\"proxy_id\":\"litellm-openai\",\"model\":\"seed\",\"tier\":\"sonnet\",\"input_tokens\":0,\"output_tokens\":0,\"cached_tokens\":0,\"cost_micros\":50000,\"estimated\":true,\"pricing_source\":\"catalog\",\"latency_ms\":0,\"failed\":false,\"request_id\":\"req-qa-cap-seed\"}" \
+echo "{\"ts\":\"$TS\",\"proxy_id\":\"$FORGE_QA_OPENAI_PROXY\",\"model\":\"seed\",\"tier\":\"sonnet\",\"input_tokens\":0,\"output_tokens\":0,\"cached_tokens\":0,\"cost_micros\":50000,\"estimated\":true,\"pricing_source\":\"catalog\",\"latency_ms\":0,\"failed\":false,\"request_id\":\"req-qa-cap-seed\"}" \
   > ~/.forge/costs/requests/${MONTH}_qa-cap-seed.jsonl
 
 # Restart proxy so it bootstraps from the seeded log (--force bypasses shared-port check)
-forge proxy stop litellm-openai --force 2>/dev/null || true
-forge proxy start litellm-openai
+forge proxy stop "$FORGE_QA_OPENAI_PROXY" --force 2>/dev/null || true
+forge proxy start "$FORGE_QA_OPENAI_PROXY"
 
 # Make a request -- should be rejected immediately
-forge claude start --proxy litellm-openai
+forge claude start --proxy "$FORGE_QA_OPENAI_PROXY"
 # Say "hello" -- expect rejection or error about spend cap, then exit (/exit)
 
 # Clean up seeded log
@@ -224,20 +224,20 @@ cost log approach for deterministic cap triggering.
 
 ```
 # Switch to warn mode
-forge proxy set litellm-openai costs.on_cap_hit=warn
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.on_cap_hit=warn
 
 # Re-seed the cost log (cleanup from 7.9 removed it)
 MONTH=$(date -u +%Y-%m)
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "{\"ts\":\"$TS\",\"proxy_id\":\"litellm-openai\",\"model\":\"seed\",\"tier\":\"sonnet\",\"input_tokens\":0,\"output_tokens\":0,\"cached_tokens\":0,\"cost_micros\":50000,\"estimated\":true,\"pricing_source\":\"catalog\",\"latency_ms\":0,\"failed\":false,\"request_id\":\"req-qa-cap-warn\"}" \
+echo "{\"ts\":\"$TS\",\"proxy_id\":\"$FORGE_QA_OPENAI_PROXY\",\"model\":\"seed\",\"tier\":\"sonnet\",\"input_tokens\":0,\"output_tokens\":0,\"cached_tokens\":0,\"cost_micros\":50000,\"estimated\":true,\"pricing_source\":\"catalog\",\"latency_ms\":0,\"failed\":false,\"request_id\":\"req-qa-cap-warn\"}" \
   > ~/.forge/costs/requests/${MONTH}_qa-cap-seed.jsonl
 
 # Restart proxy so it bootstraps with the seeded cost (--force bypasses shared-port check)
-forge proxy stop litellm-openai --force 2>/dev/null || true
-forge proxy start litellm-openai
+forge proxy stop "$FORGE_QA_OPENAI_PROXY" --force 2>/dev/null || true
+forge proxy start "$FORGE_QA_OPENAI_PROXY"
 
 # Make a request through the proxy
-forge claude start --proxy litellm-openai
+forge claude start --proxy "$FORGE_QA_OPENAI_PROXY"
 # Say "hello", then exit (/exit)
 
 # Clean up seeded log
@@ -265,23 +265,23 @@ ls ~/.forge/costs/verbs/qa-fixture_*.jsonl 2>&1 || echo "QA_VERB_LOGS_CLEAN"
 ls ~/.forge/costs/requests/*_qa-cap-seed.jsonl 2>&1 || echo "QA_CAP_SEED_LOGS_CLEAN"
 
 # Reset spend caps on test proxies
-forge proxy set litellm-gemini costs.caps.per_day=none 2>/dev/null || true
-forge proxy set litellm-gemini costs.caps.per_month=none 2>/dev/null || true
-forge proxy set litellm-gemini costs.on_cap_hit=reject 2>/dev/null || true
-forge proxy set litellm-gemini costs.cap_mode=post 2>/dev/null || true
-forge proxy set litellm-openai costs.caps.per_day=none 2>/dev/null || true
-forge proxy set litellm-openai costs.caps.per_month=none 2>/dev/null || true
-forge proxy set litellm-openai costs.on_cap_hit=reject 2>/dev/null || true
-forge proxy set litellm-openai costs.cap_mode=post 2>/dev/null || true
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.caps.per_day=none 2>/dev/null || true
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.caps.per_month=none 2>/dev/null || true
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.on_cap_hit=reject 2>/dev/null || true
+forge proxy set "$FORGE_QA_GEMINI_PROXY" costs.cap_mode=post 2>/dev/null || true
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.caps.per_day=none 2>/dev/null || true
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.caps.per_month=none 2>/dev/null || true
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.on_cap_hit=reject 2>/dev/null || true
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.cap_mode=post 2>/dev/null || true
 
-# Restart litellm-openai so the running proxy drops seeded spend/cap state from 7.9/7.10
-forge proxy stop litellm-openai --force 2>/dev/null || true
-forge proxy start litellm-openai
+# Restart the QA OpenAI proxy so the running proxy drops seeded spend/cap state from 7.9/7.10
+forge proxy stop "$FORGE_QA_OPENAI_PROXY" --force 2>/dev/null || true
+forge proxy start "$FORGE_QA_OPENAI_PROXY"
 ```
 
 - [ ] QA fixture request logs removed (no `qa-fixture_*.jsonl` in `requests/`)
 - [ ] QA fixture verb logs removed (no `qa-fixture_*.jsonl` in `verbs/`)
 - [ ] QA cap seed logs removed (no `*_qa-cap-seed.jsonl` in `requests/`)
-- [ ] Spend caps reset on test proxies (litellm-gemini and litellm-openai)
+- [ ] Spend caps reset on QA OpenAI and Gemini test proxies
 
 ---

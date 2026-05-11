@@ -64,7 +64,7 @@ Always launch Claude through Forge to get session tracking:
 ```bash
 forge session start                                            # Auto-named, direct to Anthropic
 forge session start my-feature                                 # Named, direct to Anthropic
-forge session start my-feature --proxy litellm-gemini-local    # Named + proxy routing
+forge session start my-feature --proxy openrouter-anthropic    # Named + proxy routing
 ```
 
 This gives you: named session with manifest, hook-driven plan snapshots, transcript capture, status line, session
@@ -73,7 +73,7 @@ resume, search, and handoff agent. Requires `forge extension enable` first (crea
 **Bare launch** (`forge claude start`) — proxy routing only, no session state:
 
 ```bash
-forge claude start --proxy litellm-gemini-local
+forge claude start --proxy openrouter-anthropic
 forge claude start --no-proxy
 ```
 
@@ -406,16 +406,16 @@ existing sessions with `forge guard supervise <session>` or `%guard supervise <s
 
 ```bash
 # Fork with supervisor on a different model (e.g., Gemini for checking, Opus for coding)
-forge session fork planner --worktree --supervise --supervisor-proxy litellm-gemini --no-proxy
+forge session fork planner --worktree --supervise --supervisor-proxy openrouter-gemini --no-proxy
 
 # Fork with supervisor going direct to Anthropic
 forge session fork planner --worktree --supervise --no-supervisor-proxy
 
 # Same flags work on session start
-forge session start executor --supervise planner --supervisor-proxy litellm-gemini
+forge session start executor --supervise planner --supervisor-proxy openrouter-gemini
 
 # Or change supervisor routing on an existing session
-forge guard supervise planner --supervisor-proxy litellm-gemini
+forge guard supervise planner --supervisor-proxy openrouter-gemini
 ```
 
 **Supervisor lifecycle controls:**
@@ -464,7 +464,7 @@ Claude.
 ### Start a session with a proxy
 
 ```bash
-forge session start my-session --proxy litellm-openai
+forge session start my-session --proxy openrouter-anthropic
 ```
 
 `--proxy` sets the session's initial proxy intent. It accepts a proxy ID or template name. Without `--proxy`, sessions
@@ -500,7 +500,7 @@ For proxy-mode `model_alternatives` configuration, see [proxies.md](proxies.md#m
 ### Resume with a routing override
 
 ```bash
-forge session resume parent-session --fresh --proxy litellm-gemini-local
+forge session resume parent-session --fresh --proxy openrouter-gemini
 ```
 
 `--proxy` performs full proxy resolution (exact proxy_id match or active template lookup) with a healthcheck, then

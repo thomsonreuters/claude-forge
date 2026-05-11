@@ -79,13 +79,13 @@ A proxy template is an operational profile:
 Currently, set overrides at create time:
 
 ```bash
-forge proxy create litellm-openai --opus-reasoning high
+forge proxy create openrouter-openai --opus-reasoning high
 ```
 
 Create-and-edit pattern:
 
 ```bash
-forge proxy create litellm-openai --name my-high-reasoning
+forge proxy create openrouter-openai --name my-high-reasoning
 forge proxy edit my-high-reasoning
 ```
 

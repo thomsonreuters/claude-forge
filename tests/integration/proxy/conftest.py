@@ -429,10 +429,15 @@ def no_active_session() -> Generator[None, None, None]:
     yield
 
 
+def _require_remote_litellm_env() -> None:
+    missing = [name for name in ("LITELLM_API_KEY", "LITELLM_BASE_URL") if not os.environ.get(name)]
+    if missing:
+        pytest.fail(f"{', '.join(missing)} not set (required for remote LiteLLM tests)")
+
+
 @pytest.fixture(scope="module")
 def proxy_server_remote_openai(module_forge_home: Path, tmp_path_factory) -> Generator[str, None, None]:
-    if not os.environ.get("LITELLM_API_KEY"):
-        pytest.fail("LITELLM_API_KEY not set (required for remote LiteLLM tests)")
+    _require_remote_litellm_env()
 
     port = allocate_ephemeral_port()
     env = os.environ.copy()
@@ -463,8 +468,7 @@ def proxy_server_remote_openai(module_forge_home: Path, tmp_path_factory) -> Gen
 
 @pytest.fixture(scope="module")
 def proxy_server_remote_gemini(module_forge_home: Path, tmp_path_factory) -> Generator[str, None, None]:
-    if not os.environ.get("LITELLM_API_KEY"):
-        pytest.fail("LITELLM_API_KEY not set (required for remote LiteLLM tests)")
+    _require_remote_litellm_env()
 
     port = allocate_ephemeral_port()
     env = os.environ.copy()

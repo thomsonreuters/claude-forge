@@ -2,18 +2,18 @@
 
 <!-- checklist: index -->
 
-<!-- version: 1.0.9 -->
+<!-- version: 1.0.10 -->
 
 <!-- test-count: ~458 -->
 
-<!-- last-updated: 2026-05-09 -->
+<!-- last-updated: 2026-05-11 -->
 
 <!-- aligned-with: v0.1.0 -->
 
 **Test Repo**: `$FORGE_TEST_REPO`
 
-**Last updated**: 2026-05-09 (added cost tracking, spend caps, OpenRouter templates, model alternatives, subprocess
-proxy, status line cost display)
+**Last updated**: 2026-05-11 (made OpenRouter the default QA provider profile and kept remote LiteLLM as an explicit
+profile)
 
 ---
 

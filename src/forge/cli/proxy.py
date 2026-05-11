@@ -87,7 +87,7 @@ def proxy() -> None:
 
     \b
     Examples:
-        forge proxy create litellm-gemini      # Create proxy from template
+        forge proxy create openrouter-gemini   # Create proxy from template
         forge proxy list                       # List all proxies
         forge proxy show my-proxy              # Show proxy details
     """
@@ -314,12 +314,12 @@ def create_cmd(
 
     \b
     Examples:
-        forge proxy create litellm-gemini              # Create and start server
-        forge proxy create litellm-gemini --no-start   # Create config only
-        forge proxy create litellm-gemini -n my-proxy  # Custom name
-        forge proxy create litellm-gemini --opus-reasoning=high  # With overrides
+        forge proxy create openrouter-gemini              # Create and start server
+        forge proxy create openrouter-gemini --no-start   # Create config only
+        forge proxy create openrouter-gemini -n my-proxy  # Custom name
+        forge proxy create openrouter-gemini --opus-reasoning=high  # With overrides
         forge proxy create litellm-openai --base-url https://litellm.corp.com  # Explicit upstream
-        forge proxy create litellm-openai --smoke-test # Verify upstream after start
+        forge proxy create openrouter-openai --smoke-test # Verify upstream after start
     """
     console = Console(width=200)
 
@@ -1626,8 +1626,8 @@ def template_show_cmd(name: str, raw: bool) -> None:
 
     \b
     Examples:
-        forge proxy template show litellm-gemini
-        forge proxy template show litellm-gemini --raw
+        forge proxy template show openrouter-gemini
+        forge proxy template show openrouter-gemini --raw
     """
     console = Console(width=200)
 
@@ -1675,7 +1675,7 @@ def template_edit_cmd(name: str) -> None:
 
     \b
     Examples:
-        forge proxy template edit litellm-gemini
+        forge proxy template edit openrouter-gemini
     """
     console = Console(width=200)
 
@@ -1772,8 +1772,8 @@ def template_reset_cmd(name: str, yes: bool, force: bool) -> None:
 
     \b
     Examples:
-        forge proxy template reset litellm-gemini
-        forge proxy template reset litellm-gemini --yes
+        forge proxy template reset openrouter-gemini
+        forge proxy template reset openrouter-gemini --yes
     """
     yes = yes or force
     console = Console(width=200)

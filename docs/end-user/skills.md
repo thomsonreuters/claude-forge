@@ -121,11 +121,11 @@ consensus findings, unique insights, and conflicts.
 
 **Default models:**
 
-| Model                    | Strength                            | Via                  |
-| ------------------------ | ----------------------------------- | -------------------- |
-| `gpt-5.5`                | Logical problems, systematic review | litellm-openai proxy |
-| `gemini-3.1-pro-preview` | Balanced analysis, large context    | litellm-gemini       |
-| `claude-opus`            | Stable Claude Opus 4.6 reasoning    | Direct Anthropic     |
+| Model                    | Strength                            | Via                     |
+| ------------------------ | ----------------------------------- | ----------------------- |
+| `gpt-5.5`                | Logical problems, systematic review | openrouter-openai proxy |
+| `gemini-3.1-pro-preview` | Balanced analysis, large context    | openrouter-gemini       |
+| `claude-opus`            | Stable Claude Opus 4.6 reasoning    | Direct Anthropic        |
 
 Selectable direct Claude workers include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Use
 `--models claude-opus-4.6,claude-opus-4.7` when you want both stable Opus 4.6 and bounded-review Opus 4.7 in the panel.
@@ -155,11 +155,11 @@ key disagreements, and an evidence-weighted recommendation.
 
 **Default models:**
 
-| Model                    | Stance  | Role                     | Via                  |
-| ------------------------ | ------- | ------------------------ | -------------------- |
-| `gpt-5.5`                | FOR     | Supporter -- strengths   | litellm-openai proxy |
-| `gemini-3.1-pro-preview` | AGAINST | Critic -- risks          | litellm-gemini       |
-| `claude-opus`            | NEUTRAL | Analyst -- balanced view | Direct Anthropic     |
+| Model                    | Stance  | Role                     | Via                     |
+| ------------------------ | ------- | ------------------------ | ----------------------- |
+| `gpt-5.5`                | FOR     | Supporter -- strengths   | openrouter-openai proxy |
+| `gemini-3.1-pro-preview` | AGAINST | Critic -- risks          | openrouter-gemini       |
+| `claude-opus`            | NEUTRAL | Analyst -- balanced view | Direct Anthropic        |
 
 **Requirements:** GPT-5.5 and Gemini require active proxies; Claude Opus requires `ANTHROPIC_API_KEY`. See
 [auth.md](auth.md#which-auth-do-i-need) for setup.
@@ -209,8 +209,8 @@ Session -> proxy template -> tier model name -> vendor prefix -> family
 
 | Family      | Templates using it          | Resource suffix |
 | ----------- | --------------------------- | --------------- |
-| `openai`    | `litellm-openai`            | `-openai.md`    |
-| `gemini`    | `litellm-gemini`            | `-gemini.md`    |
+| `openai`    | `openrouter-openai`         | `-openai.md`    |
+| `gemini`    | `openrouter-gemini`         | `-gemini.md`    |
 | `anthropic` | `litellm-anthropic`, direct | (default)       |
 
 The detection chain uses `forge session show --field model_family`, which resolves the session from `$FORGE_SESSION`
@@ -270,6 +270,6 @@ See [design_appendix.md §E.5](../design_appendix.md#e5-multi-scope-installation
 The panel's default model set includes `gpt-5.5` and `gemini-3.1-pro-preview`, which require active proxies:
 
 ```bash
-forge proxy create litellm-openai
-forge proxy create litellm-gemini
+forge proxy create openrouter-openai
+forge proxy create openrouter-gemini
 ```

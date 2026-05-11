@@ -191,7 +191,7 @@ In the **container shell**, clean up and start a session:
 
 ```
 forge session delete hook-e2e-test --force 2>/dev/null || true
-forge session start hook-e2e-test --proxy litellm-openai
+forge session start hook-e2e-test --proxy "$FORGE_QA_OPENAI_PROXY"
 ```
 
 Inside the launched Claude session, do a small action (e.g., "write hello to /tmp/test.txt" or "read
@@ -233,7 +233,7 @@ In the **container shell**, clean up and start a worktree session:
 forge session delete wt-hook-test --yes --force 2>/dev/null || true
 git worktree remove /workspace-wt-hook-test --force 2>/dev/null || true
 git branch -D wt-hook-test 2>/dev/null || true
-forge session start wt-hook-test --worktree --proxy litellm-openai
+forge session start wt-hook-test --worktree --proxy "$FORGE_QA_OPENAI_PROXY"
 ```
 
 Inside the launched Claude session, verify the status line is visible and type `%help` (should list Forge direct

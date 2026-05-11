@@ -2,8 +2,8 @@
 
 These tests run the Forge proxy as a subprocess and validate full request flow.
 
-They are gated by LITELLM_API_KEY (no extra opt-in). If remote endpoints are
-unreachable from this environment, fixtures will skip.
+They are marked remote_litellm and require LITELLM_API_KEY plus
+LITELLM_BASE_URL. Missing or unreachable infrastructure fails loudly.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-pytestmark = [pytest.mark.integration, pytest.mark.slow]
+pytestmark = [pytest.mark.integration, pytest.mark.slow, pytest.mark.remote_litellm]
 
 
 @pytest.mark.parametrize(

@@ -1062,6 +1062,308 @@ models:
     intelligence_score: 81
     tags: []
 
+  # ---------------------------------------------------------------------------
+  # Open-source models via OpenRouter
+  # ---------------------------------------------------------------------------
+  deepseek-v4-flash:
+    friendly_name: DeepSeek V4 Flash
+    context_window_tokens: 1048576
+    max_output_tokens: 384000
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 120
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [high, xhigh]
+    default_reasoning_effort: high
+    intelligence_score: 82
+    tags: [code-gen]
+
+  deepseek-v4-pro:
+    friendly_name: DeepSeek V4 Pro
+    context_window_tokens: 1048576
+    max_output_tokens: 384000
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: reasoning_effort
+    # OpenRouter exposes only the upper effort tiers for V4 Pro
+    litellm_reasoning_efforts: [high, xhigh]
+    default_reasoning_effort: high
+    intelligence_score: 88
+    tags: [code-gen]
+
+  kimi-k2.5:
+    friendly_name: Kimi K2.5
+    context_window_tokens: 262144
+    max_output_tokens: 262144
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 86
+    tags: [agentic, code-gen, vision]
+
+  kimi-k2.6:
+    friendly_name: Kimi K2.6
+    context_window_tokens: 32768
+    max_output_tokens: 32768
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [low, medium, high]
+    default_reasoning_effort: high
+    intelligence_score: 89
+    tags: [agentic, code-gen, vision]
+
+  qwen3.6-plus:
+    friendly_name: Qwen3.6 Plus
+    context_window_tokens: 1000000
+    max_output_tokens: 65536
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 88
+    tags: [agentic, code-gen, vision]
+
+  qwen3.6-flash:
+    friendly_name: Qwen3.6 Flash
+    context_window_tokens: 1000000
+    max_output_tokens: 65536
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 120
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 82
+    tags: [agentic, code-gen, vision]
+
+  qwen3.6-max-preview:
+    friendly_name: Qwen3.6 Max Preview
+    context_window_tokens: 262144
+    max_output_tokens: 65536
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 90
+    tags: [agentic, code-gen]
+
+  qwen3-coder:
+    friendly_name: Qwen3 Coder 480B A35B
+    context_window_tokens: 262144
+    max_output_tokens: 65536
+    max_thinking_tokens: null
+    supports_thinking: false
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 84
+    tags: [code-gen]
+
+  minimax-m2.5:
+    friendly_name: MiniMax M2.5
+    context_window_tokens: 196608
+    max_output_tokens: 196608
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [low, medium, high]
+    default_reasoning_effort: medium
+    intelligence_score: 84
+    tags: [agentic]
+
+  minimax-m2.7:
+    friendly_name: MiniMax M2.7
+    context_window_tokens: 196608
+    max_output_tokens: 131072
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 86
+    tags: [agentic]
+
+  glm-4.7-flash:
+    friendly_name: GLM 4.7 Flash
+    context_window_tokens: 202752
+    max_output_tokens: 16384
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 90
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 78
+    tags: [agentic]
+
+  glm-5.1:
+    friendly_name: GLM 5.1
+    context_window_tokens: 202752
+    max_output_tokens: 202752
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [low, medium, high]
+    default_reasoning_effort: high
+    intelligence_score: 87
+    tags: [agentic, code-gen]
+
+  gemma-4-31b-it:
+    friendly_name: Gemma 4 31B
+    context_window_tokens: 262144
+    max_output_tokens: 16384
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 120
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 78
+    tags: [open-weights, vision]
+
 
 # =============================================================================
 # ALIASES - Provider-prefixed IDs map to canonical models
@@ -1162,3 +1464,39 @@ aliases:
   anthropic/claude-opus-4.6: claude-opus-4-6
   anthropic/claude-sonnet-4.6: claude-sonnet-4-6
   anthropic/claude-haiku-4.5: claude-haiku-4-5-20251001
+
+  # DeepSeek (via OpenRouter)
+  deepseek/deepseek-v4-pro: deepseek-v4-pro
+  deepseek/deepseek-v4-flash: deepseek-v4-flash
+  deepseek-v4: deepseek-v4-pro
+  v4-pro: deepseek-v4-pro
+  v4-flash: deepseek-v4-flash
+
+  # Kimi / MoonshotAI (via OpenRouter)
+  moonshotai/kimi-k2.5: kimi-k2.5
+  moonshotai/kimi-k2.6: kimi-k2.6
+  kimi-k2-5: kimi-k2.5
+  kimi-k2-6: kimi-k2.6
+
+  # Qwen (via OpenRouter)
+  qwen/qwen3.6-flash: qwen3.6-flash
+  qwen/qwen3.6-plus: qwen3.6-plus
+  qwen/qwen3.6-max-preview: qwen3.6-max-preview
+  qwen/qwen3-coder: qwen3-coder
+  qwen3-6-flash: qwen3.6-flash
+  qwen3-6-plus: qwen3.6-plus
+  qwen3-6-max-preview: qwen3.6-max-preview
+  qwen3-6-max: qwen3.6-max-preview
+  qwen-coder: qwen3-coder
+
+  # MiniMax / Z.ai / Google / Mistral (via OpenRouter)
+  minimax/minimax-m2.5: minimax-m2.5
+  minimax/minimax-m2.7: minimax-m2.7
+  minimax-m2-5: minimax-m2.5
+  minimax-m2-7: minimax-m2.7
+  z-ai/glm-4.7-flash: glm-4.7-flash
+  z-ai/glm-5.1: glm-5.1
+  glm-4-7-flash: glm-4.7-flash
+  glm-5-1: glm-5.1
+  google/gemma-4-31b-it: gemma-4-31b-it
+  gemma-4-31b: gemma-4-31b-it

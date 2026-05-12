@@ -30,6 +30,11 @@ TEMPLATE_SECRETS: dict[str, list[str]] = {
     "openrouter-gemini": ["OPENROUTER_API_KEY"],
     "openrouter-openai-codex": ["OPENROUTER_API_KEY"],
     "openrouter-gemini-flash": ["OPENROUTER_API_KEY"],
+    "openrouter-deepseek": ["OPENROUTER_API_KEY"],
+    "openrouter-kimi": ["OPENROUTER_API_KEY"],
+    "openrouter-glm": ["OPENROUTER_API_KEY"],
+    "openrouter-minimax": ["OPENROUTER_API_KEY"],
+    "openrouter-qwen": ["OPENROUTER_API_KEY"],
 }
 
 

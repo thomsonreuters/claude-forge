@@ -48,6 +48,38 @@ class TestGetPricing:
         assert p.source == "catalog"
         assert p.input_per_mtok == 2.0
 
+    def test_curated_openrouter_open_model_pricing(self):
+        p = get_pricing("deepseek/deepseek-v4-flash")
+        assert p.source == "catalog"
+        assert p.input_per_mtok == 0.14
+        assert p.output_per_mtok == 0.28
+        assert p.cached_input_per_mtok == 0.0028
+
+        p = get_pricing("moonshotai/kimi-k2.6")
+        assert p.source == "catalog"
+        assert p.input_per_mtok == 0.74
+        assert p.output_per_mtok == 3.50
+
+        p = get_pricing("qwen/qwen3.6-flash")
+        assert p.source == "catalog"
+        assert p.input_per_mtok == 0.25
+        assert p.output_per_mtok == 1.50
+
+        p = get_pricing("minimax/minimax-m2.5")
+        assert p.source == "catalog"
+        assert p.input_per_mtok == 0.15
+        assert p.output_per_mtok == 1.15
+
+        p = get_pricing("z-ai/glm-4.7-flash")
+        assert p.source == "catalog"
+        assert p.input_per_mtok == 0.06
+        assert p.output_per_mtok == 0.40
+
+        p = get_pricing("google/gemma-4-31b-it")
+        assert p.source == "catalog"
+        assert p.input_per_mtok == 0.12
+        assert p.output_per_mtok == 0.37
+
     def test_alias_resolves_to_canonical(self):
         """OpenRouter dot-form alias should resolve via model catalog."""
         p = get_pricing("anthropic/claude-sonnet-4.6")

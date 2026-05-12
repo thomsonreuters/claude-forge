@@ -2,7 +2,7 @@
 
 <!-- checklist: index -->
 
-<!-- version: 1.0.12 -->
+<!-- version: 1.0.15 -->
 
 <!-- test-count: ~460 -->
 
@@ -12,8 +12,7 @@
 
 **Test Repo**: `$FORGE_TEST_REPO`
 
-**Last updated**: 2026-05-12 (updated 2.1/2.4 assertions for empty commands/agents source dirs, and made 10.2-10.5
-depend on 10.1 for the parent transcript fixture)
+**Last updated**: 2026-05-12 (updated resume/workflow prerequisites and added OpenRouter open-model template coverage)
 
 ---
 

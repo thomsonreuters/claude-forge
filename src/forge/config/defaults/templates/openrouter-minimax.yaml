@@ -1,0 +1,29 @@
+# Template: openrouter-minimax
+# MiniMax models via OpenRouter (direct, no LiteLLM)
+#
+# Haiku uses Gemma 4 31B as a shared low-cost multimodal tier. Sonnet/opus use
+# MiniMax M2.7. M2.5 is available as a sonnet/opus model_alternative for
+# explicit proxy requests.
+# Requires OPENROUTER_API_KEY in .env (or environment).
+
+proxy:
+  preferred_provider: openrouter
+  default_port: 8104
+
+  openrouter:
+    tiers:
+      haiku: google/gemma-4-31b-it
+      sonnet: minimax/minimax-m2.7
+      opus: minimax/minimax-m2.7
+    model_alternatives:
+      sonnet:
+        minimax-m2.5: minimax/minimax-m2.5
+      opus:
+        minimax-m2.5: minimax/minimax-m2.5
+    tier_overrides:
+      sonnet:
+        reasoning_effort: high
+      opus:
+        reasoning_effort: high
+    base_url: "https://openrouter.ai/api/v1"
+    error_hints: true

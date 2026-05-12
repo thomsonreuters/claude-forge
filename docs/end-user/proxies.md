@@ -52,7 +52,12 @@ Forge provides ready-to-use proxy configurations (internal templates):
 | Template                     | Use case                                    |
 | ---------------------------- | ------------------------------------------- |
 | `openrouter-anthropic`       | Claude models via OpenRouter (direct)       |
+| `openrouter-deepseek`        | DeepSeek models via OpenRouter (direct)     |
+| `openrouter-glm`             | GLM / Z.ai models via OpenRouter (direct)   |
+| `openrouter-kimi`            | Kimi models via OpenRouter (direct)         |
+| `openrouter-minimax`         | MiniMax models via OpenRouter (direct)      |
 | `openrouter-openai`          | GPT models via OpenRouter (direct)          |
+| `openrouter-qwen`            | Qwen models via OpenRouter (direct)         |
 | `openrouter-gemini`          | Gemini models via OpenRouter (direct)       |
 | `openrouter-openai-codex`    | OpenAI Codex models via OpenRouter (direct) |
 | `openrouter-gemini-flash`    | Gemini Flash via OpenRouter (cheap, direct) |
@@ -108,7 +113,8 @@ forge proxy validate <proxy_id>  # Validate config
 
 ## OpenRouter (direct, no LiteLLM)
 
-OpenRouter templates (`openrouter-anthropic`, `openrouter-openai`, `openrouter-gemini`, `openrouter-openai-codex`,
+OpenRouter templates (`openrouter-anthropic`, `openrouter-deepseek`, `openrouter-glm`, `openrouter-kimi`,
+`openrouter-minimax`, `openrouter-openai`, `openrouter-qwen`, `openrouter-gemini`, `openrouter-openai-codex`,
 `openrouter-gemini-flash`) call the OpenRouter API directly -- no LiteLLM subprocess needed.
 
 ```bash
@@ -140,8 +146,8 @@ Models not in Forge's catalog (e.g., `meta-llama/llama-3.1-70b`) work -- the pro
 ## Model alternatives
 
 Anthropic proxy templates (`openrouter-anthropic`, `litellm-anthropic`, `litellm-anthropic-local`) configure
-`model_alternatives` to support multiple model versions at the same tier. The default opus model is Claude Opus 4.6; use
-`--model` to select an alternative:
+user-facing `model_alternatives` to support multiple Claude model versions at the same tier. The default opus model is
+Claude Opus 4.6; use `--model` to select an alternative:
 
 ```bash
 # Default: opus tier routes to Claude Opus 4.6
@@ -154,6 +160,9 @@ forge session start my-session --proxy openrouter-anthropic --model claude-opus-
 The proxy resolves the alternative at request time -- Claude Code sends the model name, the proxy looks up
 `model_alternatives[tier][model]` and routes to the configured backend model. Tier-level hyperparameters
 (reasoning_effort, etc.) still apply regardless of which alternative is selected.
+
+`--model` is currently a Claude model pin. Other proxy templates may define `model_alternatives` for explicit proxy API
+requests that already send the matching model name, but those alternatives are not selected by `forge session --model`.
 
 To add or edit alternatives, use `forge proxy edit <proxy_id>`:
 

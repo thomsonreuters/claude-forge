@@ -104,6 +104,28 @@ class TestGemini31ProPreviewIsCanonical:
         assert canonical == "gemini-3.1-pro-preview"
 
 
+class TestOpenRouterSlugAliases:
+    """OpenRouter provider slugs can differ from Forge canonical IDs."""
+
+    def test_dot_slugs_resolve_to_canonical_ids(self):
+        assert resolve_model_id("anthropic/claude-opus-4.7") == "claude-opus-4-7"
+        assert resolve_model_id("qwen/qwen3.6-flash") == "qwen3.6-flash"
+        assert resolve_model_id("qwen/qwen3.6-plus") == "qwen3.6-plus"
+        assert resolve_model_id("minimax/minimax-m2.5") == "minimax-m2.5"
+        assert resolve_model_id("minimax/minimax-m2.7") == "minimax-m2.7"
+        assert resolve_model_id("z-ai/glm-4.7-flash") == "glm-4.7-flash"
+        assert resolve_model_id("z-ai/glm-5.1") == "glm-5.1"
+
+    def test_metadata_lookups_accept_openrouter_slugs(self):
+        assert get_context_window_tokens("anthropic/claude-opus-4.7") == 1000000
+        assert get_context_window_tokens("qwen/qwen3.6-flash") == 1000000
+        assert get_context_window_tokens("qwen/qwen3.6-plus") == 1000000
+        assert get_context_window_tokens("z-ai/glm-4.7-flash") == 202752
+        assert get_context_window_tokens("z-ai/glm-5.1") == 202752
+        assert get_max_output_tokens("minimax/minimax-m2.5") == 196608
+        assert get_max_output_tokens("minimax/minimax-m2.7") == 131072
+
+
 class TestConvenienceFunctions:
     """Tests for convenience lookup functions."""
 

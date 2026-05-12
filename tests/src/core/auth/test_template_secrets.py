@@ -32,6 +32,11 @@ class TestTemplateSecrets:
             "openrouter-gemini",
             "openrouter-openai-codex",
             "openrouter-gemini-flash",
+            "openrouter-deepseek",
+            "openrouter-kimi",
+            "openrouter-glm",
+            "openrouter-minimax",
+            "openrouter-qwen",
         ):
             assert "OPENROUTER_API_KEY" in TEMPLATE_SECRETS[name]
 

@@ -515,6 +515,48 @@ class TestTemplateResolution:
         assert "openrouter-gemini" in names
         assert "openrouter-openai-codex" in names
         assert "openrouter-gemini-flash" in names
+        assert "openrouter-deepseek" in names
+        assert "openrouter-kimi" in names
+        assert "openrouter-glm" in names
+        assert "openrouter-minimax" in names
+        assert "openrouter-qwen" in names
+
+    def test_openrouter_open_model_templates_load(self, user_templates_dir: Path) -> None:
+        """OpenRouter open-model family templates load with expected tiers."""
+        cases = {
+            "openrouter-deepseek": (
+                "deepseek/deepseek-v4-flash",
+                "deepseek/deepseek-v4-pro",
+                "deepseek/deepseek-v4-pro",
+            ),
+            "openrouter-qwen": ("qwen/qwen3.6-flash", "qwen/qwen3.6-plus", "qwen/qwen3.6-max-preview"),
+            "openrouter-kimi": ("google/gemma-4-31b-it", "moonshotai/kimi-k2.6", "moonshotai/kimi-k2.6"),
+            "openrouter-glm": ("z-ai/glm-4.7-flash", "z-ai/glm-5.1", "z-ai/glm-5.1"),
+            "openrouter-minimax": ("google/gemma-4-31b-it", "minimax/minimax-m2.7", "minimax/minimax-m2.7"),
+        }
+
+        for template, (haiku, sonnet, opus) in cases.items():
+            config = load_config(template=template)
+            assert config.proxy.preferred_provider == "openrouter"
+            assert config.proxy.openrouter.tiers.haiku == haiku
+            assert config.proxy.openrouter.tiers.sonnet == sonnet
+            assert config.proxy.openrouter.tiers.opus == opus
+
+        qwen = load_config(template="openrouter-qwen")
+        assert qwen.proxy.openrouter.model_alternatives == {
+            "sonnet": {"qwen3-coder": "qwen/qwen3-coder"},
+            "opus": {"qwen3-coder": "qwen/qwen3-coder"},
+        }
+        kimi = load_config(template="openrouter-kimi")
+        assert kimi.proxy.openrouter.model_alternatives == {
+            "sonnet": {"kimi-k2.5": "moonshotai/kimi-k2.5"},
+            "opus": {"kimi-k2.5": "moonshotai/kimi-k2.5"},
+        }
+        minimax = load_config(template="openrouter-minimax")
+        assert minimax.proxy.openrouter.model_alternatives == {
+            "sonnet": {"minimax-m2.5": "minimax/minimax-m2.5"},
+            "opus": {"minimax-m2.5": "minimax/minimax-m2.5"},
+        }
 
     def test_read_shipped_template_ignores_user(self, user_templates_dir: Path) -> None:
         """read_shipped_template always returns the built-in content."""

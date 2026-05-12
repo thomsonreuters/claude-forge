@@ -1,0 +1,25 @@
+# Template: openrouter-deepseek
+# DeepSeek open-source models via OpenRouter (direct, no LiteLLM)
+#
+# Haiku uses DeepSeek V4 Flash for lower-cost, high-throughput work.
+# Sonnet/opus use DeepSeek V4 Pro, with opus requesting the max reasoning tier.
+# Requires OPENROUTER_API_KEY in .env (or environment).
+
+proxy:
+  preferred_provider: openrouter
+  default_port: 8100
+
+  openrouter:
+    tiers:
+      haiku: deepseek/deepseek-v4-flash
+      sonnet: deepseek/deepseek-v4-pro
+      opus: deepseek/deepseek-v4-pro
+    tier_overrides:
+      haiku:
+        reasoning_effort: high
+      sonnet:
+        reasoning_effort: high
+      opus:
+        reasoning_effort: xhigh
+    base_url: "https://openrouter.ai/api/v1"
+    error_hints: true

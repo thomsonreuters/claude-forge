@@ -31,7 +31,7 @@ proxy:
       haiku:
         temperature: 0.3
         max_tokens: 4096
-    model_alternatives:                   # Per-tier alternative models (--model in proxy mode)
+    model_alternatives:                   # Per-tier alternative backend mappings
       opus:
         claude-opus-4-7: anthropic/claude-opus-4-7
 ```
@@ -58,7 +58,12 @@ proxy:
 | Template                  | Use case                                    |
 | ------------------------- | ------------------------------------------- |
 | `openrouter-anthropic`    | Claude models via OpenRouter (direct)       |
+| `openrouter-deepseek`     | DeepSeek models via OpenRouter (direct)     |
+| `openrouter-glm`          | GLM / Z.ai models via OpenRouter (direct)   |
+| `openrouter-kimi`         | Kimi models via OpenRouter (direct)         |
+| `openrouter-minimax`      | MiniMax models via OpenRouter (direct)      |
 | `openrouter-openai`       | GPT models via OpenRouter (direct)          |
+| `openrouter-qwen`         | Qwen models via OpenRouter (direct)         |
 | `openrouter-gemini`       | Gemini models via OpenRouter (direct)       |
 | `openrouter-openai-codex` | OpenAI Codex via OpenRouter (direct)        |
 | `openrouter-gemini-flash` | Gemini Flash via OpenRouter (cheap, direct) |

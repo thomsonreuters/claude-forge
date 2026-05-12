@@ -361,6 +361,50 @@ class TestClaude47CatalogProfile:
         assert spec.token_estimate_multiplier == 1.35
 
 
+class TestOpenRouterOpenModelsCatalog:
+    """Tests for curated OpenRouter open-model catalog entries."""
+
+    def test_curated_openrouter_models_resolve(self):
+        catalog = load_model_catalog(force_reload=True)
+
+        expected = {
+            "deepseek/deepseek-v4-flash": ("deepseek-v4-flash", 1048576, 384000),
+            "deepseek/deepseek-v4-pro": ("deepseek-v4-pro", 1048576, 384000),
+            "moonshotai/kimi-k2.5": ("kimi-k2.5", 262144, 262144),
+            "moonshotai/kimi-k2.6": ("kimi-k2.6", 32768, 32768),
+            "qwen/qwen3.6-flash": ("qwen3.6-flash", 1000000, 65536),
+            "qwen/qwen3.6-plus": ("qwen3.6-plus", 1000000, 65536),
+            "qwen/qwen3.6-max-preview": ("qwen3.6-max-preview", 262144, 65536),
+            "qwen/qwen3-coder": ("qwen3-coder", 262144, 65536),
+            "minimax/minimax-m2.5": ("minimax-m2.5", 196608, 196608),
+            "minimax/minimax-m2.7": ("minimax-m2.7", 196608, 131072),
+            "z-ai/glm-4.7-flash": ("glm-4.7-flash", 202752, 16384),
+            "z-ai/glm-5.1": ("glm-5.1", 202752, 202752),
+            "google/gemma-4-31b-it": ("gemma-4-31b-it", 262144, 16384),
+        }
+
+        for alias, (canonical, context_tokens, output_tokens) in expected.items():
+            assert catalog.resolve(alias) == canonical
+            spec = catalog.get(canonical)
+            assert spec.context_window_tokens == context_tokens
+            assert spec.max_output_tokens == output_tokens
+
+    def test_curated_openrouter_multimodal_flags(self):
+        catalog = load_model_catalog(force_reload=True)
+
+        for model_id in (
+            "kimi-k2.5",
+            "kimi-k2.6",
+            "qwen3.6-flash",
+            "qwen3.6-plus",
+            "gemma-4-31b-it",
+        ):
+            assert catalog.get(model_id).supports_images is True
+
+        assert catalog.get("qwen3.6-max-preview").supports_images is False
+        assert catalog.get("qwen3-coder").supports_thinking is False
+
+
 class TestSystemPromptAddendumValidation:
     """Tests for system_prompt_addendum field validation at catalog parse time."""
 

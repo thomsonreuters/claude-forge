@@ -23,10 +23,10 @@ forge proxy template list
 
 - [ ] `forge proxy list` shows "No proxies found." when none exist
 - [ ] `forge proxy list` shows tip to run `forge proxy template list`
-- [ ] `forge proxy template list` shows available templates (13 user-facing: litellm-anthropic, litellm-anthropic-local,
+- [ ] `forge proxy template list` shows available templates (18 user-facing: litellm-anthropic, litellm-anthropic-local,
   litellm-gemini, litellm-gemini-flash-local, litellm-gemini-local, litellm-openai, litellm-openai-codex-local,
-  litellm-openai-local, openrouter-anthropic, openrouter-gemini, openrouter-gemini-flash, openrouter-openai,
-  openrouter-openai-codex)
+  litellm-openai-local, openrouter-anthropic, openrouter-deepseek, openrouter-gemini, openrouter-gemini-flash,
+  openrouter-glm, openrouter-kimi, openrouter-minimax, openrouter-openai, openrouter-openai-codex, openrouter-qwen)
 - [ ] Internal test-only templates (e.g., litellm-gemini-test) are hidden from the default list
 
 ### 4.2 Create a Proxy
@@ -392,13 +392,24 @@ forge proxy template list
 forge proxy template show openrouter-anthropic
 forge proxy template show openrouter-openai
 forge proxy template show openrouter-openai-codex
+forge proxy template show openrouter-deepseek
 forge proxy template show openrouter-gemini
 forge proxy template show openrouter-gemini-flash
+forge proxy template show openrouter-glm
+forge proxy template show openrouter-kimi
+forge proxy template show openrouter-minimax
+forge proxy template show openrouter-qwen
 ```
 
-- [ ] `forge proxy template list` shows 13 user-facing templates total (8 litellm + 5 openrouter)
+- [ ] `forge proxy template list` shows 18 user-facing templates total (8 litellm + 10 openrouter)
 - [ ] `openrouter-anthropic` maps tiers to Claude models (haiku=claude-haiku-4.5, sonnet=claude-sonnet-4.6,
   opus=claude-opus-4.6)
+- [ ] `openrouter-deepseek` maps tiers to DeepSeek models (haiku=deepseek-v4-flash, sonnet/opus=deepseek-v4-pro)
+- [ ] `openrouter-glm` maps tiers to GLM models (haiku=glm-4.7-flash, sonnet/opus=glm-5.1)
+- [ ] `openrouter-kimi` maps tiers to Gemma/Kimi models (haiku=gemma-4-31b-it, sonnet/opus=kimi-k2.6)
+- [ ] `openrouter-minimax` maps tiers to Gemma/MiniMax models (haiku=gemma-4-31b-it, sonnet/opus=minimax-m2.7)
+- [ ] `openrouter-qwen` maps tiers to Qwen models (haiku=qwen3.6-flash, sonnet=qwen3.6-plus,
+  opus=qwen3.6-max-preview)
 - [ ] `openrouter-openai` maps tiers to GPT models (haiku=gpt-5.4-mini, sonnet=gpt-5.5, opus=gpt-5.5)
 - [ ] `openrouter-openai-codex` maps tiers to Codex models (haiku=gpt-5.1-codex-mini, sonnet=gpt-5.3-codex,
   opus=gpt-5.5)
@@ -406,7 +417,7 @@ forge proxy template show openrouter-gemini-flash
   opus=gemini-3.1-pro-preview)
 - [ ] `openrouter-gemini-flash` maps all tiers to gemini-2.5-flash with tier_overrides for reasoning_effort
   (low/medium/high)
-- [ ] Each OpenRouter template has a distinct default_port (8095-8099)
+- [ ] Each OpenRouter template has a distinct default_port (8095-8104)
 
 ### 4.18 OpenRouter Proxy Create
 

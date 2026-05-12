@@ -29,6 +29,8 @@ forge workflow list-models --available
 
 ### 14.2 `forge workflow panel`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
@@ -51,6 +53,8 @@ forge workflow panel docs/ --context blind --json
 
 ### 14.3 `forge workflow panel --check`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
@@ -63,6 +67,8 @@ echo "Exit code: $?"
 - [ ] Exit code 0 = pass, 1 = findings
 
 ### 14.4 `forge workflow panel --code`
+
+<!-- prereq: 14.1 -->
 
 <!-- auto -->
 
@@ -81,6 +87,8 @@ echo "Exit code: $?"
 
 ### 14.5 `forge workflow analyze`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
@@ -98,6 +106,8 @@ echo "Exit code: $?"
 
 ### 14.6 `forge workflow debate`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
@@ -113,6 +123,8 @@ forge workflow debate "Should we adopt microservices?" --models gpt-5.5,gemini-3
 - [ ] Returns structured output with agreement/disagreement areas
 
 ### 14.7 `forge workflow debate --code`
+
+<!-- prereq: 14.1 -->
 
 <!-- auto -->
 
@@ -130,6 +142,8 @@ echo "Exit code: $?"
 - [ ] `--check` mode: fail-closed -- every worker must succeed AND emit parseable verdict
 
 ### 14.8 `forge workflow consensus`
+
+<!-- prereq: 14.1 -->
 
 <!-- auto -->
 
@@ -150,6 +164,8 @@ echo "Exit code: $?"
 
 ### 14.9 `forge workflow consensus --code`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
@@ -166,6 +182,8 @@ echo "Exit code: $?"
 - [ ] `--check` mode: schema-strict -- only SUPPORT/SUPPORT_WITH_CONDITIONS pass
 
 ### 14.10 `/forge:debate` (Live Session)
+
+<!-- prereq: 14.1 -->
 
 <!-- human:guided -->
 
@@ -198,6 +216,8 @@ commands manually, treat this step as a failure.
 - [ ] Different perspectives visible in the final response
 
 ### 14.11 Workflow `--models` Filter
+
+<!-- prereq: 14.1 -->
 
 <!-- requires: api_key -->
 

@@ -48,6 +48,8 @@ jq \
 
 ### 10.2 Resume with Minimal Strategy
 
+<!-- prereq: 10.1 -->
+
 <!-- requires: api_key -->
 
 <!-- human:guided -->
@@ -67,6 +69,8 @@ cat .forge/sessions/test-resumed-minimal/forge.session.json | jq '.confirmed.der
 - [ ] Derivation shows parent, strategy, and transcript artifact path
 
 ### 10.3 Resume with Structured Strategy
+
+<!-- prereq: 10.1 -->
 
 <!-- requires: api_key -->
 
@@ -88,6 +92,8 @@ cat .forge/prev_sessions/test-session-1.md
 
 ### 10.4 Resume with Full Strategy
 
+<!-- prereq: 10.1 -->
+
 <!-- requires: api_key -->
 
 <!-- human:guided -->
@@ -108,6 +114,8 @@ cat .forge/prev_sessions/test-session-1.md
 
 ### 10.5 Resume with AI-Curated Strategy
 
+<!-- prereq: 10.1 -->
+
 <!-- requires: api_key -->
 
 <!-- human:guided -->
@@ -125,9 +133,11 @@ forge session resume test-session-1 --fresh --strategy ai-curated --child-name t
 cat .forge/prev_sessions/test-session-1.md
 ```
 
+- [ ] Parent transcript fixture from 10.1 exists
 - [ ] Security warning shown about sending transcript content to OpenRouter
 - [ ] Default OpenRouter QA profile: handoff shows `Strategy: ai-curated` and LLM-selected highlights
 - [ ] If OpenRouter auth is unavailable, fallback to structured is acceptable and the warning explains the auth failure
 - [ ] No warning about missing remote LiteLLM infrastructure in the default OpenRouter QA profile
+- [ ] No `No transcript available; using minimal strategy` warning
 
 ---

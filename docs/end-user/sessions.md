@@ -381,6 +381,9 @@ Key differences from `--worktree`:
 These flags apply to `--worktree` and `--into` forks (file-based handoff). Same-directory forks use native
 `--resume --fork-session` and ignore these flags.
 
+`ai-curated` uses OpenRouter directly and requires `OPENROUTER_API_KEY`. If OpenRouter auth is unavailable, Forge warns
+and falls back to the deterministic `structured` strategy.
+
 **Use case: Plan -> Execute -> Review workflow:**
 
 ```bash

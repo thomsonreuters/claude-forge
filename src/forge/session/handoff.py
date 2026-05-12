@@ -21,6 +21,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
+from forge.core.llm.detection import ProviderType
 from forge.core.state import now_iso
 from forge.core.transcript import parse_jsonl_transcript, truncate
 from forge.session.artifacts import resolve_artifact_path
@@ -34,9 +35,12 @@ MESSAGE_TRUNCATE_CHARS = 500
 TOOL_ARG_TRUNCATE_CHARS = 100
 TOOL_RESULT_TRUNCATE_CHARS = 500
 
-# AI-curated strategy constants
+# AI-curated strategy constants. Use OpenRouter directly for the OSS default path;
+# old remote-LiteLLM deployments still fall back to structured if OpenRouter auth
+# is not configured.
 MAX_TRANSCRIPT_CHARS = 50000  # ~12,500 tokens, well under context limits
-AI_CURATION_MODEL = "openai/gpt-4o-mini"  # Fast/cheap model for post-processing
+AI_CURATION_PROVIDER: ProviderType = "openrouter"
+AI_CURATION_MODEL = "anthropic/claude-haiku-4.5"  # Fast/cheap model for post-processing
 AI_CURATION_MAX_OUTPUT_TOKENS = 1000
 AI_CURATION_TEMPERATURE = 0.0  # Deterministic output
 
@@ -550,7 +554,7 @@ def _call_llm_for_curation(transcript_text: str) -> tuple[str, str]:
     from forge.core.llm import SyncAdapter, get_client
     from forge.core.llm.types import ModelHyperparameters
 
-    client = SyncAdapter(get_client(AI_CURATION_MODEL))
+    client = SyncAdapter(get_client(AI_CURATION_MODEL, provider=AI_CURATION_PROVIDER))
     response = client.ask(
         prompt=AI_CURATION_USER_PROMPT_TEMPLATE.format(transcript_text=transcript_text),
         system=AI_CURATION_SYSTEM_PROMPT,
@@ -559,7 +563,7 @@ def _call_llm_for_curation(transcript_text: str) -> tuple[str, str]:
             temperature=AI_CURATION_TEMPERATURE,
         ),
     )
-    return response, AI_CURATION_MODEL
+    return response, f"{AI_CURATION_MODEL} via {AI_CURATION_PROVIDER}"
 
 
 def _build_ai_curated_output(

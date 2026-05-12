@@ -112,19 +112,22 @@ cat .forge/prev_sessions/test-session-1.md
 
 <!-- human:guided -->
 
-In the **container shell**, resume with `--strategy ai-curated`. This uses an LLM to select highlights — expect a
-security warning about external API access.
+In the **container shell**, resume with `--strategy ai-curated`. This uses OpenRouter directly to select highlights
+from the parent transcript, then launches the child session. Expect a security warning about external API access.
 
 ```
 # Resume with AI-curated strategy (LLM-selected highlights)
-# NOTE: Requires LLM access - may show security warning
+# NOTE: Requires OPENROUTER_API_KEY in the default QA provider profile.
+forge session delete test-resumed-ai --yes --force 2>/dev/null || true
 forge session resume test-session-1 --fresh --strategy ai-curated --child-name test-resumed-ai
 
-# If successful, check the curated output
+# Check the curated output or fallback output
 cat .forge/prev_sessions/test-session-1.md
 ```
 
-- [ ] Security warning shown about external API
-- [ ] LLM-selected highlights in handoff (or fallback to structured)
+- [ ] Security warning shown about sending transcript content to OpenRouter
+- [ ] Default OpenRouter QA profile: handoff shows `Strategy: ai-curated` and LLM-selected highlights
+- [ ] If OpenRouter auth is unavailable, fallback to structured is acceptable and the warning explains the auth failure
+- [ ] No warning about missing remote LiteLLM infrastructure in the default OpenRouter QA profile
 
 ---

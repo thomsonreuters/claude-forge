@@ -10,6 +10,8 @@ import pytest
 
 from forge.core.transcript import parse_jsonl_transcript, truncate
 from forge.session.handoff import (
+    AI_CURATION_MODEL,
+    AI_CURATION_PROVIDER,
     MAX_TRANSCRIPT_CHARS,
     ResumeStrategy,
     _format_transcript_for_llm,
@@ -639,7 +641,7 @@ class TestAICuratedStrategy:
         # Patch at source module since lazy import is used
         with (
             patch("forge.core.llm.SyncAdapter", return_value=mock_adapter),
-            patch("forge.core.llm.get_client"),
+            patch("forge.core.llm.get_client") as mock_get_client,
         ):
             content, warnings = _generate_ai_curated_context(
                 parent_name="test-parent",
@@ -651,9 +653,11 @@ class TestAICuratedStrategy:
             )
 
         # Assert LLM was called
+        mock_get_client.assert_called_once_with(AI_CURATION_MODEL, provider=AI_CURATION_PROVIDER)
         mock_adapter.ask.assert_called_once()
         # Assert output contains strategy marker
         assert "ai-curated" in content
+        assert f"{AI_CURATION_MODEL} via {AI_CURATION_PROVIDER}" in content
         # Assert LLM output is included
         assert "Key decision made" in content
         # Assert security warning is present

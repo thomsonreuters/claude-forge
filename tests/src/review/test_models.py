@@ -167,6 +167,48 @@ class TestResolveModelSpecs:
         assert "claude-opus-4.6" in names
         assert "claude-opus-4.6-1m" in names
         assert "claude-opus-4.7" in names
+        assert "deepseek-v4-pro" in names
+        assert "minimax-m2.7" in names
+
+
+DEEPSEEK_DEFAULT = get_default_model("deepseek", "opus")
+MINIMAX_DEFAULT = get_default_model("minimax", "opus")
+QWEN_DEFAULT = get_default_model("qwen", "opus")
+GLM_DEFAULT = get_default_model("glm", "opus")
+KIMI_DEFAULT = get_default_model("kimi", "opus")
+
+_OSS_FAMILIES = {
+    "deepseek": ("openrouter-deepseek", DEEPSEEK_DEFAULT),
+    "minimax": ("openrouter-minimax", MINIMAX_DEFAULT),
+    "qwen": ("openrouter-qwen", QWEN_DEFAULT),
+    "glm": ("openrouter-glm", GLM_DEFAULT),
+    "kimi": ("openrouter-kimi", KIMI_DEFAULT),
+}
+
+
+class TestOssWorkflowModels:
+    """Open-source models are selectable but not in the default quorum."""
+
+    @pytest.mark.parametrize("family,proxy,model", [
+        (f, p, m) for f, (p, m) in _OSS_FAMILIES.items()
+    ])
+    def test_oss_model_is_selectable_not_default(self, family, proxy, model):
+        assert model in AVAILABLE_MODELS, f"{family} opus model '{model}' not in AVAILABLE_MODELS"
+        assert model not in DEFAULT_MODELS
+
+        spec = AVAILABLE_MODELS[model]
+        assert spec.proxy == proxy
+        assert spec.direct is False
+        assert spec.model_flag is None
+
+    def test_resolve_cheap_pair(self):
+        specs = resolve_model_specs(f"{DEEPSEEK_DEFAULT},{MINIMAX_DEFAULT}")
+        assert [s.name for s in specs] == [DEEPSEEK_DEFAULT, MINIMAX_DEFAULT]
+        assert [s.proxy for s in specs] == ["openrouter-deepseek", "openrouter-minimax"]
+
+    def test_resolve_mixed_oss_and_default(self):
+        specs = resolve_model_specs(f"{DEEPSEEK_DEFAULT},{OPENAI_DEFAULT}")
+        assert [s.name for s in specs] == [DEEPSEEK_DEFAULT, OPENAI_DEFAULT]
 
 
 def _spec(

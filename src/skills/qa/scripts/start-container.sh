@@ -83,11 +83,21 @@ case "$PROVIDER_PROFILE" in
         FORGE_QA_OPENAI_TEMPLATE="openrouter-openai"
         FORGE_QA_GEMINI_TEMPLATE="openrouter-gemini"
         FORGE_QA_ANTHROPIC_TEMPLATE="openrouter-anthropic"
+        : "${FORGE_QA_WORKFLOW_MODELS:=deepseek-v4-pro,minimax-m2.7}"
+        : "${FORGE_QA_WORKFLOW_MODEL_A:=deepseek-v4-pro}"
+        : "${FORGE_QA_WORKFLOW_MODEL_B:=minimax-m2.7}"
+        FORGE_QA_DEEPSEEK_TEMPLATE="openrouter-deepseek"
+        FORGE_QA_MINIMAX_TEMPLATE="openrouter-minimax"
         ;;
     remote-litellm)
         FORGE_QA_OPENAI_TEMPLATE="litellm-openai"
         FORGE_QA_GEMINI_TEMPLATE="litellm-gemini"
         FORGE_QA_ANTHROPIC_TEMPLATE="litellm-anthropic"
+        : "${FORGE_QA_WORKFLOW_MODELS:=gpt-5.5,gemini-3.1-pro-preview}"
+        : "${FORGE_QA_WORKFLOW_MODEL_A:=gpt-5.5}"
+        : "${FORGE_QA_WORKFLOW_MODEL_B:=gemini-3.1-pro-preview}"
+        FORGE_QA_DEEPSEEK_TEMPLATE=""
+        FORGE_QA_MINIMAX_TEMPLATE=""
         ;;
     *)
         error "Invalid --provider-profile '$PROVIDER_PROFILE' (expected: openrouter or remote-litellm)"
@@ -183,6 +193,11 @@ docker_env_args() {
         -e "FORGE_QA_OPENAI_PROXY=$FORGE_QA_OPENAI_PROXY"
         -e "FORGE_QA_GEMINI_PROXY=$FORGE_QA_GEMINI_PROXY"
         -e "FORGE_QA_ANTHROPIC_PROXY=$FORGE_QA_ANTHROPIC_PROXY"
+        -e "FORGE_QA_WORKFLOW_MODELS=$FORGE_QA_WORKFLOW_MODELS"
+        -e "FORGE_QA_WORKFLOW_MODEL_A=$FORGE_QA_WORKFLOW_MODEL_A"
+        -e "FORGE_QA_WORKFLOW_MODEL_B=$FORGE_QA_WORKFLOW_MODEL_B"
+        -e "FORGE_QA_DEEPSEEK_TEMPLATE=${FORGE_QA_DEEPSEEK_TEMPLATE:-}"
+        -e "FORGE_QA_MINIMAX_TEMPLATE=${FORGE_QA_MINIMAX_TEMPLATE:-}"
     )
 
     local var
@@ -258,6 +273,16 @@ if [[ "$RESET" != "true" ]] && docker ps -q -f "name=^${CONTAINER_NAME}$" | grep
         error "Run 'bash start-container.sh --stop' or rerun QA with --reset before switching provider profiles."
         exit 3
     fi
+    local wf_var wf_expected wf_actual
+    for wf_var in FORGE_QA_WORKFLOW_MODELS FORGE_QA_WORKFLOW_MODEL_A FORGE_QA_WORKFLOW_MODEL_B; do
+        wf_expected="${!wf_var}"
+        wf_actual="$(docker exec "$CONTAINER_NAME" sh -c "printf '%s' \"\${${wf_var}:-}\"" 2>/dev/null || true)"
+        if [[ "$wf_actual" != "$wf_expected" ]]; then
+            error "Running container '$CONTAINER_NAME' has $wf_var='${wf_actual:-<unset>}', expected '$wf_expected'."
+            error "Run 'bash start-container.sh --stop' then restart, or rerun QA with --reset."
+            exit 3
+        fi
+    done
     validate_running_container_profile
     info "Reusing running container: $CONTAINER_NAME"
     echo "$CONTAINER_NAME"
@@ -392,6 +417,11 @@ docker exec "$CONTAINER_NAME" bash -c 'apt-get update -qq && apt-get install -y 
         FORGE_QA_OPENAI_PROXY \
         FORGE_QA_GEMINI_PROXY \
         FORGE_QA_ANTHROPIC_PROXY \
+        FORGE_QA_WORKFLOW_MODELS \
+        FORGE_QA_WORKFLOW_MODEL_A \
+        FORGE_QA_WORKFLOW_MODEL_B \
+        FORGE_QA_DEEPSEEK_TEMPLATE \
+        FORGE_QA_MINIMAX_TEMPLATE \
         GEMINI_API_KEY \
         ANTHROPIC_API_KEY \
         LITELLM_API_KEY \

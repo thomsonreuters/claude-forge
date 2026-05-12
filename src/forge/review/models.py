@@ -103,6 +103,11 @@ def _build_available_models() -> dict[str, ModelSpec]:
     openai_opus = get_default_model("openai", "opus")
     gemini_opus = get_default_model("gemini", "opus")
     anthropic_opus = get_default_model("anthropic", "opus")
+    deepseek_opus = get_default_model("deepseek", "opus")
+    minimax_opus = get_default_model("minimax", "opus")
+    qwen_opus = get_default_model("qwen", "opus")
+    glm_opus = get_default_model("glm", "opus")
+    kimi_opus = get_default_model("kimi", "opus")
 
     return {
         openai_opus: ModelSpec(
@@ -116,6 +121,36 @@ def _build_available_models() -> dict[str, ModelSpec]:
             proxy="openrouter-gemini",
             model_flag=None,
             description="Balanced analysis, pragmatic suggestions, large context",
+        ),
+        deepseek_opus: ModelSpec(
+            name=deepseek_opus,
+            proxy="openrouter-deepseek",
+            model_flag=None,
+            description="Cost-efficient reasoning, strong code analysis",
+        ),
+        minimax_opus: ModelSpec(
+            name=minimax_opus,
+            proxy="openrouter-minimax",
+            model_flag=None,
+            description="Cost-efficient agentic analysis, broad coverage",
+        ),
+        qwen_opus: ModelSpec(
+            name=qwen_opus,
+            proxy="openrouter-qwen",
+            model_flag=None,
+            description="Large context multilingual analysis",
+        ),
+        glm_opus: ModelSpec(
+            name=glm_opus,
+            proxy="openrouter-glm",
+            model_flag=None,
+            description="Cost-efficient general analysis",
+        ),
+        kimi_opus: ModelSpec(
+            name=kimi_opus,
+            proxy="openrouter-kimi",
+            model_flag=None,
+            description="Agentic code generation and analysis",
         ),
         "claude-opus": ModelSpec(
             name="claude-opus",
@@ -170,7 +205,7 @@ def _build_model_aliases(available: dict[str, ModelSpec]) -> dict[str, str]:
     from forge.core.models.catalog import get_compact_name, get_default_model
 
     aliases: dict[str, str] = {}
-    for family in ("openai", "gemini"):
+    for family in ("openai", "gemini", "deepseek", "minimax", "qwen", "glm", "kimi"):
         canonical = get_default_model(family, "opus")
         compact = get_compact_name(canonical)
         if compact != canonical and compact not in available:

@@ -7,7 +7,8 @@ Validates workflow runners + skill architecture.
 - `forge workflow panel` is the fan-out runner CLI (supports `--code`, `--context`, and `--check`).
 - `/forge:analyze` is a skill that calls `forge workflow analyze` (N=1 model).
 - `/forge:debate` is a skill that calls `forge workflow debate` (supports `--code` for code evaluation).
-- This section uses the workflow-default proxy aliases created in 4.2: `openrouter-openai` and `openrouter-gemini`.
+- This section uses `$FORGE_QA_WORKFLOW_MODELS` (set by `start-container.sh` per provider profile).
+  Workflow proxy aliases are created in 4.2.
 - Omitting `--models` uses all configured defaults (from `forge workflow list-models`).
 
 ### 14.1 List Available Workflow Models
@@ -34,7 +35,7 @@ forge workflow list-models --available
 <!-- auto -->
 
 ```bash
-forge workflow panel docs/ --models gpt-5.5,gemini-3.1-pro-preview --json
+forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODELS --json
 ```
 
 Context mode examples (display-only -- resume needs a real session UUID):
@@ -59,7 +60,7 @@ forge workflow panel docs/ --context blind --json
 
 ```bash
 # Policy gate mode (structured verdict + exit code)
-forge workflow panel -p "Check for security issues" --models gpt-5.5,gemini-3.1-pro-preview --check
+forge workflow panel -p "Check for security issues" --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -74,10 +75,10 @@ echo "Exit code: $?"
 
 ```bash
 # Multi-model code review (uses bundled codereview resource)
-forge workflow panel src/ --code --models gpt-5.5,gemini-3.1-pro-preview --json
+forge workflow panel src/ --code --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # With --check mode
-forge workflow panel src/ --code --models gpt-5.5,gemini-3.1-pro-preview --check
+forge workflow panel src/ --code --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -93,10 +94,10 @@ echo "Exit code: $?"
 
 ```bash
 # Single-model deep analysis (N=1 fan-out with bundled thinkdeep resource)
-forge workflow analyze -p "Analyze the architecture of this project" --models gpt-5.5 --json
+forge workflow analyze -p "Analyze the architecture of this project" --models $FORGE_QA_WORKFLOW_MODEL_A --json
 
 # With --check mode (exit 0=pass, 1=findings)
-forge workflow analyze -p "Check for security issues" --models gpt-5.5 --check
+forge workflow analyze -p "Check for security issues" --models $FORGE_QA_WORKFLOW_MODEL_A --check
 echo "Exit code: $?"
 ```
 
@@ -112,10 +113,10 @@ echo "Exit code: $?"
 
 ```bash
 # Adversarial debate with positional proposal
-forge workflow debate "Should we rewrite the core in Rust?" --models gpt-5.5,gemini-3.1-pro-preview --json
+forge workflow debate "Should we rewrite the core in Rust?" --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # Gate mode (exit 0=pass, 1=fail). Debate is fail-closed: success without a parseable verdict = failure.
-forge workflow debate "Should we adopt microservices?" --models gpt-5.5,gemini-3.1-pro-preview --check
+forge workflow debate "Should we adopt microservices?" --models $FORGE_QA_WORKFLOW_MODELS --check
 ```
 
 - [ ] Spawns workers with stance injection (for/against/neutral)
@@ -130,10 +131,10 @@ forge workflow debate "Should we adopt microservices?" --models gpt-5.5,gemini-3
 
 ```bash
 # Adversarial code evaluation (uses bundled code evaluation resource)
-forge workflow debate src/ --code --models gpt-5.5,gemini-3.1-pro-preview --json
+forge workflow debate src/ --code --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # With --check mode
-forge workflow debate src/ --code --models gpt-5.5,gemini-3.1-pro-preview --check
+forge workflow debate src/ --code --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -149,10 +150,10 @@ echo "Exit code: $?"
 
 ```bash
 # Two-round consensus with role-assigned workers (proposal mode)
-forge workflow consensus "Should we adopt a microservices architecture?" --models gpt-5.5,gemini-3.1-pro-preview --json
+forge workflow consensus "Should we adopt a microservices architecture?" --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # Gate mode (requires 'position' field, not 'verdict')
-forge workflow consensus "Should we adopt event sourcing?" --models gpt-5.5,gemini-3.1-pro-preview --check
+forge workflow consensus "Should we adopt event sourcing?" --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -170,10 +171,10 @@ echo "Exit code: $?"
 
 ```bash
 # Two-round code consensus (code mode uses architecture/security/maintainability)
-forge workflow consensus src/ --code --models gpt-5.5,gemini-3.1-pro-preview --json
+forge workflow consensus src/ --code --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # With --check mode
-forge workflow consensus src/ --code --models gpt-5.5,gemini-3.1-pro-preview --check
+forge workflow consensus src/ --code --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -199,10 +200,11 @@ cd /workspace
 claude
 ```
 
-Then, at the Claude prompt in Session B, type exactly:
+Read `$FORGE_QA_WORKFLOW_MODELS` from the container environment and construct the fully expanded
+command for the user to type in Session B:
 
 ```
-/forge:debate A startup with 5 developers has a working Python monolith serving 10k req/sec. They're hitting scaling issues. Should they rewrite the core in Rust?
+/forge:debate --models <expanded FORGE_QA_WORKFLOW_MODELS> A startup with 5 developers has a working Python monolith serving 10k req/sec. They're hitting scaling issues. Should they rewrite the core in Rust?
 ```
 
 Wait for Claude to finish. Do not replace this with `forge workflow debate` in the shell; that CLI surface is already
@@ -225,17 +227,17 @@ commands manually, treat this step as a failure.
 
 ```bash
 # Single model filter -- should limit to that model only
-forge workflow panel docs/ --models gemini-3.1-pro-preview --json 2>&1 | jq '.results | keys | length'
+forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODEL_B --json 2>&1 | jq '.results | keys | length'
 
 echo "---"
 
 # Multiple model filter (comma-separated)
-forge workflow panel docs/ --models gpt-5.5,gemini-3.1-pro-preview --json 2>&1 | jq '{results: (.results | keys), successful: .successful, failed: .failed}'
+forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODELS --json 2>&1 | jq '{results: (.results | keys), successful: .successful, failed: .failed}'
 
 echo "---"
 
 # Verify result keys match the requested models
-forge workflow panel docs/ --models gemini-3.1-pro-preview --json 2>&1 | jq '.results | keys'
+forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODEL_B --json 2>&1 | jq '.results | keys'
 ```
 
 - [ ] Single `--models` value produces 1 result key in `.results`

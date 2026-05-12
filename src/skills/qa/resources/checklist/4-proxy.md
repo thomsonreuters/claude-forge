@@ -40,6 +40,8 @@ forge proxy delete "$FORGE_QA_OPENAI_PROXY" --force 2>/dev/null || true
 forge proxy delete "$FORGE_QA_ANTHROPIC_PROXY" --force 2>/dev/null || true
 forge proxy delete openrouter-gemini --force 2>/dev/null || true
 forge proxy delete openrouter-openai --force 2>/dev/null || true
+forge proxy delete openrouter-deepseek --force 2>/dev/null || true
+forge proxy delete openrouter-minimax --force 2>/dev/null || true
 forge proxy delete test-proxy-nostart --force 2>/dev/null || true
 
 # Create named role proxies used by downstream session/review steps.
@@ -53,6 +55,15 @@ forge proxy create "$FORGE_QA_OPENAI_TEMPLATE" --name "$FORGE_QA_OPENAI_PROXY" -
 forge proxy create "$FORGE_QA_GEMINI_TEMPLATE" --no-start --name openrouter-gemini
 forge proxy create "$FORGE_QA_OPENAI_TEMPLATE" --no-start --name openrouter-openai
 
+# Workflow proxies for cheap models (openrouter profile only).
+# Started directly with canonical names so models.py proxy lookup matches the running port.
+if [ -n "${FORGE_QA_DEEPSEEK_TEMPLATE:-}" ]; then
+  forge proxy create "$FORGE_QA_DEEPSEEK_TEMPLATE" --name openrouter-deepseek
+fi
+if [ -n "${FORGE_QA_MINIMAX_TEMPLATE:-}" ]; then
+  forge proxy create "$FORGE_QA_MINIMAX_TEMPLATE" --name openrouter-minimax
+fi
+
 # Create config only (don't start the server)
 forge proxy create "$FORGE_QA_OPENAI_TEMPLATE" --no-start --name test-proxy-nostart
 
@@ -64,6 +75,7 @@ forge proxy list
 - [ ] Named role proxies, workflow aliases, and `test-proxy-nostart` appear in the list with expected base_url/port
   information
 - [ ] Per-tier overrides applied to `$FORGE_QA_OPENAI_PROXY`
+- [ ] Workflow proxies (`openrouter-deepseek`, `openrouter-minimax`) started for openrouter profile (or skipped for remote-litellm)
 
 ### 4.3 Show Proxy Details
 

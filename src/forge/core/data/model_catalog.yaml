@@ -48,6 +48,26 @@ defaults:
     haiku: claude-haiku-4-5-20251001
     sonnet: claude-sonnet-4-6
     opus: claude-opus-4-6
+  deepseek:
+    haiku: deepseek-v4-flash
+    sonnet: deepseek-v4-pro
+    opus: deepseek-v4-pro
+  minimax:
+    haiku: gemma-4-31b-it
+    sonnet: minimax-m2.7
+    opus: minimax-m2.7
+  qwen:
+    haiku: qwen3.6-flash
+    sonnet: qwen3.6-plus
+    opus: qwen3.6-max-preview
+  glm:
+    haiku: glm-4.7-flash
+    sonnet: glm-5.1
+    opus: glm-5.1
+  kimi:
+    haiku: gemma-4-31b-it
+    sonnet: kimi-k2.6
+    opus: kimi-k2.6
 
 # =============================================================================
 # MODELS - Canonical IDs are provider-agnostic

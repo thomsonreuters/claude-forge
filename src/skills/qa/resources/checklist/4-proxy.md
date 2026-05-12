@@ -2,6 +2,10 @@
 
 ## 4. Proxy Management
 
+Default QA runs this section through the OpenRouter provider profile. It requires the selected provider credentials
+(`OPENROUTER_API_KEY` by default), not remote LiteLLM infrastructure unless QA was started with
+`--provider-profile remote-litellm`. LiteLLM template list/show checks below are metadata-only.
+
 ### 4.1 List Proxies and Templates
 
 <!-- auto -->

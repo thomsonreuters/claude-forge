@@ -197,14 +197,22 @@ forge session start hook-e2e-test --proxy "$FORGE_QA_OPENAI_PROXY"
 Inside the launched Claude session, do a small action (e.g., "write hello to /tmp/test.txt" or "read
 /workspace/README.md and tell me the title"), then exit Claude (Ctrl+C or `/exit`).
 
-After Claude exits, verify:
+After Claude exits, run these exact checks in the **container shell**:
 
 ```bash
+MANIFEST=".forge/sessions/hook-e2e-test/forge.session.json"
+
 # Confirmed fields written by Stop hook
-cat .forge/sessions/hook-e2e-test/forge.session.json | jq '.confirmed | {claude_session_id, transcript_path, confirmed_by, confirmed_at}'
+jq '.confirmed | {claude_session_id, transcript_path, confirmed_by, confirmed_at}' "$MANIFEST"
+
+# Programmatic manifest assertions
+jq -e '.confirmed.transcript_path | strings | length > 0' "$MANIFEST"
+jq -e '.confirmed.claude_session_id | strings | length > 0' "$MANIFEST"
+jq -e '.confirmed.confirmed_by == "hook:stop"' "$MANIFEST"
 
 # Transcript artifact copied
-ls .forge/artifacts/hook-e2e-test/transcripts/
+test -d .forge/artifacts/hook-e2e-test/transcripts
+find .forge/artifacts/hook-e2e-test/transcripts -type f -name '*.jsonl' -print -quit | grep -q .
 
 # Stop hook log exists
 ls ~/.forge/logs/hooks/stop.*.log | tail -1

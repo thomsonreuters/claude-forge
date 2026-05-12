@@ -223,10 +223,13 @@ Switch to warn mode and verify requests succeed with a warning header instead of
 cost log approach for deterministic cap triggering.
 
 ```
-# Switch to warn mode
+# Use the same deterministic cap settings as 7.9, then switch to warn mode.
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.caps.per_day=0.01
+forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.cap_mode=post
 forge proxy set "$FORGE_QA_OPENAI_PROXY" costs.on_cap_hit=warn
 
 # Re-seed the cost log (cleanup from 7.9 removed it)
+mkdir -p ~/.forge/costs/requests
 MONTH=$(date -u +%Y-%m)
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "{\"ts\":\"$TS\",\"proxy_id\":\"$FORGE_QA_OPENAI_PROXY\",\"model\":\"seed\",\"tier\":\"sonnet\",\"input_tokens\":0,\"output_tokens\":0,\"cached_tokens\":0,\"cost_micros\":50000,\"estimated\":true,\"pricing_source\":\"catalog\",\"latency_ms\":0,\"failed\":false,\"request_id\":\"req-qa-cap-warn\"}" \
@@ -236,16 +239,35 @@ echo "{\"ts\":\"$TS\",\"proxy_id\":\"$FORGE_QA_OPENAI_PROXY\",\"model\":\"seed\"
 forge proxy stop "$FORGE_QA_OPENAI_PROXY" --force 2>/dev/null || true
 forge proxy start "$FORGE_QA_OPENAI_PROXY"
 
-# Make a request through the proxy
-forge claude start --proxy "$FORGE_QA_OPENAI_PROXY"
-# Say "hello", then exit (/exit)
+# Make a direct request and capture response headers.
+BASE_URL=$(jq -r --arg id "$FORGE_QA_OPENAI_PROXY" '.proxies[$id].base_url' ~/.forge/proxies/index.json)
+curl -sS -D /tmp/qa-spend-warn.headers -o /tmp/qa-spend-warn.body \
+  -w 'HTTP=%{http_code}\n' \
+  -H 'content-type: application/json' \
+  -H 'x-api-key: test' \
+  -H 'user-agent: claude-code/qa-spend-warn' \
+  "$BASE_URL/v1/messages" \
+  -d '{"model":"claude-3-5-haiku-20241022","max_tokens":16,"temperature":0,"messages":[{"role":"user","content":"Reply with exactly one word: ok"}]}'
+
+# Verify the response was allowed and included the warn-mode header.
+grep -i '^x-spend-warning:' /tmp/qa-spend-warn.headers
+cat /tmp/qa-spend-warn.body | jq -r '._request_id // empty'
+# If curl did not report HTTP=200, inspect the proxy error details:
+# cat /tmp/qa-spend-warn.body | jq .
+# forge logs --tail proxy
+
+# Optional Claude smoke: run with debug output, say "hello", then exit (/exit).
+# The deterministic header check above is the source of truth for this step.
+forge claude start --proxy "$FORGE_QA_OPENAI_PROXY" -- --debug
 
 # Clean up seeded log
-rm -f ~/.forge/costs/requests/${MONTH}_qa-cap-seed.jsonl
+rm -f ~/.forge/costs/requests/${MONTH}_qa-cap-seed.jsonl /tmp/qa-spend-warn.headers /tmp/qa-spend-warn.body
 ```
 
 - [ ] Request succeeds (not blocked) in warn mode
-- [ ] `X-Spend-Warning` header present in response (visible in proxy debug output or Claude error display)
+- [ ] `curl` reports `HTTP=200`
+- [ ] `grep -i '^x-spend-warning:' /tmp/qa-spend-warn.headers` prints the spend-cap warning header
+- [ ] Optional Claude debug run also succeeds (no `spend_cap_exceeded` block)
 
 ### 7.11 Cleanup Fixture Cost Logs
 

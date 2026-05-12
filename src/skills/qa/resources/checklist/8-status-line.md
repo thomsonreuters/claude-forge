@@ -6,6 +6,20 @@
 
 <!-- human:confirm -->
 
+This is a rendered status-line smoke test. It does not call Claude or an LLM; it feeds a synthetic Claude Code
+`statusLine` JSON payload into `forge status-line` and asks you to review the terminal-facing output.
+
+Expected visible shape, with colors/spaces rendered by the terminal:
+
+```text
+/workspace (main) | test-session-1
+[Opus 4.6] -------- 6%/200K | 3m | +12/-3 | in:28.0K out:17.5K
+```
+
+The output may wrap to two physical terminal lines. A proxy template/tier prefix is expected only when
+`ANTHROPIC_BASE_URL` points at a live or registered Forge proxy; if `test-session-1` was started without a proxy, no
+proxy segment is expected here.
+
 ```bash
 cd $FORGE_TEST_REPO
 
@@ -48,10 +62,12 @@ echo "$STATUS_INPUT" \
   | FORGE_SESSION=test-session-1 ANTHROPIC_BASE_URL="$BASE_URL" forge status-line
 ```
 
-- [ ] Shows workspace/session info (path + session name)
-- [ ] Shows model or tier display plus context bar
-- [ ] If the configured `ANTHROPIC_BASE_URL` belongs to a created/running proxy, also shows proxy template/tier info
-- [ ] Formatted for terminal display (ANSI reset prefix)
+- [ ] Shows compact workspace path, git branch, and `test-session-1`
+- [ ] Shows `[Opus 4.6]` plus context usage `6%/200K` with a visible progress bar
+- [ ] Shows seeded metrics: `3m`, `+12/-3`, `in:28.0K`, and `out:17.5K`
+- [ ] If `ANTHROPIC_BASE_URL` belongs to a created/running proxy, also shows proxy template/tier info
+- [ ] Does not print raw JSON, a Python traceback, or `[Error: ...]`
+- [ ] ANSI/color and non-breaking-space internals are checked in 8.2, not by this rendered review
 
 ### 8.2 Verify Display Elements
 

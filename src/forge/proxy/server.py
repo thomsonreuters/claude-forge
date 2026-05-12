@@ -1073,6 +1073,7 @@ async def root(request: Request):
         request_host=request_host,
         request_port=request_port,
         env_port=env_port,
+        process_proxy_id=os.environ.get("FORGE_PROXY_ID"),
     )
 
     # Tier mappings exposed via GET / for status line and session context

@@ -2,18 +2,18 @@
 
 <!-- checklist: index -->
 
-<!-- version: 1.0.10 -->
+<!-- version: 1.0.11 -->
 
-<!-- test-count: ~458 -->
+<!-- test-count: ~460 -->
 
-<!-- last-updated: 2026-05-11 -->
+<!-- last-updated: 2026-05-12 -->
 
 <!-- aligned-with: v0.1.0 -->
 
 **Test Repo**: `$FORGE_TEST_REPO`
 
-**Last updated**: 2026-05-11 (made OpenRouter the default QA provider profile and kept remote LiteLLM as an explicit
-profile)
+**Last updated**: 2026-05-12 (updated 2.1/2.4 assertions to verify `modules_enabled` registration since commands/agents
+source directories currently have no installable files)
 
 ---
 

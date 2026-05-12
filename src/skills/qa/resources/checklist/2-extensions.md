@@ -15,18 +15,17 @@ forge extension enable --user --symlink
 forge extension enable --user --dry-run
 
 # Verify installation
-ls -la $CLAUDE_HOME/commands/
-ls -la $CLAUDE_HOME/agents/
 ls -la $CLAUDE_HOME/skills/
 cat $CLAUDE_HOME/settings.json | jq '.hooks'
+cat $FORGE_HOME/installed.json | jq '.installations.user.modules_enabled'
 
 # Optional: confirm status line + permissions were merged (user scope)
 cat $CLAUDE_HOME/settings.json | jq '.statusLine'
 cat $CLAUDE_HOME/settings.json | jq '.permissions'
 ```
 
-- [ ] Commands installed to `$CLAUDE_HOME/commands/`
-- [ ] Agents installed to `$CLAUDE_HOME/agents/`
+- [ ] `modules_enabled` in `installed.json` lists `commands` and `agents` (directories created only if source has
+  installable files)
 - [ ] Skills installed to `$CLAUDE_HOME/skills/` (standard profile)
 - [ ] Hooks configured in `$CLAUDE_HOME/settings.json` (or in `$CLAUDE_HOME/settings.local.json` if you used hooks-only
   install)
@@ -40,11 +39,11 @@ cat $CLAUDE_HOME/settings.json | jq '.permissions'
 # Check what was installed
 cat $FORGE_HOME/installed.json | jq '.'
 
-# Verify status line setting
-cat $FORGE_TEST_REPO/.claude/settings.local.json | jq '.statusLine'
+# Verify user-scope status line setting
+cat $CLAUDE_HOME/settings.json | jq '.statusLine'
 
-# Verify permissions
-cat $FORGE_TEST_REPO/.claude/settings.local.json | jq '.permissions'
+# Verify user-scope permissions
+cat $CLAUDE_HOME/settings.json | jq '.permissions'
 
 # Verify skills are installed
 ls $CLAUDE_HOME/skills/
@@ -88,13 +87,13 @@ cd $FORGE_TEST_REPO
 forge extension enable --local
 
 # Verify local installation
-ls -la .claude/commands/
-ls -la .claude/agents/
 cat .claude/settings.local.json | jq '.hooks'
+LOCAL_KEY="local:$(cd "$FORGE_TEST_REPO" && pwd -P)"
+cat $FORGE_HOME/installed.json | jq --arg key "$LOCAL_KEY" '.installations[$key].modules_enabled'
 ```
 
-- [ ] Commands installed to `.claude/commands/` (project-local)
-- [ ] Agents installed to `.claude/agents/` (project-local)
+- [ ] `modules_enabled` for local installation lists `commands` and `agents` (directories created only if source has
+  installable files)
 - [ ] Hooks configured in `.claude/settings.local.json`
 
 ### 2.5 Verify Both Installations Tracked
@@ -103,20 +102,21 @@ cat .claude/settings.local.json | jq '.hooks'
 
 ```bash
 # Check tracking file shows BOTH installations
+LOCAL_KEY="local:$(cd "$FORGE_TEST_REPO" && pwd -P)"
 cat $FORGE_HOME/installed.json | jq '.installations | keys'
-# Should show: ["user", "local:$FORGE_TEST_REPO"]
+printf 'Expected local key: %s\n' "$LOCAL_KEY"
 
 # Show user installation
 cat $FORGE_HOME/installed.json | jq '.installations.user.scope'
 # Should show: "user"
 
 # Show local installation (note the key format with path)
-cat $FORGE_HOME/installed.json | jq '.installations["local:$FORGE_TEST_REPO"].scope'
+cat $FORGE_HOME/installed.json | jq --arg key "$LOCAL_KEY" '.installations[$key].scope'
 # Should show: "local"
 
 # Verify project_path is tracked
-cat $FORGE_HOME/installed.json | jq '.installations["local:$FORGE_TEST_REPO"].project_path'
-# Should show: "$FORGE_TEST_REPO"
+cat $FORGE_HOME/installed.json | jq --arg key "$LOCAL_KEY" '.installations[$key].project_path'
+# Should show the resolved path part of LOCAL_KEY
 ```
 
 - [ ] Tracking shows "user" key

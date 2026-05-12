@@ -273,7 +273,6 @@ if [[ "$RESET" != "true" ]] && docker ps -q -f "name=^${CONTAINER_NAME}$" | grep
         error "Run 'bash start-container.sh --stop' or rerun QA with --reset before switching provider profiles."
         exit 3
     fi
-    local wf_var wf_expected wf_actual
     for wf_var in FORGE_QA_WORKFLOW_MODELS FORGE_QA_WORKFLOW_MODEL_A FORGE_QA_WORKFLOW_MODEL_B; do
         wf_expected="${!wf_var}"
         wf_actual="$(docker exec "$CONTAINER_NAME" sh -c "printf '%s' \"\${${wf_var}:-}\"" 2>/dev/null || true)"

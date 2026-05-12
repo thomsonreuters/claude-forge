@@ -145,9 +145,9 @@ Models not in Forge's catalog (e.g., `meta-llama/llama-3.1-70b`) work -- the pro
 
 ## Model alternatives
 
-Anthropic proxy templates (`openrouter-anthropic`, `litellm-anthropic`, `litellm-anthropic-local`) configure
-user-facing `model_alternatives` to support multiple Claude model versions at the same tier. The default opus model is
-Claude Opus 4.6; use `--model` to select an alternative:
+Anthropic proxy templates (`openrouter-anthropic`, `litellm-anthropic`, `litellm-anthropic-local`) configure user-facing
+`model_alternatives` to support multiple Claude model versions at the same tier. The default opus model is Claude Opus
+4.6; use `--model` to select an alternative:
 
 ```bash
 # Default: opus tier routes to Claude Opus 4.6

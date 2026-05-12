@@ -75,7 +75,8 @@ forge proxy list
 - [ ] Named role proxies, workflow aliases, and `test-proxy-nostart` appear in the list with expected base_url/port
   information
 - [ ] Per-tier overrides applied to `$FORGE_QA_OPENAI_PROXY`
-- [ ] Workflow proxies (`openrouter-deepseek`, `openrouter-minimax`) started for openrouter profile (or skipped for remote-litellm)
+- [ ] Workflow proxies (`openrouter-deepseek`, `openrouter-minimax`) started for openrouter profile (or skipped for
+  remote-litellm)
 
 ### 4.3 Show Proxy Details
 
@@ -420,8 +421,7 @@ forge proxy template show openrouter-qwen
 - [ ] `openrouter-glm` maps tiers to GLM models (haiku=glm-4.7-flash, sonnet/opus=glm-5.1)
 - [ ] `openrouter-kimi` maps tiers to Gemma/Kimi models (haiku=gemma-4-31b-it, sonnet/opus=kimi-k2.6)
 - [ ] `openrouter-minimax` maps tiers to Gemma/MiniMax models (haiku=gemma-4-31b-it, sonnet/opus=minimax-m2.7)
-- [ ] `openrouter-qwen` maps tiers to Qwen models (haiku=qwen3.6-flash, sonnet=qwen3.6-plus,
-  opus=qwen3.6-max-preview)
+- [ ] `openrouter-qwen` maps tiers to Qwen models (haiku=qwen3.6-flash, sonnet=qwen3.6-plus, opus=qwen3.6-max-preview)
 - [ ] `openrouter-openai` maps tiers to GPT models (haiku=gpt-5.4-mini, sonnet=gpt-5.5, opus=gpt-5.5)
 - [ ] `openrouter-openai-codex` maps tiers to Codex models (haiku=gpt-5.1-codex-mini, sonnet=gpt-5.3-codex,
   opus=gpt-5.5)

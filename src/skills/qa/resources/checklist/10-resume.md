@@ -120,8 +120,8 @@ cat .forge/prev_sessions/test-session-1.md
 
 <!-- human:guided -->
 
-In the **container shell**, resume with `--strategy ai-curated`. This uses OpenRouter directly to select highlights
-from the parent transcript, then launches the child session. Expect a security warning about external API access.
+In the **container shell**, resume with `--strategy ai-curated`. This uses OpenRouter directly to select highlights from
+the parent transcript, then launches the child session. Expect a security warning about external API access.
 
 ```
 # Resume with AI-curated strategy (LLM-selected highlights)

@@ -189,9 +189,7 @@ _OSS_FAMILIES = {
 class TestOssWorkflowModels:
     """Open-source models are selectable but not in the default quorum."""
 
-    @pytest.mark.parametrize("family,proxy,model", [
-        (f, p, m) for f, (p, m) in _OSS_FAMILIES.items()
-    ])
+    @pytest.mark.parametrize("family,proxy,model", [(f, p, m) for f, (p, m) in _OSS_FAMILIES.items()])
     def test_oss_model_is_selectable_not_default(self, family, proxy, model):
         assert model in AVAILABLE_MODELS, f"{family} opus model '{model}' not in AVAILABLE_MODELS"
         assert model not in DEFAULT_MODELS

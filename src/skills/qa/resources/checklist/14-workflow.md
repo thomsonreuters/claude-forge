@@ -7,8 +7,8 @@ Validates workflow runners + skill architecture.
 - `forge workflow panel` is the fan-out runner CLI (supports `--code`, `--context`, and `--check`).
 - `/forge:analyze` is a skill that calls `forge workflow analyze` (N=1 model).
 - `/forge:debate` is a skill that calls `forge workflow debate` (supports `--code` for code evaluation).
-- This section uses `$FORGE_QA_WORKFLOW_MODELS` (set by `start-container.sh` per provider profile).
-  Workflow proxy aliases are created in 4.2.
+- This section uses `$FORGE_QA_WORKFLOW_MODELS` (set by `start-container.sh` per provider profile). Workflow proxy
+  aliases are created in 4.2.
 - Omitting `--models` uses all configured defaults (from `forge workflow list-models`).
 
 ### 14.1 List Available Workflow Models
@@ -200,8 +200,8 @@ cd /workspace
 claude
 ```
 
-Read `$FORGE_QA_WORKFLOW_MODELS` from the container environment and construct the fully expanded
-command for the user to type in Session B:
+Read `$FORGE_QA_WORKFLOW_MODELS` from the container environment and construct the fully expanded command for the user to
+type in Session B:
 
 ```
 /forge:debate --models <expanded FORGE_QA_WORKFLOW_MODELS> A startup with 5 developers has a working Python monolith serving 10k req/sec. They're hitting scaling issues. Should they rewrite the core in Rust?

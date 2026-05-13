@@ -79,7 +79,9 @@ def run_claude_session(
     Returns:
         SessionResult with stdout/stderr/returncode or error details.
     """
-    use_bare = bare if bare is not None else can_use_bare()
+    env = build_claude_env(base_url=base_url, extra_vars=extra_env, direct=direct)
+
+    use_bare = bare if bare is not None else can_use_bare(env)
     cmd = ["claude", "-p"]
     if use_bare:
         cmd.append("--bare")
@@ -87,8 +89,6 @@ def run_claude_session(
         cmd.extend(["--resume", resume_id])
         if fork_session:
             cmd.append("--fork-session")
-
-    env = build_claude_env(base_url=base_url, extra_vars=extra_env, direct=direct)
 
     # Guard: fail if subprocess proxy was configured but didn't resolve.
     # Prevents silent fallback to direct mode (which would burn subscription quota).
@@ -100,6 +100,34 @@ def run_claude_session(
         )
         _log.warning(msg)
         return SessionResult(stdout="", stderr="", returncode=-1, error=msg)
+
+    # Guard: fail with actionable error if --bare was requested but no API key.
+    # Without this, the subprocess would fail with a cryptic Claude CLI error.
+    # Only fires when bare mode was explicitly requested (bare=True) — when
+    # bare=None and no key exists, can_use_bare() returns False and Claude
+    # falls through to OAuth (which may be intentional).
+    if bare and not env.get("ANTHROPIC_BASE_URL") and not env.get("ANTHROPIC_API_KEY"):
+        try:
+            from forge.core.auth.capabilities import (
+                CREDENTIALS,
+                format_missing_credential_error,
+            )
+            from forge.runtime_config import get_runtime_config
+
+            env_ignored = get_runtime_config().auth_ignore_env
+            cred = CREDENTIALS.get("anthropic-api")
+            if cred:
+                msg = format_missing_credential_error(
+                    cred,
+                    missing_vars=["ANTHROPIC_API_KEY"],
+                    context="Forge subprocess (claude -p)",
+                    extra_hint="Or use --subprocess-proxy to route through an existing proxy.",
+                    env_ignored=env_ignored,
+                )
+                _log.warning(msg)
+                return SessionResult(stdout="", stderr="", returncode=-1, error=msg)
+        except Exception as e:
+            _log.debug("Could not format missing Anthropic subprocess credential error: %s", e)
 
     try:
         _log.debug(

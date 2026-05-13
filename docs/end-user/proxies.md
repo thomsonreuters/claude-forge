@@ -119,7 +119,7 @@ OpenRouter templates (`openrouter-anthropic`, `openrouter-deepseek`, `openrouter
 
 ```bash
 # Store your key
-forge authentication login -p openrouter
+forge auth login -c openrouter
 
 # Create and start (pick a model family)
 forge proxy create openrouter-anthropic

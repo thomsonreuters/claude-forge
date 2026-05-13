@@ -8,7 +8,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from forge.cli.auth import _is_sensitive, _mask_value
+from forge.cli.auth import _mask_value
 from forge.cli.main import main
 
 
@@ -29,14 +29,6 @@ def creds_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 class TestHelpers:
 
-    def test_is_sensitive_api_key(self) -> None:
-        assert _is_sensitive("ANTHROPIC_API_KEY") is True
-        assert _is_sensitive("LITELLM_API_KEY") is True
-
-    def test_is_sensitive_non_secret(self) -> None:
-        assert _is_sensitive("FORGE_HOME") is False
-        assert _is_sensitive("OPENAI_AUTH_URL") is False
-
     def test_mask_value_long(self) -> None:
         assert _mask_value("sk-ant-1234567890") == "sk-a…7890"
 
@@ -52,7 +44,7 @@ class TestAuthLogin:
     def test_login_help(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["auth", "login", "--help"])
         assert result.exit_code == 0
-        assert "--provider" in result.output
+        assert "--credential" in result.output
         assert "--profile" in result.output
 
     def test_login_stores_credential(
@@ -63,7 +55,7 @@ class TestAuthLogin:
 
         result = runner.invoke(
             main,
-            ["auth", "login", "--provider", "anthropic"],
+            ["auth", "login", "-c", "anthropic-api"],
             input="sk-ant-test-12345\n",
         )
 
@@ -74,21 +66,34 @@ class TestAuthLogin:
             data = yaml.safe_load(f)
         assert data["profiles"]["default"]["ANTHROPIC_API_KEY"] == "sk-ant-test-12345"
 
+    def test_login_provider_alias_works(
+        self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--provider/-p still works as an alias for --credential/-c."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        result = runner.invoke(
+            main,
+            ["auth", "login", "-p", "anthropic-api"],
+            input="sk-ant-alias-test\n",
+        )
+
+        assert result.exit_code == 0
+        assert "Credentials saved" in result.output
+
     def test_login_keeps_existing_on_empty_input(
         self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Pressing Enter keeps the existing value."""
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
-        # First: store a value
         from forge.core.auth.credentials_file import save_profile
 
         save_profile("default", {"ANTHROPIC_API_KEY": "sk-ant-existing"}, path=creds_file)
 
-        # Second: press Enter (empty input)
         result = runner.invoke(
             main,
-            ["auth", "login", "--provider", "anthropic"],
+            ["auth", "login", "-c", "anthropic-api"],
             input="\n",
         )
 
@@ -105,7 +110,7 @@ class TestAuthLogin:
 
         result = runner.invoke(
             main,
-            ["auth", "login", "--provider", "anthropic", "--profile", "work"],
+            ["auth", "login", "-c", "anthropic-api", "--profile", "work"],
             input="sk-ant-work-key\n",
         )
 
@@ -119,21 +124,17 @@ class TestAuthLogin:
     def test_login_no_input_no_existing(
         self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Empty input with no existing value → nothing saved."""
+        """Empty input with no existing value -> nothing saved."""
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
         result = runner.invoke(
             main,
-            ["auth", "login", "--provider", "anthropic"],
+            ["auth", "login", "-c", "anthropic-api"],
             input="\n",
         )
 
         assert result.exit_code == 0
         assert "No credentials to save" in result.output
-
-    def test_login_invalid_provider(self, runner: CliRunner) -> None:
-        result = runner.invoke(main, ["auth", "login", "-p", "invalid-provider"])
-        assert result.exit_code != 0
 
     def test_login_recovers_from_corrupt_file(
         self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
@@ -146,7 +147,7 @@ class TestAuthLogin:
 
         result = runner.invoke(
             main,
-            ["auth", "login", "--provider", "anthropic"],
+            ["auth", "login", "-c", "anthropic-api"],
             input="sk-ant-recovery-key\n",
         )
 
@@ -169,16 +170,106 @@ class TestAuthLogin:
 
         result = runner.invoke(
             main,
-            ["auth", "login", "--provider", "anthropic"],
+            ["auth", "login", "-c", "anthropic-api"],
             input="sk-ant-new-key\n",
         )
 
         assert result.exit_code != 0
         assert "version 99" in result.output
 
-        # Original file must be preserved
         raw = yaml.safe_load(creds_file.read_text())
         assert raw["version"] == 99
+
+
+class TestRetiredNames:
+
+    def test_login_retired_anthropic(self, runner: CliRunner) -> None:
+        """Old 'anthropic' name produces migration guidance, not silent accept."""
+        result = runner.invoke(main, ["auth", "login", "-c", "anthropic"])
+        assert result.exit_code != 0
+        assert "anthropic-api" in result.output
+
+    def test_login_retired_litellm_local(self, runner: CliRunner) -> None:
+        """Old 'litellm-local' name explains it's not a credential."""
+        result = runner.invoke(main, ["auth", "login", "-c", "litellm-local"])
+        assert result.exit_code != 0
+        assert "not a credential" in result.output
+        assert "gemini-api" in result.output
+
+    def test_login_unknown_credential(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["auth", "login", "-c", "bogus"])
+        assert result.exit_code != 0
+        assert "Unknown credential" in result.output
+
+
+class TestCredentialMenu:
+
+    def test_menu_shown_without_credential_flag(
+        self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without -c, shows numbered menu then prompts for selected credentials."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+        # Select credential 2 (anthropic-api), then provide the key
+        result = runner.invoke(
+            main,
+            ["auth", "login"],
+            input="2\nsk-ant-menu-test\n",
+        )
+
+        assert result.exit_code == 0
+        assert "anthropic-api" in result.output
+        assert "Forge credentials" in result.output
+
+    def test_menu_all_default(self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Pressing Enter at the menu (default 'all') prompts for all credentials."""
+        for key in ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "LITELLM_API_KEY"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+        monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+
+        # All credentials: Enter for menu default, then empty inputs for each
+        result = runner.invoke(
+            main,
+            ["auth", "login"],
+            input="\n" + "\n" * 10,  # all + skip everything
+        )
+
+        assert result.exit_code == 0
+        assert "openrouter" in result.output
+        assert "anthropic-api" in result.output
+
+    def test_env_aware_skip(self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When env var is set, prompt shows 'already set via environment variable'."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-from-env")
+
+        result = runner.invoke(
+            main,
+            ["auth", "login", "-c", "openrouter"],
+            input="\n\n",  # skip both vars
+        )
+
+        assert result.exit_code == 0
+        assert "already set via environment variable" in result.output
+
+    def test_env_ignored_prompt(self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """With auth_ignore_env, login explains env var is ignored and prompts for file value."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-value")
+        monkeypatch.setattr(
+            "forge.cli.auth._get_auth_ignore_env",
+            lambda: True,
+        )
+
+        result = runner.invoke(
+            main,
+            ["auth", "login", "-c", "anthropic-api"],
+            input="sk-ant-file-value\n",
+        )
+
+        assert result.exit_code == 0
+        assert "auth_ignore_env" in result.output
+        assert "Credentials saved" in result.output
 
 
 # --- Status ---
@@ -202,7 +293,7 @@ class TestAuthStatus:
         assert "ANTHROPIC_API_KEY" in result.output
         assert "(env)" in result.output
 
-    def test_status_shows_file_source(
+    def test_status_shows_file_source_with_profile(
         self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -217,23 +308,38 @@ class TestAuthStatus:
         assert "ANTHROPIC_API_KEY" in result.output
         assert "(file:default)" in result.output
 
-    def test_status_shows_missing(self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_status_shows_not_configured(
+        self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
         result = runner.invoke(main, ["auth", "status"])
 
         assert result.exit_code == 0
-        assert "MISSING" in result.output
+        assert "not configured" in result.output
+        # Never shows "MISSING" — neutral language
+        assert "MISSING" not in result.output
+
+    def test_status_dual_view(self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Status shows both capability summary and credential details sections."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+        result = runner.invoke(main, ["auth", "status"])
+
+        assert result.exit_code == 0
+        assert "Configured capabilities:" in result.output
+        assert "Credential details:" in result.output
+        assert "Not configured (set up if needed):" in result.output
 
     def test_status_masks_values(self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Values are masked in status output — never shown in full."""
+        """Values are masked in status output -- never shown in full."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-super-secret-key-12345")
 
         result = runner.invoke(main, ["auth", "status"])
 
         assert "sk-ant-super-secret-key-12345" not in result.output
-        assert "sk-a" in result.output  # First 4 chars visible
-        assert "2345" in result.output  # Last 4 chars visible
+        assert "sk-a" in result.output
+        assert "2345" in result.output
 
     def test_status_with_profile(self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("LITELLM_API_KEY", raising=False)
@@ -260,7 +366,7 @@ class TestAuthStatus:
 
         assert result.exit_code == 0
         assert "corrupt" in result.output.lower()
-        assert "MISSING" in result.output
+        assert "not configured" in result.output
 
     def test_status_blocks_on_version_mismatch(
         self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
@@ -275,6 +381,32 @@ class TestAuthStatus:
 
         assert result.exit_code != 0
         assert "version 99" in result.output
+
+    def test_status_env_ignored(self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """With auth_ignore_env, env vars show as 'env ignored' in status."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-value")
+        monkeypatch.setattr(
+            "forge.cli.auth._get_auth_ignore_env",
+            lambda: True,
+        )
+
+        result = runner.invoke(main, ["auth", "status"])
+
+        assert result.exit_code == 0
+        assert "env ignored" in result.output
+
+    def test_status_default_value_shown(
+        self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OPENROUTER_BASE_URL shows default value when not configured."""
+        monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+        result = runner.invoke(main, ["auth", "status"])
+
+        assert result.exit_code == 0
+        assert "openrouter.ai/api/v1" in result.output
+        assert "(default)" in result.output
 
 
 # --- Logout ---
@@ -308,7 +440,6 @@ class TestAuthLogout:
         assert result.exit_code == 0
         assert "Aborted" in result.output
 
-        # Profile should still exist
         with open(creds_file) as f:
             data = yaml.safe_load(f)
         assert "default" in data["profiles"]
@@ -325,7 +456,6 @@ class TestAuthLogout:
         assert "Removed" in result.output
         assert "work" in result.output
 
-        # default should still exist
         with open(creds_file) as f:
             data = yaml.safe_load(f)
         assert "default" in data["profiles"]
@@ -365,7 +495,6 @@ class TestAuthProfiles:
         result = runner.invoke(main, ["auth", "profiles"])
 
         assert "← active" in result.output
-        # Only default should be marked active
         lines = result.output.strip().split("\n")
         active_lines = [line for line in lines if "← active" in line]
         assert len(active_lines) == 1
@@ -406,10 +535,15 @@ class TestAuthGroup:
 class TestLitellmRemoteBaseUrl:
     """LITELLM_BASE_URL should be prompted during litellm-remote login."""
 
-    def test_login_prompts_for_base_url(self, runner: CliRunner, creds_file: Path) -> None:
+    def test_login_prompts_for_base_url(
+        self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LITELLM_API_KEY", raising=False)
+        monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+
         result = runner.invoke(
             main,
-            ["auth", "login", "-p", "litellm-remote"],
+            ["auth", "login", "-c", "litellm-remote"],
             input="my-api-key\nhttps://litellm.example.com\n",
         )
         assert result.exit_code == 0
@@ -428,7 +562,8 @@ class TestLitellmRemoteBaseUrl:
             "GEMINI_API_KEY",
             "OPENAI_API_KEY",
             "ANTHROPIC_API_KEY",
-            "LITELLM_LOCAL_API_KEY",
+            "OPENROUTER_API_KEY",
+            "OPENROUTER_BASE_URL",
         ):
             monkeypatch.delenv(key, raising=False)
         creds_file.write_text(

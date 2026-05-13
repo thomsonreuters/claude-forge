@@ -65,6 +65,10 @@ class TestRuntimeConfigDefaults:
         rc = RuntimeConfig()
         assert rc.log_tool_failures is False
 
+    def test_auth_ignore_env_defaults_false(self):
+        rc = RuntimeConfig()
+        assert rc.auth_ignore_env is False
+
 
 class TestRuntimeConfigValidation:
     def test_invalid_proxy_mode_rejected(self):
@@ -376,6 +380,7 @@ class TestGetDefaultConfigContent:
             "status_timeout",
             "handoff_timeout",
             "log_tool_failures",
+            "auth_ignore_env",
         ]:
             assert key in content, f"Missing key in default content: {key}"
 

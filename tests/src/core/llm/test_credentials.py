@@ -216,7 +216,14 @@ class TestAnthropicCredentials:
             cm = CredentialManager()
             with pytest.raises(NoApiKeyError) as exc_info:
                 await cm.get_credentials("anthropic")
-            assert "ANTHROPIC_API_KEY" in str(exc_info.value)
+            msg = str(exc_info.value)
+            detail = exc_info.value.detail or ""
+            assert "ANTHROPIC_API_KEY" in msg
+            assert "forge auth login -c anthropic-api" in msg
+            assert "NOT needed for:" in msg
+            assert "--subprocess-proxy" in msg
+            assert "forge auth login -c anthropic-api" in detail
+            assert "--subprocess-proxy" in detail
 
     async def test_with_api_key(self):
         """Returns credentials when API key is set."""
@@ -236,7 +243,13 @@ class TestOpenRouterCredentials:
             cm = CredentialManager()
             with pytest.raises(NoApiKeyError) as exc_info:
                 await cm.get_credentials("openrouter")
-            assert "OPENROUTER_API_KEY" in str(exc_info.value)
+            msg = str(exc_info.value)
+            detail = exc_info.value.detail or ""
+            assert "OPENROUTER_API_KEY" in msg
+            assert "forge auth login -c openrouter" in msg
+            assert "openrouter.ai/keys" in msg
+            assert "forge auth login -c openrouter" in detail
+            assert "openrouter.ai/keys" in detail
 
     async def test_with_api_key_uses_default_base_url(self, mock_config):
         """Returns credentials with default base URL when only API key is set."""

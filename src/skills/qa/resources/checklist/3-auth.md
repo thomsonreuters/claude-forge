@@ -18,8 +18,8 @@ In a **shell inside the QA container** (`docker exec -it $CONTAINER bash -l` —
 `sk-ant-manual-test-12345`). Input will be hidden.
 
 ```
-# Store credentials for a single provider
-forge authentication login --provider anthropic
+# Store credentials for a single credential
+forge authentication login -c anthropic-api
 
 # Expected: prompts for ANTHROPIC_API_KEY (input hidden)
 # Enter a test key, e.g.: sk-ant-manual-test-12345
@@ -38,7 +38,7 @@ In the **container shell**, store credentials under a named profile. Enter a dif
 
 ```
 # Store credentials in a named profile
-forge authentication login --provider anthropic --profile work
+forge authentication login -c anthropic-api --profile work
 # Enter a different key, e.g.: sk-ant-work-key-99999
 
 # Verify both profiles exist
@@ -53,12 +53,12 @@ forge authentication profiles
 
 <!-- human:guided -->
 
-In the **container shell**, re-run login for the same provider. The existing value appears as a masked default (e.g.,
+In the **container shell**, re-run login for the same credential. The existing value appears as a masked default (e.g.,
 `ANTHROPIC_API_KEY [sk-a…5678]`). Press Enter to keep it.
 
 ```
-# Re-run login for same provider — existing value shown as masked default
-forge authentication login --provider anthropic
+# Re-run login for same credential — existing value shown as masked default
+forge authentication login -c anthropic-api
 
 # Expected: shows existing value like "ANTHROPIC_API_KEY [sk-a…5678]"
 # Press Enter to keep existing value
@@ -67,7 +67,7 @@ forge authentication login --provider anthropic
 - [ ] Existing value shown as masked default (first 4 + last 4 chars)
 - [ ] Pressing Enter preserves the existing value (not overwritten)
 
-### 3.4 Status — Source Attribution
+### 3.4 Status — Dual-View Output
 
 <!-- auto -->
 
@@ -75,14 +75,21 @@ forge authentication login --provider anthropic
 # Check credential status
 forge authentication status
 
-# Expected output for each provider shows source:
-#   ✓ ANTHROPIC_API_KEY = sk-a…5678  (file:default)
-#   ✗ LITELLM_API_KEY  MISSING
+# Expected output has two sections:
+#   Configured capabilities:
+#     * anthropic-api ...  (file:default)
+#
+#   Credential details:
+#     anthropic-api
+#       * ANTHROPIC_API_KEY = sk-a…5678  (file:default)
 ```
 
-- [ ] Shows each key with source: `(env)`, `(file:default)`, or `MISSING`
+- [ ] Shows "Configured capabilities:" section with configured credentials
+- [ ] Shows "Not configured (set up if needed):" section for unconfigured credentials
+- [ ] Shows "Credential details:" section with per-variable source attribution
 - [ ] Values are masked (never shown in full)
-- [ ] All 3 providers displayed (litellm-remote, litellm-local, anthropic)
+- [ ] All 5 credentials displayed (openrouter, anthropic-api, openai-api, gemini-api, litellm-remote)
+- [ ] Unconfigured credentials show "not configured" (not "MISSING")
 
 ### 3.5 Status — Env Overrides File
 
@@ -110,7 +117,7 @@ forge authentication status --profile work
 ```
 
 - [ ] Shows `(file:work)` for keys stored in work profile
-- [ ] Keys not in work profile shown as MISSING (even if in default)
+- [ ] Keys not in work profile shown as "not configured" (even if in default)
 
 ### 3.7 Profiles — List and Active Marker
 
@@ -152,7 +159,7 @@ In the **container shell**, create a temp profile (enter any test key when promp
 
 ```
 # Re-create and remove without confirmation
-forge authentication login --provider anthropic --profile temp
+forge authentication login -c anthropic-api --profile temp
 # Enter any test key
 
 forge authentication logout --profile temp -y
@@ -201,10 +208,27 @@ unset ANTHROPIC_API_KEY
 # Starting a session or proxy that needs ANTHROPIC_API_KEY should work
 # without the env var set (it reads from $FORGE_HOME/credentials.yaml)
 forge authentication status --profile default
-# Should show: ✓ ANTHROPIC_API_KEY = sk-a…xxxx  (file:default)
+# Should show: * ANTHROPIC_API_KEY = sk-a…xxxx  (file:default)
 ```
 
 - [ ] Credential available via file when env var is unset
 - [ ] `forge authentication status` confirms file source
+
+### 3.12 Retired Credential Names
+
+<!-- auto -->
+
+```bash
+# Old 'anthropic' name should produce migration guidance
+forge authentication login -c anthropic 2>&1 || true
+# Expected: exit 1, yellow message mentioning 'anthropic-api'
+
+# Old 'litellm-local' name should explain it's not a credential
+forge authentication login -c litellm-local 2>&1 || true
+# Expected: exit 1, message mentioning gemini-api, openai-api, anthropic-api
+```
+
+- [ ] `anthropic` produces clear migration message pointing to `anthropic-api`
+- [ ] `litellm-local` explains it's not a credential and lists provider alternatives
 
 ---

@@ -48,17 +48,18 @@ Notes:
 
 Available settings:
 
-| Key                              | Default                | Description                                                                               |
-| -------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
-| `proxy_mode`                     | `host`                 | `host` (proxy on host) or `sidecar` (bundled in Docker)                                   |
-| `sidecar_image`                  | `forge-sidecar:latest` | Docker image for sidecar mode                                                             |
-| `user_agent_claude_code_version` | *(empty)*              | Version in User-Agent header sent to upstream LLM providers                               |
-| `context_limit`                  | `200000`               | Fallback auto-compact window for proxy mode (passed as `CLAUDE_CODE_AUTO_COMPACT_WINDOW`) |
-| `status_timeout`                 | `2.0`                  | Status line proxy/git call timeout (seconds)                                              |
-| `handoff_timeout`                | `300`                  | Handoff agent timeout (seconds)                                                           |
-| `log_level`                      | `off`                  | File logging level (`off`, `debug`, `info`, `warning`)                                    |
-| `policy_summary_feedback`        | `on`                   | Post-evaluation summary lines and additionalContext (`on`/`off`)                          |
-| `log_tool_failures`              | `false`                | Log tool failures to `~/.forge/logs/tool_failures/` (proxy; includes tool inputs/errors)  |
+| Key                              | Default                | Description                                                                                                                                |
+| -------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `proxy_mode`                     | `host`                 | `host` (proxy on host) or `sidecar` (bundled in Docker)                                                                                    |
+| `sidecar_image`                  | `forge-sidecar:latest` | Docker image for sidecar mode                                                                                                              |
+| `user_agent_claude_code_version` | *(empty)*              | Version in User-Agent header sent to upstream LLM providers                                                                                |
+| `context_limit`                  | `200000`               | Fallback auto-compact window for proxy mode (passed as `CLAUDE_CODE_AUTO_COMPACT_WINDOW`)                                                  |
+| `status_timeout`                 | `2.0`                  | Status line proxy/git call timeout (seconds)                                                                                               |
+| `handoff_timeout`                | `300`                  | Handoff agent timeout (seconds)                                                                                                            |
+| `log_level`                      | `off`                  | File logging level (`off`, `debug`, `info`, `warning`)                                                                                     |
+| `policy_summary_feedback`        | `on`                   | Post-evaluation summary lines and additionalContext (`on`/`off`)                                                                           |
+| `log_tool_failures`              | `false`                | Log tool failures to `~/.forge/logs/tool_failures/` (proxy; includes tool inputs/errors)                                                   |
+| `auth_ignore_env`                | `false`                | Ignore env vars for credential resolution; use credential file only. See [auth.md](auth.md#ignoring-environment-variables-auth_ignore_env) |
 
 Environment overrides:
 
@@ -121,18 +122,22 @@ Notes:
 
 ## Secrets (`forge authentication`)
 
-API keys and credentials are managed via `forge authentication login` and stored in `~/.forge/credentials.yaml`.
-Environment variables (`.env`, shell exports) still work and take precedence over stored credentials.
+API keys and credentials are managed via `forge auth login` and stored in `~/.forge/credentials.yaml`. These are for
+Forge proxy routing and subprocesses, not your Claude Code login. Environment variables (`.env`, shell exports) still
+work and take precedence over stored credentials (unless `auth_ignore_env` is set).
 
 ```bash
-# Store credentials interactively
-forge authentication login --provider anthropic
+# Interactive credential menu
+forge auth login
+
+# Configure a single credential
+forge auth login -c anthropic-api
 
 # Check what's configured and where each key comes from
-forge authentication status
+forge auth status
 ```
 
-See [auth.md](auth.md) for profiles, migration from `.env`, and full CLI reference.
+See [auth.md](auth.md) for credential details, profiles, migration, and full CLI reference.
 
 **Rule:** Credential storage holds secrets and connection values (e.g., `LITELLM_BASE_URL`). Connection values are a
 convenience fallback for bootstrapping proxy creation. Once `proxy.yaml` exists, proxy-owned routing is authoritative.

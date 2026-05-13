@@ -99,7 +99,7 @@ forge extension enable
 forge session start
 
 # Or with multi-model routing via OpenRouter (easiest, no LiteLLM):
-forge authentication login -p openrouter              # Store OPENROUTER_API_KEY
+forge auth login -c openrouter                        # Store OPENROUTER_API_KEY
 forge proxy create openrouter-anthropic               # Create and start a Claude-family proxy
 forge session start --proxy openrouter-anthropic
 
@@ -108,7 +108,7 @@ forge proxy create openrouter-openai
 forge proxy create openrouter-gemini
 
 # Alternative: LiteLLM-based routing (shared/internal or local):
-# forge authentication login -p litellm-remote   # Store API key + base URL
+# forge auth login -c litellm-remote              # Store API key + base URL
 # forge proxy create litellm-openai              # Connects to shared/internal LiteLLM
 # forge proxy create litellm-openai-local        # Or start local LiteLLM
 ```

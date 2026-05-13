@@ -97,6 +97,12 @@ class RuntimeConfig:
     # Off by default because records may include tool inputs and error payloads.
     log_tool_failures: bool = False
 
+    # Ignore environment variables for credential resolution.
+    # When true, Forge reads credentials only from ~/.forge/credentials.yaml,
+    # ignoring shell env vars (ANTHROPIC_API_KEY, OPENROUTER_API_KEY, etc.).
+    # Useful when shell API keys are for Claude Code (not Forge subprocesses).
+    auth_ignore_env: bool = False
+
     def __post_init__(self) -> None:
         valid_modes = {"host", "sidecar"}
         if self.proxy_mode not in valid_modes:
@@ -276,6 +282,17 @@ def _dict_to_runtime_config(data: dict[str, Any], source: Path) -> RuntimeConfig
             # for string fields (e.g., log_level: off → False → "off")
             if isinstance(val, bool) and f.type in ("str", str):
                 val = "on" if val else "off"
+            # Coerce quoted strings to bool for bool fields
+            # (auth_ignore_env: "false" should be False, not truthy string)
+            elif isinstance(val, str) and f.type in (bool, "bool"):
+                low = val.strip().lower()
+                if low in {"1", "true", "yes", "on"}:
+                    val = True
+                elif low in {"0", "false", "no", "off", ""}:
+                    val = False
+                else:
+                    logger.warning("Invalid boolean for %s: %r — using default", f.name, val)
+                    continue
             kwargs[f.name] = val
 
     try:
@@ -412,4 +429,10 @@ proxy_mode: host
 # Records failed tool call inputs and errors to help refine model-family prompt addendums.
 # Off by default because payloads may include file paths, command text, or content snippets.
 # log_tool_failures: false
+
+# Ignore environment variables for credential resolution.
+# When true, Forge reads credentials only from ~/.forge/credentials.yaml.
+# Useful when your shell ANTHROPIC_API_KEY is for Claude Code (OAuth/Max),
+# but you want Forge subprocesses to use a separate key from the credential file.
+# auth_ignore_env: false
 """

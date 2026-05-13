@@ -122,11 +122,22 @@ The model catalog is **authoritative internal data**:
 ### A.6 Credentials and Connection Values (§3.6.9)
 
 Credentials resolve from environment variables first (`.env`, shell exports), then fall back to the Forge credential
-store (`~/.forge/credentials.yaml`, managed by `forge authentication`). Env vars always override stored credentials.
+store (`~/.forge/credentials.yaml`, managed by `forge auth login`). Env vars override stored credentials unless
+`auth_ignore_env` is set in `~/.forge/config.yaml`.
 
-- `LITELLM_API_KEY` -- Remote/shared LiteLLM API key
-- `LITELLM_BASE_URL` -- Remote LiteLLM base URL (convenience fallback for proxy bootstrapping)
-- `GEMINI_API_KEY` -- Personal Gemini API key (for local LiteLLM)
+Five atomic credentials (defined in `forge.core.auth.capabilities`):
+
+| Credential       | Env var(s)                             | Capabilities                                        |
+| ---------------- | -------------------------------------- | --------------------------------------------------- |
+| `openrouter`     | `OPENROUTER_API_KEY`                   | All `openrouter-*` proxies, OSS workflow models     |
+| `anthropic-api`  | `ANTHROPIC_API_KEY`                    | Forge subprocesses, `litellm-anthropic-local` proxy |
+| `openai-api`     | `OPENAI_API_KEY`                       | `litellm-openai-local` proxy                        |
+| `gemini-api`     | `GEMINI_API_KEY`                       | `litellm-gemini-local` proxy                        |
+| `litellm-remote` | `LITELLM_API_KEY` + `LITELLM_BASE_URL` | All remote `litellm-*` proxy templates              |
+
+`auth_ignore_env: true` in runtime config (`~/.forge/config.yaml`) skips all env vars for credential resolution. Both
+the sync path (`resolve_env_or_credential`) and async path (`CredentialManager` via `EnvSecretsProvider`) respect the
+flag. `build_claude_env()` hydrates credential-file values into subprocess env dicts when the flag is active.
 
 **Rule:** Credential storage holds secrets and connection values (e.g., `LITELLM_BASE_URL`). Connection values are a
 convenience fallback for bootstrapping proxy creation (`forge proxy create`). Once `proxy.yaml` exists, proxy-owned

@@ -175,7 +175,7 @@ class TestRealAuthWithFileCredentials:
         except Exception as e:
             pytest.fail(
                 f"Could not resolve Anthropic credentials (env or file): {e}\n"
-                "Set ANTHROPIC_API_KEY in env or run 'forge auth login -p anthropic'."
+                "Set ANTHROPIC_API_KEY in env or run 'forge auth login -c anthropic-api'."
             )
 
         api_key = creds["api_key"]

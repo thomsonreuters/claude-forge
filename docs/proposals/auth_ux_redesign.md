@@ -82,8 +82,8 @@ clear error with migration guidance (see "Retired names" below). The `--provider
 
 ### 1. Credential selection menu
 
-When `forge auth login` is called without `--credential`/`--provider`, show a capability-oriented menu with three-state
-source attribution:
+When `forge auth login` is called without `--credential`/`--provider`, show a capability-oriented menu with state/source
+attribution:
 
 ```
 Forge credentials
@@ -99,17 +99,18 @@ Claude Code authenticates separately (OAuth, Max plan, etc.).
 Select credentials [1-5, comma-separated, or 'all'] (default: all):
 ```
 
-Five states for multi-var credentials like `litellm-remote`:
+Six states for multi-var credentials like `litellm-remote`:
 
-| State                   | Meaning                                           |
-| ----------------------- | ------------------------------------------------- |
-| `configured (env)`      | All required vars set via environment             |
-| `configured (file)`     | All required vars set via credential file         |
-| `configured (env+file)` | Mixed sources (e.g., key from env, URL from file) |
-| `partially configured`  | Some required vars set, others missing            |
-| `not configured`        | No required vars set                              |
+| State                          | Meaning                                           |
+| ------------------------------ | ------------------------------------------------- |
+| `configured (env)`             | All required vars set via environment             |
+| `configured (file)`            | All required vars set via credential file         |
+| `configured (env+file)`        | Mixed sources (e.g., key from env, URL from file) |
+| `partially configured`         | Some required vars set, others missing            |
+| `not configured`               | No required vars set                              |
+| `not configured (env ignored)` | Env vars exist but `auth_ignore_env` is active    |
 
-When `auth.ignore_env` is active and env vars exist but are being skipped, credentials that were only in env show
+When `auth_ignore_env` is active and env vars exist but are being skipped, credentials that were only in env show
 `not configured (env ignored)` — not `configured (file)` (which would be misleading).
 
 Single-var credentials (most of them) only see `configured (env)`, `configured (file)`, or `not configured`.
@@ -545,9 +546,9 @@ This teaches the new model instead of hiding it behind aliases. Pre-1.0 project 
     is likely). Not shown for other credentials.
 12. **Menu prompts**: Plain `click.prompt` for input. Rich for display formatting if already convenient. No interactive
     TUI pickers.
-13. **Env var handling**: Five-state display for multi-var credentials (`configured (env)`, `configured (file)`,
-    `configured (env+file)`, `partially configured`, `not configured`). Plus `not configured (env ignored)` when
-    `auth.ignore_env` is active. Env-set keys show "press Enter to skip" during login. `auth.ignore_env: true` in
+13. **Env var handling**: Six-state display for multi-var credentials (`configured (env)`, `configured (file)`,
+    `configured (env+file)`, `partially configured`, `not configured`, plus `not configured (env ignored)` when
+    `auth_ignore_env` is active). Env-set keys show "press Enter to skip" during login. `auth_ignore_env: true` in
     `~/.forge/config.yaml` skips all env vars wholesale — no per-variable list.
 14. **Error formatter includes profile**: `format_missing_credential_error()` takes active `profile` name so hints say
     `forge auth login -c X --profile work`. Also takes `env_ignored` flag for diagnostic notes when env vars exist but

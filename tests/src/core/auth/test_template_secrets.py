@@ -104,3 +104,56 @@ class TestGetSecretsForTemplate:
         ):
             result = get_secrets_for_template("litellm-gemini-local")
             assert result == {"GEMINI_API_KEY": "file-gkey"}
+
+
+class TestAuthIgnoreEnv:
+    """Verify auth_ignore_env bypasses environment variables."""
+
+    def _set_ignore_env(self, monkeypatch: pytest.MonkeyPatch, value: bool) -> None:
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._auth_ignore_env",
+            lambda: value,
+        )
+
+    def test_resolve_skips_env_when_ignore_active(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._set_ignore_env(monkeypatch, True)
+        monkeypatch.setenv("MY_KEY", "from-env")
+        with patch(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            return_value={"MY_KEY": "from-file"},
+        ):
+            assert resolve_env_or_credential("MY_KEY") == "from-file"
+
+    def test_resolve_reads_env_when_ignore_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._set_ignore_env(monkeypatch, False)
+        monkeypatch.setenv("MY_KEY", "from-env")
+        with patch(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            return_value={"MY_KEY": "from-file"},
+        ):
+            assert resolve_env_or_credential("MY_KEY") == "from-env"
+
+    def test_resolve_returns_none_when_ignore_and_no_file(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._set_ignore_env(monkeypatch, True)
+        monkeypatch.setenv("MY_KEY", "from-env")
+        with patch(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            return_value={},
+        ):
+            assert resolve_env_or_credential("MY_KEY") is None
+
+    def test_get_secrets_skips_env_when_ignore_active(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._set_ignore_env(monkeypatch, True)
+        monkeypatch.setenv("GEMINI_API_KEY", "env-key")
+        with patch(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            return_value={"GEMINI_API_KEY": "file-key"},
+        ):
+            result = get_secrets_for_template("litellm-gemini-local")
+            assert result == {"GEMINI_API_KEY": "file-key"}
+
+    def test_get_secrets_reads_env_when_ignore_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._set_ignore_env(monkeypatch, False)
+        monkeypatch.setenv("GEMINI_API_KEY", "env-key")
+        result = get_secrets_for_template("litellm-gemini-local")
+        assert result == {"GEMINI_API_KEY": "env-key"}

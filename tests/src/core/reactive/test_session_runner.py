@@ -139,10 +139,64 @@ class TestRunClaudeSession:
         assert "--bare" not in cmd
 
     @patch("forge.core.reactive.session_runner.subprocess.run")
+    def test_bare_auto_uses_hydrated_file_key(self, mock_run, monkeypatch):
+        """Auto-detect checks the built env, so credential-file keys enable --bare."""
+        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._auth_ignore_env",
+            lambda: False,
+        )
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            lambda: {"ANTHROPIC_API_KEY": "sk-ant-from-file"},
+        )
+        monkeypatch.setattr(
+            "forge.runtime_config.get_runtime_config",
+            lambda: type("C", (), {"auth_ignore_env": False})(),
+        )
+
+        run_claude_session("prompt")
+
+        cmd = mock_run.call_args[0][0]
+        env = mock_run.call_args.kwargs["env"]
+        assert "--bare" in cmd
+        assert env["ANTHROPIC_API_KEY"] == "sk-ant-from-file"
+
+    @patch("forge.core.reactive.session_runner.subprocess.run")
+    def test_bare_missing_key_returns_formatted_error_with_proxy_hint(self, mock_run, monkeypatch):
+        """Explicit --bare without an API key fails before spawn with actionable guidance."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.delenv("FORGE_SUBPROCESS_PROXY", raising=False)
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._auth_ignore_env",
+            lambda: False,
+        )
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            lambda: {},
+        )
+        monkeypatch.setattr(
+            "forge.runtime_config.get_runtime_config",
+            lambda: type("C", (), {"auth_ignore_env": False})(),
+        )
+
+        result = run_claude_session("prompt", bare=True)
+
+        assert not result.success
+        assert "ANTHROPIC_API_KEY" in (result.error or "")
+        assert "forge auth login -c anthropic-api" in (result.error or "")
+        assert "--subprocess-proxy" in (result.error or "")
+        mock_run.assert_not_called()
+
+    @patch("forge.core.reactive.session_runner.subprocess.run")
     def test_bare_explicit_true(self, mock_run):
         """Explicit bare=True forces --bare regardless of env."""
         mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
-        run_claude_session("prompt", bare=True)
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-test"}):
+            run_claude_session("prompt", bare=True)
 
         cmd = mock_run.call_args[0][0]
         assert "--bare" in cmd

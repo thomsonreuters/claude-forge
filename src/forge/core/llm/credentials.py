@@ -44,22 +44,17 @@ def _get_litellm_remote_base_url() -> str:
     except (ImportError, AttributeError):
         pass
 
-    env_url = os.environ.get("LITELLM_BASE_URL")
-    if env_url:
-        logger.debug(f"Using LiteLLM base_url from LITELLM_BASE_URL: {env_url}")
-        return env_url
-
     from forge.core.auth.template_secrets import resolve_env_or_credential
 
-    cred_url = resolve_env_or_credential("LITELLM_BASE_URL")
-    if cred_url:
-        logger.debug("Using LiteLLM base_url from credential file")
-        return cred_url
+    resolved_url = resolve_env_or_credential("LITELLM_BASE_URL")
+    if resolved_url:
+        logger.debug("Using LiteLLM base_url from env/credential file")
+        return resolved_url
 
     raise ValueError(
         "LiteLLM remote base_url not configured. "
         "Use 'forge proxy create <template> --base-url <url>' or "
-        "'forge auth login -p litellm-remote' to store it."
+        "'forge auth login -c litellm-remote' to store it."
     )
 
 
@@ -105,6 +100,45 @@ def _get_litellm_local_base_url() -> str:
 
 
 OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+def _format_credential_error(
+    env_var: str,
+    *,
+    context: str | None = None,
+    extra_hint: str | None = None,
+    profile: str | None = None,
+) -> str | None:
+    """Build actionable error using capabilities registry. Returns None on failure."""
+    try:
+        from forge.core.auth.capabilities import (
+            credential_for_env_var,
+            format_missing_credential_error,
+        )
+
+        cred = credential_for_env_var(env_var)
+        if not cred:
+            return None
+
+        try:
+            from forge.runtime_config import get_runtime_config
+
+            ignore_env = get_runtime_config().auth_ignore_env
+        except Exception as e:
+            logger.debug("Could not read auth_ignore_env; formatting credential error without env-ignored note: %s", e)
+            ignore_env = False
+
+        return format_missing_credential_error(
+            cred,
+            missing_vars=[env_var],
+            context=context,
+            extra_hint=extra_hint,
+            profile=profile,
+            env_ignored=ignore_env,
+        )
+    except Exception as e:
+        logger.debug("Could not format missing credential error for %s: %s", env_var, e)
+        return None
 
 
 def _get_openrouter_base_url() -> str:
@@ -176,6 +210,8 @@ class CredentialManager:
 
         Wires EnvSecretsProvider -> FileSecretsProvider chain so credentials
         from ~/.forge/credentials.yaml are available as fallback to env vars.
+        ``EnvSecretsProvider`` reads ``auth_ignore_env`` lazily per-call,
+        so config changes take effect without resetting the singleton.
         """
         if cls._default_instance is None:
             from forge.core.auth import ChainSecretsProvider, EnvSecretsProvider
@@ -279,7 +315,11 @@ class CredentialManager:
         # For remote LiteLLM, API key is required (unless localhost)
         is_local = "localhost" in base_url or "127.0.0.1" in base_url
         if not api_key and not is_local:
-            raise NoApiKeyError("litellm_remote", "LITELLM_API_KEY")
+            raise NoApiKeyError(
+                "litellm_remote",
+                "LITELLM_API_KEY",
+                detail=_format_credential_error("LITELLM_API_KEY"),
+            )
 
         # SSL cert paths are non-secret, read directly from env
         ssl_cert = os.getenv("SSL_CERT_FILE") or os.getenv("REQUESTS_CA_BUNDLE")
@@ -315,7 +355,14 @@ class CredentialManager:
         secrets = self._resolve_secrets()
         api_key = secrets.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise NoApiKeyError("anthropic", "ANTHROPIC_API_KEY")
+            raise NoApiKeyError(
+                "anthropic",
+                "ANTHROPIC_API_KEY",
+                detail=_format_credential_error(
+                    "ANTHROPIC_API_KEY",
+                    extra_hint="Or use --subprocess-proxy to route through an existing proxy.",
+                ),
+            )
 
         return {
             "api_key": api_key,
@@ -330,7 +377,11 @@ class CredentialManager:
         secrets = self._resolve_secrets()
         api_key = secrets.get("OPENROUTER_API_KEY")
         if not api_key:
-            raise NoApiKeyError("openrouter", "OPENROUTER_API_KEY")
+            raise NoApiKeyError(
+                "openrouter",
+                "OPENROUTER_API_KEY",
+                detail=_format_credential_error("OPENROUTER_API_KEY"),
+            )
 
         base_url = _get_openrouter_base_url()
 

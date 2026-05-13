@@ -59,6 +59,18 @@ class TestEnvSecretsProvider:
         assert exc_info.value.provider == "env"
         assert exc_info.value.env_var == "MISSING_KEY"
 
+    def test_require_known_key_uses_actionable_detail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Known credential keys get the shared actionable formatter."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        provider = EnvSecretsProvider(ignore_env=False)
+        with pytest.raises(NoApiKeyError) as exc_info:
+            provider.require("ANTHROPIC_API_KEY")
+
+        msg = str(exc_info.value)
+        assert "forge auth login -c anthropic-api" in msg
+        assert "NOT needed for:" in msg
+
     def test_require_raises_when_empty_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """EnvSecretsProvider.require() raises when value is empty string."""
         monkeypatch.setenv("EMPTY_KEY", "")
@@ -66,6 +78,73 @@ class TestEnvSecretsProvider:
         provider = EnvSecretsProvider()
         with pytest.raises(NoApiKeyError):
             provider.require("EMPTY_KEY")
+
+
+class TestEnvSecretsProviderIgnoreEnv:
+    """Tests for EnvSecretsProvider with ignore_env flag."""
+
+    def test_get_returns_default_when_explicit_ignore(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TEST_KEY", "from-env")
+        provider = EnvSecretsProvider(ignore_env=True)
+        assert provider.get("TEST_KEY", "fallback") == "fallback"
+
+    def test_get_returns_none_when_explicit_ignore(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TEST_KEY", "from-env")
+        provider = EnvSecretsProvider(ignore_env=True)
+        assert provider.get("TEST_KEY") is None
+
+    def test_require_raises_when_explicit_ignore(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TEST_KEY", "from-env")
+        provider = EnvSecretsProvider(ignore_env=True)
+        with pytest.raises(NoApiKeyError):
+            provider.require("TEST_KEY")
+
+    def test_require_known_key_when_ignored_mentions_env_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env")
+
+        provider = EnvSecretsProvider(ignore_env=True)
+        with pytest.raises(NoApiKeyError) as exc_info:
+            provider.require("ANTHROPIC_API_KEY")
+
+        msg = str(exc_info.value)
+        assert "auth_ignore_env" in msg
+        assert "ANTHROPIC_API_KEY is set in env" in msg
+
+    def test_chain_falls_through_when_ignore_active(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Chain with ignore_env falls through to FileSecretsProvider."""
+        monkeypatch.setenv("TEST_KEY", "from-env")
+
+        cred_file = tmp_path / "credentials.yaml"
+        cred_file.write_text(yaml.dump({"version": 1, "profiles": {"default": {"TEST_KEY": "from-file"}}}))
+
+        chain = ChainSecretsProvider(
+            EnvSecretsProvider(ignore_env=True),
+            FileSecretsProvider(path=cred_file),
+        )
+        assert chain.get("TEST_KEY") == "from-file"
+
+    def test_lazy_reads_runtime_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Default EnvSecretsProvider (ignore_env=None) reads flag lazily."""
+        monkeypatch.setenv("TEST_KEY", "from-env")
+        provider = EnvSecretsProvider()
+
+        assert provider.get("TEST_KEY") == "from-env"
+
+        monkeypatch.setattr(
+            "forge.runtime_config.get_runtime_config",
+            lambda: type("C", (), {"auth_ignore_env": True})(),
+        )
+        assert provider.get("TEST_KEY") is None
+
+    def test_explicit_false_ignores_runtime_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ignore_env=False overrides runtime config."""
+        monkeypatch.setenv("TEST_KEY", "from-env")
+        monkeypatch.setattr(
+            "forge.runtime_config.get_runtime_config",
+            lambda: type("C", (), {"auth_ignore_env": True})(),
+        )
+        provider = EnvSecretsProvider(ignore_env=False)
+        assert provider.get("TEST_KEY") == "from-env"
 
 
 class TestConfigSecretsProvider:

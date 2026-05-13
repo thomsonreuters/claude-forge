@@ -28,11 +28,17 @@ def can_use_bare(env: Mapping[str, str] | None = None) -> bool:
     """True if ``--bare`` is safe for headless subprocesses.
 
     ``--bare`` disables OAuth/keychain auth, so it requires
-    ANTHROPIC_API_KEY in the environment. Returns False when the
-    key is absent (the subprocess would fail to authenticate).
+    ANTHROPIC_API_KEY. When an explicit ``env`` dict is given, checks
+    only that dict (caller owns the env). When using os.environ
+    (default), also falls back to the credential file via
+    ``resolve_env_or_credential`` (which respects ``auth_ignore_env``).
     """
-    source = env if env is not None else os.environ
-    return bool(source.get(_BARE_AUTH_KEY))
+    if env is not None:
+        return bool(env.get(_BARE_AUTH_KEY))
+
+    from forge.core.auth.template_secrets import resolve_env_or_credential
+
+    return bool(resolve_env_or_credential(_BARE_AUTH_KEY))
 
 
 def get_forge_depth(env: Mapping[str, str] | None = None) -> int:
@@ -72,6 +78,10 @@ def build_claude_env(
     Applies ``extra_vars`` before routing and depth handling so explicit
     function arguments remain authoritative.
 
+    Hydrates ANTHROPIC_API_KEY from the credential file when it's not in
+    the env (or when ``auth_ignore_env`` overrides it). This ensures
+    ``can_use_bare(env)`` and the subprocess both see the resolved key.
+
     Args:
         base_url: Proxy URL to route Claude requests through.
         extra_vars: Additional environment variables to set/override.
@@ -81,6 +91,10 @@ def build_claude_env(
         Complete environment dict ready for ``subprocess.run(env=...)``.
     """
     env = os.environ.copy()
+    _hydrate_credentials(env)
+
+    # Apply extra_vars AFTER hydration so explicit caller overrides
+    # take precedence over credential-file values.
     if extra_vars:
         env.update(extra_vars)
 
@@ -106,6 +120,35 @@ def build_claude_env(
     env[FORGE_DEPTH_VAR] = str(current_depth + 1)
 
     return env
+
+
+def _hydrate_credentials(env: dict[str, str]) -> None:
+    """Ensure resolved credentials are in the subprocess env dict.
+
+    When ``auth_ignore_env`` is active, removes the inherited env value
+    for ANTHROPIC_API_KEY and injects the credential-file value instead.
+    When inactive, injects the credential-file value only if the env
+    var is absent (so ``can_use_bare(env)`` and the subprocess agree).
+    """
+    from forge.core.auth.template_secrets import resolve_env_or_credential
+
+    resolved = resolve_env_or_credential(_BARE_AUTH_KEY)
+
+    try:
+        from forge.runtime_config import get_runtime_config
+
+        ignore_env = get_runtime_config().auth_ignore_env
+    except Exception as e:
+        logger.debug("Could not read auth_ignore_env; using environment credentials: %s", e)
+        ignore_env = False
+
+    if ignore_env:
+        if resolved:
+            env[_BARE_AUTH_KEY] = resolved
+        else:
+            env.pop(_BARE_AUTH_KEY, None)
+    elif resolved and not env.get(_BARE_AUTH_KEY):
+        env[_BARE_AUTH_KEY] = resolved
 
 
 def _resolve_subprocess_proxy(proxy_id: str) -> str | None:

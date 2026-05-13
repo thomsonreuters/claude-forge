@@ -160,3 +160,118 @@ class TestCanUseBare:
     def test_reads_from_os_environ_absent(self):
         with patch.dict("os.environ", {}, clear=True):
             assert can_use_bare() is False
+
+
+class TestCredentialHydration:
+    """build_claude_env injects resolved credentials into the subprocess env."""
+
+    def test_file_key_injected_when_env_absent(self, monkeypatch):
+        """Credential-file key appears in built env even when not in os.environ."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setattr(
+            "forge.core.reactive.env._hydrate_credentials",
+            lambda env: env.__setitem__("ANTHROPIC_API_KEY", "from-file"),
+        )
+        env = build_claude_env()
+        assert env["ANTHROPIC_API_KEY"] == "from-file"
+
+    def test_can_use_bare_on_hydrated_env(self, monkeypatch):
+        """can_use_bare(env) sees the hydrated key after build_claude_env."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setattr(
+            "forge.core.reactive.env._hydrate_credentials",
+            lambda env: env.__setitem__("ANTHROPIC_API_KEY", "from-file"),
+        )
+        env = build_claude_env()
+        assert can_use_bare(env) is True
+
+    def test_ignore_env_scrubs_and_replaces(self, monkeypatch):
+        """With auth_ignore_env, env value is replaced by credential-file value."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key-ignored")
+
+        def mock_hydrate(env):
+            env["ANTHROPIC_API_KEY"] = "file-key"
+
+        monkeypatch.setattr("forge.core.reactive.env._hydrate_credentials", mock_hydrate)
+        env = build_claude_env()
+        assert env["ANTHROPIC_API_KEY"] == "file-key"
+
+    def test_ignore_env_removes_when_no_file_value(self, monkeypatch):
+        """With auth_ignore_env and no file value, key is removed from env."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key-ignored")
+
+        def mock_hydrate(env):
+            env.pop("ANTHROPIC_API_KEY", None)
+
+        monkeypatch.setattr("forge.core.reactive.env._hydrate_credentials", mock_hydrate)
+        env = build_claude_env()
+        assert "ANTHROPIC_API_KEY" not in env
+
+
+class TestHydrateCredentialsIntegration:
+    """Integration tests for _hydrate_credentials with real resolve logic."""
+
+    def test_no_op_when_env_has_key_and_ignore_off(self, monkeypatch):
+        """When env has the key and ignore is off, no change."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+        monkeypatch.setattr(
+            "forge.core.reactive.env._hydrate_credentials.__module__",
+            "forge.core.reactive.env",
+        )
+        env = build_claude_env()
+        assert env["ANTHROPIC_API_KEY"] == "env-key"
+
+    def test_file_fallback_when_env_missing(self, monkeypatch):
+        """When env key is absent, credential file value is injected."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets.resolve_env_or_credential",
+            lambda var: "file-key" if var == "ANTHROPIC_API_KEY" else None,
+        )
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._auth_ignore_env",
+            lambda: False,
+        )
+        env = build_claude_env()
+        assert env.get("ANTHROPIC_API_KEY") == "file-key"
+
+    def test_ignore_env_overrides_env_key(self, monkeypatch):
+        """When auth_ignore_env is active, env key is replaced by file key."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+        # Patch both resolution paths that _hydrate_credentials uses:
+        # 1. resolve_env_or_credential (respects auth_ignore_env via template_secrets)
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._auth_ignore_env",
+            lambda: True,
+        )
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            lambda: {"ANTHROPIC_API_KEY": "file-key"},
+        )
+        # 2. The runtime config check inside _hydrate_credentials
+        monkeypatch.setattr(
+            "forge.runtime_config.get_runtime_config",
+            lambda: type("C", (), {"auth_ignore_env": True})(),
+        )
+        env = build_claude_env()
+        assert env["ANTHROPIC_API_KEY"] == "file-key"
+
+    def test_ignore_env_removes_env_key_when_file_missing(self, monkeypatch):
+        """When auth_ignore_env is active and file has no key, inherited env key is scrubbed."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._auth_ignore_env",
+            lambda: True,
+        )
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            lambda: {},
+        )
+        monkeypatch.setattr(
+            "forge.runtime_config.get_runtime_config",
+            lambda: type("C", (), {"auth_ignore_env": True})(),
+        )
+
+        env = build_claude_env()
+
+        assert "ANTHROPIC_API_KEY" not in env

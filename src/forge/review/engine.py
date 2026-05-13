@@ -56,7 +56,7 @@ def preflight_check(specs: list[ModelSpec]) -> list[str]:
         elif subprocess_proxy:
             hint = f" Run 'forge proxy start {subprocess_proxy}' to make the subprocess proxy available."
         else:
-            hint = " Run 'forge auth login -p anthropic' or use --models to select only proxy-backed models."
+            hint = " Run 'forge auth login -c anthropic-api' or use --models to select only proxy-backed models."
         errors.append(f"{avail.spec.name}: {avail.reason}.{hint}")
     return errors
 

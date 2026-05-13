@@ -164,8 +164,9 @@ def test_start_spawns_new_and_persists(
 
 
 def test_start_timeout_terminates_process(tmp_path, orch_registry, orch_health, orchestrator, monkeypatch) -> None:
-    # Does NOT use orch_stubs — needs custom _wait_until_healthy and _validate_template_exists
+    # Does NOT use orch_stubs — needs custom _wait_until_healthy, _validate_template_exists, _ensure_template_credentials
     monkeypatch.setattr(orchestrator, "_validate_template_exists", lambda _: None)
+    monkeypatch.setattr(orchestrator, "_ensure_template_credentials", lambda _: None)
     monkeypatch.setenv("LITELLM_BASE_URL", "https://litellm.test.example.com")
     monkeypatch.setattr(orchestrator, "_get_template_default_port", lambda _: 5555)
     monkeypatch.setattr(orchestrator, "_is_port_in_use", lambda _: False)
@@ -582,6 +583,70 @@ def test_check_proxy_dependencies_raises_on_missing(monkeypatch: pytest.MonkeyPa
     assert "uvicorn" in error_msg
     assert "proxy dependencies" in error_msg.lower() or "uv sync" in error_msg
     assert "--no-start" in error_msg
+
+
+# ---------------------------------------------------------------------------
+# Credential preflight
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateCredentialPreflight:
+    """Tests for template credential checks before proxy spawn."""
+
+    def test_skips_connection_value_vars(self, monkeypatch: pytest.MonkeyPatch, orchestrator) -> None:
+        """LITELLM_BASE_URL is a connection value, so --base-url/proxy config may satisfy it."""
+        monkeypatch.setenv("LITELLM_API_KEY", "sk-litellm-test")
+        monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            lambda: {},
+        )
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._auth_ignore_env",
+            lambda: False,
+        )
+
+        orchestrator._ensure_template_credentials("litellm-anthropic")
+
+    def test_start_with_upstream_base_url_does_not_require_litellm_base_url(
+        self,
+        tmp_path: Path,
+        orch_registry,
+        orch_health,
+        monkeypatch: pytest.MonkeyPatch,
+        orchestrator,
+    ) -> None:
+        """Remote LiteLLM --base-url satisfies the connection value without LITELLM_BASE_URL."""
+        monkeypatch.setenv("LITELLM_API_KEY", "sk-litellm-test")
+        monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._get_file_secrets",
+            lambda: {},
+        )
+        monkeypatch.setattr(
+            "forge.core.auth.template_secrets._auth_ignore_env",
+            lambda: False,
+        )
+        monkeypatch.setattr(orchestrator, "_get_template_default_port", lambda _: 8092)
+        monkeypatch.setattr(orchestrator, "_is_port_in_use", lambda _: False)
+        monkeypatch.setattr(orchestrator, "_find_available_port", lambda **_: 8092)
+        monkeypatch.setattr(orchestrator, "_new_proxy_id", lambda existing=None: "proxy_remote")
+        monkeypatch.setattr(orchestrator, "_wait_until_healthy", lambda **_: None)
+        monkeypatch.setattr(orchestrator, "now_iso", lambda: "2026-05-13T00:00:00+00:00")
+        orch_health(False)
+        monkeypatch.setattr(
+            orchestrator,
+            "_spawn_proxy_process",
+            lambda **_: (_Proc(pid=9999), tmp_path / "stderr.log"),
+        )
+
+        result = start_proxy(
+            template="litellm-anthropic",
+            upstream_base_url="https://litellm.example.com",
+        )
+
+        assert result.source == "spawn"
+        assert result.proxy.proxy_id == "proxy_remote"
 
 
 # ---------------------------------------------------------------------------

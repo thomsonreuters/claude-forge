@@ -30,10 +30,10 @@ class TestForgeInit:
     """Tests for forge init command."""
 
     def test_init_user_scope_creates_claude_dir(self, synced_container: ContainerLike) -> None:
-        """Verify forge extensions enable --user creates ~/.claude/."""
+        """Verify forge extensions enable --scope user creates ~/.claude/."""
         synced_container.exec("rm -rf ~/.claude ~/.forge")
 
-        result = synced_container.exec("cd /forge && uv run forge extensions enable --user --profile minimal")
+        result = synced_container.exec("cd /forge && uv run forge extensions enable --scope user --profile minimal")
         assert result.returncode == 0, f"Init failed: {result.stderr}"
 
         check = synced_container.exec("test -d ~/.claude && echo 'exists'")
@@ -43,7 +43,7 @@ class TestForgeInit:
         """Verify forge extensions enable creates the tracking manifest."""
         synced_container.exec("rm -rf ~/.claude ~/.forge")
 
-        result = synced_container.exec("cd /forge && uv run forge extensions enable --user --profile minimal")
+        result = synced_container.exec("cd /forge && uv run forge extensions enable --scope user --profile minimal")
         assert result.returncode == 0
 
         tracking_path = _get_tracking_path(synced_container)
@@ -54,7 +54,7 @@ class TestForgeInit:
         """Verify forge extensions enable --profile standard adds hooks to settings.json."""
         synced_container.exec("rm -rf ~/.claude ~/.forge")
 
-        result = synced_container.exec("cd /forge && uv run forge extensions enable --user --profile standard")
+        result = synced_container.exec("cd /forge && uv run forge extensions enable --scope user --profile standard")
         assert result.returncode == 0
 
         # Parse settings.json and verify hooks key exists
@@ -75,11 +75,11 @@ print('hooks present')
         synced_container.exec("rm -rf ~/.claude ~/.forge")
 
         # First init
-        result1 = synced_container.exec("cd /forge && uv run forge extensions enable --user --profile minimal")
+        result1 = synced_container.exec("cd /forge && uv run forge extensions enable --scope user --profile minimal")
         assert result1.returncode == 0
 
         # Second init (should succeed)
-        result2 = synced_container.exec("cd /forge && uv run forge extensions enable --user --profile minimal")
+        result2 = synced_container.exec("cd /forge && uv run forge extensions enable --scope user --profile minimal")
         assert result2.returncode == 0
 
     def test_init_auto_detect_creates_project_anchor_under_home(self, synced_container: ContainerLike) -> None:
@@ -104,7 +104,7 @@ print('hooks present')
         assert "no-user-fallback" in home_check.stdout, f"Unexpected user-scope install: {home_check.stderr}"
 
     def test_enable_creates_forge_anchor(self, synced_container: ContainerLike) -> None:
-        """forge extensions enable --local creates both .claude/ and .forge/ (Rule 1)."""
+        """forge extensions enable --scope local creates both .claude/ and .forge/ (Rule 1)."""
         synced_container.exec("rm -rf ~/.claude ~/.forge ~/repo-forge-anchor")
 
         result = synced_container.exec("""
@@ -114,7 +114,7 @@ print('hooks present')
             git config user.name "Forge Test"
             echo "# Forge Anchor" > README.md
             git add . && git commit -m "init"
-            /forge/.venv/bin/forge extensions enable --local --profile minimal
+            /forge/.venv/bin/forge extensions enable --scope local --profile minimal
         """)
         assert result.returncode == 0, f"Enable failed: {result.stderr}"
 
@@ -135,7 +135,7 @@ print('hooks present')
             git config user.name "Forge Test"
             echo "# Dry Run" > README.md
             git add . && git commit -m "init"
-            /forge/.venv/bin/forge extensions enable --project --profile minimal --dry-run
+            /forge/.venv/bin/forge extensions enable --scope project --profile minimal --dry-run
         """)
         assert result.returncode == 0, f"Dry-run enable failed: {result.stderr}"
 
@@ -152,7 +152,7 @@ class TestForgeUpdate:
         """Verify forge extensions sync fails without prior install."""
         synced_container.exec("rm -rf ~/.claude ~/.forge")
 
-        result = synced_container.exec("cd /forge && uv run forge extensions sync --user 2>&1")
+        result = synced_container.exec("cd /forge && uv run forge extensions sync --scope user 2>&1")
         assert result.returncode != 0
         # Error message says "no Forge installation found" or similar
         assert "no forge installation" in result.stdout.lower() or "forge extensions enable" in result.stdout.lower()
@@ -162,7 +162,7 @@ class TestForgeUpdate:
         synced_container.exec("rm -rf ~/.claude ~/.forge")
 
         # Init first
-        synced_container.exec("cd /forge && uv run forge extensions enable --user --profile minimal")
+        synced_container.exec("cd /forge && uv run forge extensions enable --scope user --profile minimal")
 
         # Add user customization to settings (preserve existing structure)
         synced_container.exec("""
@@ -177,7 +177,7 @@ settings_path.write_text(json.dumps(settings, indent=2))
         """)
 
         # Update
-        result = synced_container.exec("cd /forge && uv run forge extensions sync --user")
+        result = synced_container.exec("cd /forge && uv run forge extensions sync --scope user")
         assert result.returncode == 0
 
         # User key should still be there
@@ -201,14 +201,14 @@ class TestForgeUninstall:
         synced_container.exec("rm -rf ~/.claude ~/.forge")
 
         # Init first
-        synced_container.exec("cd /forge && uv run forge extensions enable --user --profile minimal")
+        synced_container.exec("cd /forge && uv run forge extensions enable --scope user --profile minimal")
 
         # Verify installation exists
         check1 = synced_container.exec("test -d ~/.claude && echo 'exists'")
         assert "exists" in check1.stdout
 
         # Uninstall (--force to avoid confirmation prompt hanging)
-        result = synced_container.exec("cd /forge && uv run forge extensions disable --user --force")
+        result = synced_container.exec("cd /forge && uv run forge extensions disable --scope user --force")
         assert result.returncode == 0
 
         # Verify tracking entry removed (file may still exist but scope entry gone)
@@ -233,7 +233,7 @@ else:
         """Verify forge extensions disable on empty system is a graceful no-op."""
         synced_container.exec("rm -rf ~/.claude ~/.forge")
 
-        result = synced_container.exec("cd /forge && uv run forge extensions disable --user --force 2>&1")
+        result = synced_container.exec("cd /forge && uv run forge extensions disable --scope user --force 2>&1")
         # CLI returns 0 and informs user - graceful no-op behavior
         assert result.returncode == 0
         assert "no forge installation" in result.stdout.lower()
@@ -247,7 +247,7 @@ class TestSymlinkMode:
         synced_container.exec("rm -rf ~/.claude ~/.forge")
 
         result = synced_container.exec(
-            "cd /forge && uv run forge extensions enable --user --profile standard --symlink"
+            "cd /forge && uv run forge extensions enable --scope user --profile standard --symlink"
         )
         assert result.returncode == 0
 

@@ -83,7 +83,7 @@ project_root    (logical repo -- git identity, shared across worktrees)
    `.forge/`.
 4. Project/local `forge extension enable` requires `.claude/` at the target directory. If missing, it is created
    silently (it is a directory, not a config file -- no ambiguity, no interactive prompt needed). User-level install
-   (`--user`) goes to `~/.claude/` and does not require a project anchor.
+   (`--scope user`) goes to `~/.claude/` and does not require a project anchor.
 
 **Definitions:**
 
@@ -1268,12 +1268,12 @@ Enforcement results = observed facts → hook-written `confirmed`. Stateful poli
 ## 5. Extensions install model
 
 Claude Code extensions live in this repo and are installed via `forge extension enable`. Forge follows Claude Code's
-scope model (`--user` / `--project` / `--local`) and provides modular installation via profiles (`minimal` / `standard`
-/ `full`). Six installable modules (commands, agents, skills, hooks, status-line, permissions) are combined into
-profiles. Settings merge is additive (hooks append + dedupe, permissions union). `~/.forge/installed.json` tracks what
-was installed for clean update/uninstall. Project/local enablement requires a `.claude/` anchor at the target directory
-(created if missing); user-level install (`--user`) goes to `~/.claude/` and does not require a project anchor. This
-establishes the Forge project per the identity model (§3).
+scope model (`--scope user` / `--scope project` / `--scope local`) and provides modular installation via profiles
+(`minimal` / `standard` / `full`). Six installable modules (commands, agents, skills, hooks, status-line, permissions)
+are combined into profiles. Settings merge is additive (hooks append + dedupe, permissions union).
+`~/.forge/installed.json` tracks what was installed for clean update/uninstall. Project/local enablement requires a
+`.claude/` anchor at the target directory (created if missing); user-level install (`--scope user`) goes to `~/.claude/`
+and does not require a project anchor. This establishes the Forge project per the identity model (§3).
 
 > Scope model, module inventory, merge rules, and tracking file details in
 > [design_appendix.md §E](design_appendix.md#e-install-model-reference). Multi-scope installation behavior (dual user +

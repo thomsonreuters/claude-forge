@@ -245,8 +245,8 @@ If the family is wrong, the proxy template's tier models may not have the expect
 
 ### Skills installed in both user and project scope
 
-If you ran `forge extension enable --user` and `forge extension enable` (project) in the same repo, you have two copies
-of every skill. This can cause stale instructions, duplicate hook firing, or unexpected behavior if one copy is
+If you ran `forge extension enable --scope user` and `forge extension enable` (project) in the same repo, you have two
+copies of every skill. This can cause stale instructions, duplicate hook firing, or unexpected behavior if one copy is
 outdated.
 
 Check with:
@@ -259,8 +259,8 @@ ls .claude/skills/         # Project-level
 Fix by keeping one scope:
 
 ```bash
-forge extension disable --user     # Remove user-level
-forge extension enable --project   # Keep project-level
+forge extension disable --scope user     # Remove user-level
+forge extension enable --scope project   # Keep project-level
 ```
 
 See [design_appendix.md §E.5](../design_appendix.md#e5-multi-scope-installation-55----skill-resolution) for details.

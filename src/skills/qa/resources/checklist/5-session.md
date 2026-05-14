@@ -429,7 +429,7 @@ git branch -D test-into-target 2>/dev/null || true
 git worktree add /workspace-test-into-target -b test-into-target
 
 # Install Forge extensions in the target worktree (required for --into)
-cd /workspace-test-into-target && forge extension enable --local
+cd /workspace-test-into-target && forge extension enable --scope local
 cd /workspace
 
 # Fork the parent session into the existing worktree.

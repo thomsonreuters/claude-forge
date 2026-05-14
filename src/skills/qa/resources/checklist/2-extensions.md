@@ -9,10 +9,10 @@
 ```bash
 # Install forge extensions (default: standard profile, user scope)
 cd $FORGE_TEST_REPO
-forge extension enable --user --symlink
+forge extension enable --scope user --symlink
 
 # Optional: preview changes instead of applying
-forge extension enable --user --dry-run
+forge extension enable --scope user --dry-run
 
 # Verify installation
 ls -la $CLAUDE_HOME/skills/
@@ -84,7 +84,7 @@ cat .claude/settings.local.json | jq '.env.MY_CUSTOM_VAR'
 ```bash
 # Install Forge extensions to LOCAL scope (this project only)
 cd $FORGE_TEST_REPO
-forge extension enable --local
+forge extension enable --scope local
 
 # Verify local installation
 cat .claude/settings.local.json | jq '.hooks'
@@ -130,7 +130,7 @@ cat $FORGE_HOME/installed.json | jq --arg key "$LOCAL_KEY" '.installations[$key]
 
 ```bash
 # Try to install local again to same project
-forge extension enable --local
+forge extension enable --scope local
 
 # Should either:
 # - Say "already installed" and skip
@@ -141,7 +141,7 @@ cat $FORGE_HOME/installed.json | jq '.installations | keys | length'
 # Should show 2 (user + 1 local), not 3
 ```
 
-- [ ] Re-running `forge extension enable --local` is idempotent
+- [ ] Re-running `forge extension enable --scope local` is idempotent
 - [ ] No duplicate entries in tracking
 
 ### 2.7 Check Install Status (Nearest Scope)

@@ -87,7 +87,7 @@ terminal to try Forge commands hands-on in later sections.
 <!-- auto -->
 
 ```bash
-bash "$SCRIPTS/run-in-repo.sh" forge extension enable --local
+bash "$SCRIPTS/run-in-repo.sh" forge extension enable --scope local
 ```
 
 - [ ] Exit code 0
@@ -265,7 +265,7 @@ forge claude start --proxy $PROXY_ID
 ```
 
 This starts Claude Code (Session B) with API calls routed through the proxy. Forge hooks, status line, and % commands
-are all active because extensions were installed `--local`.
+are all active because extensions were installed with `--scope local`.
 
 - [ ] Claude Code launched in test repo
 - [ ] Session B is running and responsive
@@ -684,7 +684,7 @@ rm -rf "$FORGE_TEST_REPO/.forge/search-index"
 <!-- auto -->
 
 ```bash
-bash "$SCRIPTS/run-in-repo.sh" forge extension disable --local --force
+bash "$SCRIPTS/run-in-repo.sh" forge extension disable --scope local --force
 ```
 
 - [ ] Uninstall completed (exit code 0)

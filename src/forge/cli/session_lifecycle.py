@@ -1060,15 +1060,20 @@ def start(
     With --sidecar, runs Claude Code and proxy inside a Docker container
     with lifecycle coupling. The project directory is mounted at /workspace.
 
+    With --subprocess-proxy, the main session talks to Anthropic directly
+    (free subscription) while panels, supervisors, and handoff agents route
+    through the named proxy for cost tracking and multi-model access.
+
     For resuming existing sessions, use ``forge session resume``.
 
     \b
     Examples:
-        forge session start                                      # Auto-named, no proxy
-        forge session start my-feature                           # Named session, no proxy
-        forge session start my-feature --proxy openrouter-gemini # With proxy routing
-        forge session start my-feature --worktree                # Isolated worktree
-        forge session start my-feature --supervise planner       # With plan supervision
+        forge session start                                                    # Auto-named, no proxy
+        forge session start my-feature                                         # Named session, no proxy
+        forge session start my-feature --proxy openrouter-gemini               # With proxy routing
+        forge session start my-feature --subprocess-proxy openrouter-anthropic # Direct + proxied subprocesses
+        forge session start my-feature --worktree                              # Isolated worktree
+        forge session start my-feature --supervise planner                     # With plan supervision
     """
     direct = direct or direct_deprecated
     if direct and proxy_name:

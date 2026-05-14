@@ -439,11 +439,11 @@ Extracted from [design.md §5.1-5.4](design.md#5-extensions-install-model). Over
 
 ### E.1 Scope model (§5.1 -- mirrors Claude Code)
 
-| Scope       | Extensions Path                       | Settings Path                 | Use case                                           |
-| ----------- | ------------------------------------- | ----------------------------- | -------------------------------------------------- |
-| `--user`    | `~/.claude/{commands,agents,skills}/` | `~/.claude/settings.json`     | Personal global (default; prevents worktree drift) |
-| `--project` | `.claude/{commands,agents,skills}/`   | `.claude/settings.json`       | Team-shared (checked in)                           |
-| `--local`   | `.claude/{commands,agents,skills}/`   | `.claude/settings.local.json` | Personal per-project                               |
+| Scope     | Extensions Path                       | Settings Path                 | Use case                                           |
+| --------- | ------------------------------------- | ----------------------------- | -------------------------------------------------- |
+| `user`    | `~/.claude/{commands,agents,skills}/` | `~/.claude/settings.json`     | Personal global (default; prevents worktree drift) |
+| `project` | `.claude/{commands,agents,skills}/`   | `.claude/settings.json`       | Team-shared (checked in)                           |
+| `local`   | `.claude/{commands,agents,skills}/`   | `.claude/settings.local.json` | Personal per-project                               |
 
 ### E.2 Installable modules + profiles (§5.2)
 
@@ -487,8 +487,9 @@ Skills use `${CLAUDE_SKILL_DIR}` (a Claude Code built-in) to reference co-locate
 the directory of the **executing** SKILL.md, so each installation is self-contained -- resources always come from the
 same scope as the SKILL.md that was invoked.
 
-**Dual-scope behavior:** Installing Forge at two scopes (e.g., `--user` + `--project`) creates independent copies of
-every skill. Each copy has its own SKILL.md, resources, and scripts. Forge does **not** deduplicate across scopes.
+**Dual-scope behavior:** Installing Forge at two scopes (e.g., `--scope user` + `--scope project`) creates independent
+copies of every skill. Each copy has its own SKILL.md, resources, and scripts. Forge does **not** deduplicate across
+scopes.
 
 | Concern             | Behavior                                                                                  |
 | ------------------- | ----------------------------------------------------------------------------------------- |
@@ -501,8 +502,8 @@ every skill. Each copy has its own SKILL.md, resources, and scripts. Forge does 
 **Recommendation:** Use a single scope per project. If both exist, disable one:
 
 ```bash
-forge extension disable --user     # Remove user-level
-forge extension enable --project   # Keep project-level only
+forge extension disable --scope user     # Remove user-level
+forge extension enable --scope project   # Keep project-level only
 ```
 
 ---

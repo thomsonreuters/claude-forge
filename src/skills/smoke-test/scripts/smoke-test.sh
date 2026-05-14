@@ -112,7 +112,7 @@ echo "  $PASS/$TOTAL passed"
 
 if [ "$FAIL" -gt 0 ]; then
     echo ""
-    echo "  Some checks failed. Run 'forge extension enable --user' to install."
+    echo "  Some checks failed. Run 'forge extension enable --scope user' to install."
     exit 1
 fi
 exit 0

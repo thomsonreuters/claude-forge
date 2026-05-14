@@ -179,7 +179,7 @@ Sessions require a **Forge project** — a directory with `.forge/` (and `.claud
 
 ```bash
 cd my-repo
-forge extension enable --local    # Creates .claude/ and .forge/ if needed
+forge extension enable --scope local    # Creates .claude/ and .forge/ if needed
 forge session start my-feature    # Now works
 ```
 

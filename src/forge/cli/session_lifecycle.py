@@ -966,13 +966,6 @@ def launch_new_session(
     is_flag=True,
     help="Bypass the proxy and talk to Anthropic directly",
 )
-@click.option(
-    "--direct",
-    "direct_deprecated",
-    is_flag=True,
-    hidden=True,
-    help="Deprecated alias for --no-proxy",
-)
 @click.option("--incognito", "-i", is_flag=True, help="Auto-delete session on exit")
 @click.option("--system-prompt", "-s", help="Append system prompt text")
 @click.option(
@@ -1051,7 +1044,6 @@ def start(
     supervisor_proxy: str | None,
     supervisor_direct: bool,
     subprocess_proxy: str | None,
-    direct_deprecated: bool,
 ) -> None:
     """Create and start a new session.
 
@@ -1076,7 +1068,6 @@ def start(
         forge session start my-feature --worktree                              # Isolated worktree
         forge session start my-feature --supervise planner                     # With plan supervision
     """
-    direct = direct or direct_deprecated
     if direct and proxy_name:
         console.print("[red]Error:[/red] --no-proxy and --proxy are mutually exclusive")
         sys.exit(1)
@@ -1160,13 +1151,6 @@ def start(
     help="Bypass the proxy and talk to Anthropic directly",
 )
 @click.option(
-    "--direct",
-    "direct_deprecated",
-    is_flag=True,
-    hidden=True,
-    help="Deprecated alias for --no-proxy",
-)
-@click.option(
     "--fresh",
     is_flag=True,
     default=False,
@@ -1215,7 +1199,6 @@ def resume(
     depth: int,
     resume_mode: str | None,
     force: bool,
-    direct_deprecated: bool,
 ) -> None:
     """Resume a session.
 
@@ -1238,7 +1221,6 @@ def resume(
       forge session resume my-session --proxy my-proxy   # Reattach with different routing
       forge session resume my-session --fresh --no-proxy # Fresh conversation, direct mode
     """
-    direct = direct or direct_deprecated
     if direct and proxy_name:
         console.print("[red]Error:[/red] --no-proxy and --proxy are mutually exclusive")
         sys.exit(1)
@@ -1886,13 +1868,6 @@ def _resume_fresh_native(
     is_flag=True,
     help="Bypass the proxy and talk to Anthropic directly",
 )
-@click.option(
-    "--direct",
-    "direct_deprecated",
-    is_flag=True,
-    hidden=True,
-    help="Deprecated alias for --no-proxy",
-)
 @click.option("--system-prompt", "-s", help="Append system prompt text")
 @click.option(
     "--system-prompt-file",
@@ -1915,7 +1890,6 @@ def incognito(
     name: str | None,
     proxy_name: str | None,
     direct: bool,
-    direct_deprecated: bool,
     system_prompt: str | None,
     system_prompt_file: str | None,
     worktree: bool,
@@ -1937,7 +1911,6 @@ def incognito(
         forge session incognito --proxy openrouter-gemini # With proxy
         forge session incognito my-test                  # Custom name
     """
-    direct = direct or direct_deprecated
     if direct and proxy_name:
         console.print("[red]Error:[/red] --no-proxy and --proxy are mutually exclusive")
         sys.exit(1)

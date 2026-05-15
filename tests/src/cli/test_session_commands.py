@@ -3413,33 +3413,6 @@ class TestProxyDirectFlags:
         assert updated.confirmed.started_with_proxy.proxy_id == "old-proxy"
 
 
-class TestDirectDeprecatedAlias:
-    """Verify hidden --direct alias still works for backward compatibility."""
-
-    def test_start_direct_alias_still_works(self, runner: CliRunner, temp_env: Path) -> None:
-        result = runner.invoke(main, ["session", "start", "alias-test", "--direct", "--no-launch"])
-        assert result.exit_code == 0
-
-    def test_resume_direct_alias_still_works(self, runner: CliRunner, temp_env: Path) -> None:
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            runner.invoke(main, ["session", "start", "alias-resume", "--no-proxy"])
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            result = runner.invoke(main, ["session", "resume", "alias-resume", "--direct"])
-        assert result.exit_code == 0
-
-    def test_fork_direct_alias_still_works(self, runner: CliRunner, temp_env: Path) -> None:
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            runner.invoke(main, ["session", "start", "alias-fork-parent", "--no-proxy"])
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            result = runner.invoke(main, ["session", "fork", "alias-fork-parent", "--direct"])
-        assert result.exit_code == 0
-
-    def test_incognito_direct_alias_still_works(self, runner: CliRunner, temp_env: Path) -> None:
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            result = runner.invoke(main, ["session", "incognito", "alias-incog", "--direct"])
-        assert result.exit_code == 0
-
-
 class TestSupervisorProxyFlags:
     """Tests for --supervisor-proxy / --no-supervisor-proxy on start and fork."""
 

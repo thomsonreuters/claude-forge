@@ -66,21 +66,6 @@ class TestAuthLogin:
             data = yaml.safe_load(f)
         assert data["profiles"]["default"]["ANTHROPIC_API_KEY"] == "sk-ant-test-12345"
 
-    def test_login_provider_alias_works(
-        self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """--provider/-p still works as an alias for --credential/-c."""
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-        result = runner.invoke(
-            main,
-            ["auth", "login", "-p", "anthropic-api"],
-            input="sk-ant-alias-test\n",
-        )
-
-        assert result.exit_code == 0
-        assert "Credentials saved" in result.output
-
     def test_login_keeps_existing_on_empty_input(
         self, runner: CliRunner, creds_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

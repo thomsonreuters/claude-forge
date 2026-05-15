@@ -175,18 +175,10 @@ def _build_bare_launch_env(
     default=False,
     help="Bypass the proxy and talk to Anthropic directly",
 )
-@click.option(
-    "--direct",
-    "direct_deprecated",
-    is_flag=True,
-    hidden=True,
-    help="Deprecated alias for --no-proxy",
-)
 @click.argument("claude_args", nargs=-1, type=click.UNPROCESSED)
 def start_cmd(
     proxy_id: str | None,
     direct: bool,
-    direct_deprecated: bool,
     claude_args: tuple[str, ...],
 ) -> None:
     """Start Claude Code with proxy routing or direct to Anthropic.
@@ -200,7 +192,6 @@ def start_cmd(
         forge claude start --no-proxy
         forge claude start --proxy my-proxy -- --debug
     """
-    direct = direct or direct_deprecated
     if direct and proxy_id:
         click.echo("Error: --no-proxy and --proxy are mutually exclusive")
         sys.exit(1)

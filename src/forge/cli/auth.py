@@ -147,8 +147,6 @@ def auth() -> None:
 @click.option(
     "--credential",
     "-c",
-    "--provider",
-    "-p",
     "credential",
     type=str,
     default=None,

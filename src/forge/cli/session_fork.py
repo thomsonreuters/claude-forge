@@ -90,13 +90,6 @@ __all__ = ["fork"]
     is_flag=True,
     help="Bypass the proxy and talk to Anthropic directly",
 )
-@click.option(
-    "--direct",
-    "direct_deprecated",
-    is_flag=True,
-    hidden=True,
-    help="Deprecated alias for --no-proxy",
-)
 @click.option("--incognito", "-i", is_flag=True, help="Auto-delete fork on exit")
 @click.option("--worktree", "-w", is_flag=True, help="Create git worktree for fork isolation")
 @click.option("--branch", "-b", help="Override branch name (implies --worktree)")
@@ -156,7 +149,6 @@ def fork(
     name: str | None,
     proxy_name: str | None,
     direct: bool,
-    direct_deprecated: bool,
     incognito: bool,
     worktree: bool,
     branch: str | None,
@@ -187,7 +179,6 @@ def fork(
         forge session fork parent-session -n child-session     # Custom fork name
         forge session fork parent-session --no-proxy           # Fork, bypass proxy
     """
-    direct = direct or direct_deprecated
     if direct and proxy_name:
         console.print("[red]Error:[/red] --no-proxy and --proxy are mutually exclusive")
         sys.exit(1)

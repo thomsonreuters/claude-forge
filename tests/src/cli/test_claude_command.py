@@ -471,21 +471,3 @@ class TestBuildBareLaunchEnv:
         assert env["ANTHROPIC_BASE_URL"] == "http://localhost:8085"
         assert "ACTIVE_TEMPLATE" not in env
         assert "ACTIVE_TEMPLATE" in unset
-
-
-def test_claude_start_direct_alias_still_works(tmp_path, monkeypatch):
-    """Hidden --direct alias should behave identically to --no-proxy."""
-    monkeypatch.setenv("FORGE_HOME", str(tmp_path / "forge"))
-
-    captured: dict[str, object] = {}
-
-    def fake_invoke(*, env_vars=None, unset_env_vars=None, **_kw):
-        captured["env_vars"] = env_vars or {}
-        captured["unset_env_vars"] = unset_env_vars or []
-        return 0
-
-    with patch(_INVOKE, side_effect=fake_invoke):
-        runner = CliRunner()
-        result = runner.invoke(main, ["claude", "start", "--direct"])
-
-    assert result.exit_code == 0, result.output

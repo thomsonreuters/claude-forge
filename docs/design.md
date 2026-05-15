@@ -816,7 +816,7 @@ Forge records proxy cost telemetry in append-only JSONL files under `~/.forge/co
 | Path                                 | Writer                  | Purpose                                      |
 | ------------------------------------ | ----------------------- | -------------------------------------------- |
 | `costs/requests/<month>_<pid>.jsonl` | Proxy request handler   | Per-request token/cost records               |
-| `costs/verbs/<date>.jsonl`           | Forge verb cost wrapper | Best-effort cost deltas for panels/workflows |
+| `costs/verbs/<month>_<pid>.jsonl`    | Forge verb cost wrapper | Best-effort cost deltas for panels/workflows |
 
 Request logs are the source of truth for proxy spend. The proxy bootstraps its in-memory `CostTracker` from current and
 previous month request logs on startup so cap enforcement survives restarts. Verb logs are attribution aids for CLI

@@ -310,6 +310,26 @@ remaining logs at next startup.
 
 ---
 
+### A.10 System prompt addendums (non-Anthropic proxy routing)
+
+When a Forge session launches with a proxy that routes to non-Anthropic models, the session launcher injects a
+model-family-specific system prompt addendum via `--append-system-prompt-file`. These addendums teach the model to
+construct minimal valid tool-call objects (avoiding empty placeholders like `"pages": ""` or `"offset": null`) and to
+prefer dedicated tools (Read/Edit/Write) over Bash. Both OpenAI and Gemini share the same core tool-discipline guidance;
+the Gemini variant uses stronger Bash-avoidance language due to a higher observed rate of `cat`/`sed`/`grep` use.
+
+**Injection layer:** `src/forge/cli/session_addendum.py` resolves the addendum at session launch time
+(`session_lifecycle.py`), not inside the proxy request path. Direct HTTP use of a proxy does not get addendum injection.
+
+**Catalog field:** `system_prompt_addendum` on each model entry in `model_catalog.yaml`. Value is a relative path like
+`system_prompt_addendums/openai.md` pointing to a markdown resource in `src/forge/core/data/`.
+
+**Lookup:** `get_system_prompt_addendum(model_or_alias)` in `forge.core.models.catalog` resolves the model, loads the
+resource, and returns the content string. Returns `None` for models not in the catalog or without an addendum (fails
+open -- common with OpenRouter's open model space).
+
+---
+
 ## B. Direct Command Reference
 
 Extracted from [design.md §3.11](design.md#311-direct-commands-userpromptsubmit-dispatcher). Design goal, mechanism, and

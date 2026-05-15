@@ -257,6 +257,11 @@ Default timeout is 600 seconds (10 minutes). Increase with `-t`:
 forge workflow analyze "Deep analysis" -t 900
 ```
 
+### "Worker fails with `--bare: unknown option`"
+
+Workflow subprocesses use `claude -p --bare` for faster startup when `ANTHROPIC_API_KEY` is available. `--bare` requires
+Claude Code >= 2.1.81. Upgrade Claude Code to resolve this.
+
 ### "debate rejects my proposal"
 
 Debate builds its evaluation resource internally. If you need a custom evaluation framework, use `panel` with a custom

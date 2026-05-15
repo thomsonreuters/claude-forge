@@ -37,6 +37,16 @@ reasoning quality) or mixing providers within a single workflow (GPT for plannin
 The tradeoff is cost: you pay API rates instead of bundled subscription pricing. Forge's
 [spend caps](#cost-tracking-and-spend-caps) make this manageable.
 
+### System prompt addendums
+
+When routing to non-Anthropic models, Forge automatically injects a tool-discipline addendum into the system prompt at
+session launch. Non-Anthropic models tend to hallucinate optional tool parameters (e.g., `"pages": ""` on Read calls)
+and reach for Bash as a workaround for tool errors. The addendum teaches them to use minimal valid parameters and prefer
+dedicated tools. No configuration needed.
+
+Note: addendums are injected by the session launcher (`--append-system-prompt-file`), not by the proxy itself. Direct
+HTTP use of the proxy does not include them.
+
 ### No-proxy mode
 
 When using Claude Code directly (without Forge proxy), proxies are not used. Sessions still function for workflow
@@ -443,6 +453,13 @@ continue and returns `X-Spend-Warning`.
 Cap enforcement is process-local and best-effort. For reliable cap enforcement, run a single proxy process per proxy ID.
 Cost logs accumulate in `~/.forge/costs/` — safely delete old JSONL files to reclaim space; the proxy re-bootstraps from
 remaining logs at next startup.
+
+---
+
+## Prerequisites
+
+- **Claude Code >= 2.1.81** -- required for `--bare` (used by workflow subprocesses for faster startup). Older versions
+  produce `--bare: unknown option` errors.
 
 ---
 

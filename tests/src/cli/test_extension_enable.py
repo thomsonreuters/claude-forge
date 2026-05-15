@@ -491,6 +491,8 @@ class TestEnableWithPath:
         assert call_kwargs.kwargs["scope"] == InstallScope.LOCAL
 
     def test_path_with_scope_user_errors(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock, patch
+
         from click.testing import CliRunner
 
         from forge.cli.extensions import enable_cmd
@@ -498,8 +500,10 @@ class TestEnableWithPath:
         repo = tmp_path / "repo"
         repo.mkdir()
 
-        runner = CliRunner()
-        result = runner.invoke(enable_cmd, ["--scope", "user", "--path", str(repo)])
+        with patch("forge.install.version.check_minimum_version") as mock_ver:
+            mock_ver.return_value = MagicMock(ok=True)
+            runner = CliRunner()
+            result = runner.invoke(enable_cmd, ["--scope", "user", "--path", str(repo)])
 
         assert result.exit_code != 0
         assert "not applicable" in result.output.lower()
@@ -541,6 +545,8 @@ class TestEnableWithPath:
         assert not (repo / ".forge").is_dir()
 
     def test_path_inside_claude_dir_errors(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock, patch
+
         from click.testing import CliRunner
 
         from forge.cli.extensions import enable_cmd
@@ -548,8 +554,10 @@ class TestEnableWithPath:
         claude_dir = tmp_path / "repo" / ".claude"
         claude_dir.mkdir(parents=True)
 
-        runner = CliRunner()
-        result = runner.invoke(enable_cmd, ["--scope", "local", "--path", str(claude_dir)])
+        with patch("forge.install.version.check_minimum_version") as mock_ver:
+            mock_ver.return_value = MagicMock(ok=True)
+            runner = CliRunner()
+            result = runner.invoke(enable_cmd, ["--scope", "local", "--path", str(claude_dir)])
 
         assert result.exit_code != 0
         assert "inside a .claude directory" in result.output

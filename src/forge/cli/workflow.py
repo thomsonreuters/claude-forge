@@ -302,7 +302,7 @@ def _print_grouped_models(availabilities: list) -> None:
     default=None,
     help="Minimum severity to report",
 )
-@click.option("--via", type=str, default=None, help="Route proxy-backed workers through this proxy")
+@click.option("--proxy", "via", type=str, default=None, help="Route proxy-backed workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def panel(
@@ -697,7 +697,7 @@ def _handle_review_output(
     is_flag=True,
     help="Gate on verdict: exit 0 if passed, exit 1 if failed",
 )
-@click.option("--via", type=str, default=None, help="Route proxy-backed workers through this proxy")
+@click.option("--proxy", "via", type=str, default=None, help="Route proxy-backed workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def analyze(
@@ -1075,7 +1075,7 @@ def _resolve_debate_prompt(
     type=str,
     help='Worker spec: model:stance or model:"custom prompt" (repeatable)',
 )
-@click.option("--via", type=str, default=None, help="Route proxy-backed workers through this proxy")
+@click.option("--proxy", "via", type=str, default=None, help="Route proxy-backed workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def debate(
@@ -1725,7 +1725,7 @@ def _print_consensus_text(output: ConsensusOutput) -> None:
     type=str,
     help='Worker spec: model:role or model:"custom prompt" (repeatable)',
 )
-@click.option("--via", type=str, default=None, help="Route proxy-backed workers through this proxy")
+@click.option("--proxy", "via", type=str, default=None, help="Route proxy-backed workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def consensus(

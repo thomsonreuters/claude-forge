@@ -303,7 +303,7 @@ def _resolve_direct_spec(
 
     warning = None
     if via:
-        warning = f"Worker '{spec.name}' uses direct Anthropic routing; --via ignored."
+        warning = f"Worker '{spec.name}' uses direct Anthropic routing; --proxy ignored."
 
     return RoutingResult(
         base_url=None,

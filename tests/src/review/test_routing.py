@@ -439,7 +439,7 @@ class TestResolveInvocationRouting:
             plan = resolve_invocation_routing([spec], via="openrouter-openai")
 
         assert plan.routes[0].warning is not None
-        assert "--via ignored" in plan.routes[0].warning
+        assert "--proxy ignored" in plan.routes[0].warning
         assert plan.via_override == "openrouter-openai"
 
     def test_proxy_spec_calls_resolver(self):

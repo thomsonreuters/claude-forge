@@ -130,7 +130,7 @@ ModelSpec(name, model_id, family, provider_refs, description,
 
 Key fields: `model_id` is Forge-canonical (e.g., `gpt-5.5`, not `openai/gpt-5.5`). `family` is the model's native family
 (e.g., `openai`, `anthropic`, `gemini`). `provider_refs` is ordered `(namespace, model_ref)` tuples declaring how to
-reach the model via each provider. `preferred_proxy` is a soft catalog hint, overridable by `--via` or route scan.
+reach the model via each provider. `preferred_proxy` is a soft catalog hint, overridable by `--proxy` or route scan.
 
 ### A.6 Credentials and Connection Values (§3.6.9)
 
@@ -935,7 +935,7 @@ fail-open/fail-closed semantics, and per-invocation routing plan remain in desig
 
 ```python
 RoutingSource = Literal[
-    "explicit",          # CLI flag override (--via, --supervisor-proxy, config URL)
+    "explicit",          # CLI flag override (--proxy, --supervisor-proxy, config URL)
     "subprocess_proxy",  # Session ambient (FORGE_SUBPROCESS_PROXY)
     "preferred_proxy",   # Catalog hint (ModelSpec.preferred_proxy)
     "route_scan",        # Compatible running proxy found via route matching
@@ -977,7 +977,7 @@ distinguish them.
 class WorkerRoutingPlan:
     routes: tuple[RoutingResult, ...]  # Indexed by worker position (same order as spec list)
     resolved_at: str                   # ISO timestamp for staleness detection
-    via_override: str | None           # --via value, if set (for logging)
+    via_override: str | None           # --proxy value, if set (for logging)
 ```
 
 ### L.3 Key function signatures

@@ -318,103 +318,103 @@ class TestRunPanel:
         assert "Invalid --context" in result.output
 
     @patch("forge.review.engine.run_multi_review")
-    def test_via_flag_accepted(self, mock_run):
+    def test_proxy_flag_accepted(self, mock_run):
         mock_run.return_value = _mock_output()
         runner = CliRunner()
-        result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "openrouter-openai"])
+        result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--proxy", "openrouter-openai"])
         assert result.exit_code == 0
 
-    def test_panel_help_shows_via(self):
+    def test_panel_help_shows_proxy(self):
         runner = CliRunner()
         result = runner.invoke(main, ["workflow", "panel", "--help"])
-        assert "--via" in result.output
+        assert "--proxy" in result.output
 
 
-class TestViaFlag:
-    """Tests for --via flag across all workflow commands."""
+class TestProxyFlag:
+    """Tests for --proxy flag across all workflow commands."""
 
-    def test_panel_help_has_via(self):
+    def test_panel_help_has_proxy(self):
         runner = CliRunner()
         result = runner.invoke(main, ["workflow", "panel", "--help"])
-        assert "--via" in result.output
+        assert "--proxy" in result.output
 
-    def test_analyze_help_has_via(self):
+    def test_analyze_help_has_proxy(self):
         runner = CliRunner()
         result = runner.invoke(main, ["workflow", "analyze", "--help"])
-        assert "--via" in result.output
+        assert "--proxy" in result.output
 
-    def test_debate_help_has_via(self):
+    def test_debate_help_has_proxy(self):
         runner = CliRunner()
         result = runner.invoke(main, ["workflow", "debate", "--help"])
-        assert "--via" in result.output
+        assert "--proxy" in result.output
 
-    def test_consensus_help_has_via(self):
+    def test_consensus_help_has_proxy(self):
         runner = CliRunner()
         result = runner.invoke(main, ["workflow", "consensus", "--help"])
-        assert "--via" in result.output
+        assert "--proxy" in result.output
 
     @patch("forge.review.engine.run_multi_review")
-    def test_via_passed_to_routing(self, mock_run):
-        """--via is forwarded to resolve_invocation_routing."""
+    def test_proxy_passed_to_routing(self, mock_run):
+        """--proxy is forwarded to resolve_invocation_routing."""
         mock_run.return_value = _mock_output()
         runner = CliRunner()
 
         with patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan) as mock_routing:
-            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "my-proxy"])
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--proxy", "my-proxy"])
 
         assert result.exit_code == 0
         assert mock_routing.call_args[1]["via"] == "my-proxy"
 
     @patch("forge.review.engine.run_multi_review")
-    def test_analyze_via_passed(self, mock_run):
+    def test_analyze_proxy_passed(self, mock_run):
         mock_run.return_value = _mock_output()
         runner = CliRunner()
 
         with patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan) as mock_routing:
-            result = runner.invoke(main, ["workflow", "analyze", "topic", "--via", "my-proxy"])
+            result = runner.invoke(main, ["workflow", "analyze", "topic", "--proxy", "my-proxy"])
 
         assert result.exit_code == 0
         assert mock_routing.call_args[1]["via"] == "my-proxy"
 
-    def test_panel_via_routing_error_exits_1(self):
-        """Invalid --via produces clean error, not a traceback."""
+    def test_panel_proxy_routing_error_exits_1(self):
+        """Invalid --proxy produces clean error, not a traceback."""
         runner = CliRunner()
         with patch(
             "forge.review.routing.resolve_invocation_routing",
             side_effect=RuntimeError("No running proxy found for model 'gpt-5.5'."),
         ):
-            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "dead-proxy"])
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--proxy", "dead-proxy"])
         assert result.exit_code == 1
         assert "Routing failed" in result.output
         assert "gpt-5.5" in result.output
 
-    def test_panel_via_proxy_not_found_exits_1(self):
+    def test_panel_proxy_not_found_exits_1(self):
         """Proxy registry errors are rendered as routing errors."""
         runner = CliRunner()
         with patch(
             "forge.review.routing.resolve_invocation_routing",
             side_effect=ProxyNotFoundError("dead-proxy"),
         ):
-            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "dead-proxy"])
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--proxy", "dead-proxy"])
         assert result.exit_code == 1
         assert "Routing failed" in result.output
         assert "dead-proxy" in result.output
 
-    def test_panel_via_routing_error_json(self):
+    def test_panel_proxy_routing_error_json(self):
         """--json mode emits structured routing_error."""
         runner = CliRunner()
         with patch(
             "forge.review.routing.resolve_invocation_routing",
             side_effect=RuntimeError("No running proxy"),
         ):
-            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "dead-proxy", "--json"])
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--proxy", "dead-proxy", "--json"])
         assert result.exit_code == 1
         data = json.loads(result.output)
         assert "routing_error" in data
         assert "No running proxy" in data["routing_error"]
 
     def test_panel_resolves_routing_before_preflight(self, monkeypatch):
-        """Preflight validates the actual --via routing plan."""
+        """Preflight validates the actual --proxy routing plan."""
         calls = []
 
         def record_preflight(_specs, **kwargs):
@@ -432,19 +432,19 @@ class TestViaFlag:
             patch("forge.review.routing.resolve_invocation_routing", side_effect=record_routing),
             patch("forge.review.engine.run_multi_review", return_value=_mock_output()),
         ):
-            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "my-proxy"])
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--proxy", "my-proxy"])
 
         assert result.exit_code == 0
         assert [name for name, _ in calls] == ["routing", "preflight"]
         assert calls[1][1] is calls[0][1]
 
-    def test_debate_via_routing_error_exits_1(self):
+    def test_debate_proxy_routing_error_exits_1(self):
         runner = CliRunner()
         with patch(
             "forge.review.routing.resolve_invocation_routing",
             side_effect=RuntimeError("Proxy 'bad' not found"),
         ):
-            result = runner.invoke(main, ["workflow", "debate", "proposal", "--via", "bad"])
+            result = runner.invoke(main, ["workflow", "debate", "proposal", "--proxy", "bad"])
         assert result.exit_code == 1
         assert "Routing failed" in result.output
 
@@ -454,19 +454,19 @@ class TestViaFlag:
         mock_run.return_value = _mock_output()
         runner = CliRunner()
         with patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan) as mock_routing:
-            result = runner.invoke(main, ["workflow", "debate", "proposal", "--via", "my-proxy"])
+            result = runner.invoke(main, ["workflow", "debate", "proposal", "--proxy", "my-proxy"])
 
         assert result.exit_code == 0
         assert mock_routing.call_count == 1
         assert mock_run.call_args[1]["routing_plan"] is not None
 
-    def test_consensus_via_routing_error_exits_1(self):
+    def test_consensus_proxy_routing_error_exits_1(self):
         runner = CliRunner()
         with patch(
             "forge.review.routing.resolve_invocation_routing",
             side_effect=RuntimeError("Proxy 'bad' not found"),
         ):
-            result = runner.invoke(main, ["workflow", "consensus", "subject", "--via", "bad"])
+            result = runner.invoke(main, ["workflow", "consensus", "subject", "--proxy", "bad"])
         assert result.exit_code == 1
         assert "Routing failed" in result.output
 
@@ -476,7 +476,7 @@ class TestViaFlag:
         mock_run.return_value = _mock_output()
         runner = CliRunner()
         with patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan) as mock_routing:
-            result = runner.invoke(main, ["workflow", "consensus", "subject", "--via", "my-proxy"])
+            result = runner.invoke(main, ["workflow", "consensus", "subject", "--proxy", "my-proxy"])
 
         assert result.exit_code == 0
         assert mock_routing.call_count == 1

@@ -422,7 +422,7 @@ fallback chains with different semantics.
 
 | Step | Source             | Behavior                                                                 |
 | ---- | ------------------ | ------------------------------------------------------------------------ |
-| 1    | `explicit`         | CLI flag override (`--via`, `--supervisor-proxy`, config URL)            |
+| 1    | `explicit`         | CLI flag override (`--proxy`, `--supervisor-proxy`, config URL)          |
 | 2    | `subprocess_proxy` | Session ambient (`FORGE_SUBPROCESS_PROXY`) -- user intent for child jobs |
 | 3    | `preferred_proxy`  | Catalog hint (`ModelSpec.preferred_proxy`); soft -- skip if not running  |
 | 4    | `route_scan`       | Find any running proxy compatible with a derived `ModelRoute`            |
@@ -959,8 +959,8 @@ Note: `session context` is a deprecated alias for `session show`.
 Workflow model specs support proxy-backed workers and explicit direct Claude workers. The stable `claude-opus` worker is
 kept on Claude Opus 4.6; newer direct workers such as `claude-opus-4.7` are opt-in and can attach per-worker prompt
 hints through `ModelSpec.prompt`. All workflow execution commands (panel, analyze, debate, consensus) accept
-`--via <proxy_id>` to route proxy-backed workers through a specific proxy, overriding preferred_proxy and route scan
-(§3.6.12). Direct workers (e.g., `claude-opus`) remain on Anthropic routing regardless of `--via`.
+`--proxy <proxy_id>` to route proxy-backed workers through a specific proxy, overriding preferred_proxy and route scan
+(§3.6.12). Direct workers (e.g., `claude-opus`) remain on Anthropic routing regardless of `--proxy`.
 
 #### Search
 

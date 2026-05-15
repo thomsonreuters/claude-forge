@@ -45,12 +45,12 @@ runtime from proxy templates and credentials. The preferred proxy is a catalog h
 compatible proxy found in the registry will work.
 
 Selectable direct Claude workers include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Additional OSS
-models include `deepseek-v4-pro`, `minimax-m2.7`, `qwen3.6-max-preview`, `kimi-k2.6`, and `glm-5.1`. Use `--via` to
+models include `deepseek-v4-pro`, `minimax-m2.7`, `qwen3.6-max-preview`, `kimi-k2.6`, and `glm-5.1`. Use `--proxy` to
 route all workers through a specific proxy:
 
 ```bash
 # Route all workers through one proxy (single OPENROUTER_API_KEY setup)
-forge workflow panel src/ --code -m gpt-5.5,deepseek-v4-pro --via openrouter-openai
+forge workflow panel src/ --code -m gpt-5.5,deepseek-v4-pro --proxy openrouter-openai
 
 # Explicit direct Claude workers
 forge workflow panel src/ --code -m claude-opus-4.6,claude-opus-4.7
@@ -157,7 +157,7 @@ All `forge workflow` subcommands support:
 | `--json`  | Structured JSON output (model responses, durations, success/fail)                                     |
 | `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)                                           |
 | `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-3.1-pro-preview`)                              |
-| `--via`   | Route proxy-backed workers through this proxy; direct workers (e.g., `claude-opus`) stay on Anthropic |
+| `--proxy` | Route proxy-backed workers through this proxy; direct workers (e.g., `claude-opus`) stay on Anthropic |
 | `-t`      | Per-model timeout in seconds (default: 600)                                                           |
 | `--cwd`   | Working directory for subprocesses                                                                    |
 
@@ -234,7 +234,7 @@ forge proxy create openrouter-openai
 forge proxy create openrouter-gemini
 
 # Or route everything through one proxy
-forge workflow panel src/ --code --via openrouter-openai
+forge workflow panel src/ --code --proxy openrouter-openai
 
 # Filter to only ready models (useful for scripting)
 forge workflow list-models --available

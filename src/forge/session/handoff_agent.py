@@ -216,7 +216,7 @@ def resolve_handoff_base_url(
 
     Args:
         proxy_id: Optional proxy from HandoffConfig. Soft: falls through
-            on miss (unlike workflow's strict --via).
+            on miss (unlike workflow's strict --proxy).
         confirmed_proxy_base_url: Base URL from session's confirmed proxy.
         env_base_url: Fallback base URL from environment.
         direct: When True, force direct routing (skip all proxy resolution).

@@ -253,7 +253,7 @@ forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODEL_B --json 2>&1 | jq 
 - [ ] Comma-separated `--models` produces one result per specified model (`.successful` count matches)
 - [ ] Result keys in `.results` correspond to the requested model names
 
-### 14.12 Workflow Routing, `--via`, and Preflight
+### 14.12 Workflow Routing, `--proxy`, and Preflight
 
 <!-- prereq: 4.2, 14.1 -->
 
@@ -265,7 +265,7 @@ forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODEL_B --json 2>&1 | jq 
 # Explicit proxy routing: one selected proxy handles this worker.
 FORGE_DEBUG=1 forge workflow panel docs/ \
   --models "$FORGE_QA_WORKFLOW_MODEL_A" \
-  --via "$FORGE_QA_OPENAI_PROXY" \
+  --proxy "$FORGE_QA_OPENAI_PROXY" \
   --json > /tmp/forge-workflow-via.json
 
 jq '{results: (.results | keys), successful, failed}' /tmp/forge-workflow-via.json
@@ -275,7 +275,7 @@ echo "---"
 # Human output should surface non-blocking routing advisories when they apply.
 forge workflow analyze -p "Reply with READY only." \
   --models "$FORGE_QA_WORKFLOW_MODEL_A" \
-  --via "$FORGE_QA_OPENAI_PROXY" 2>&1 | tee /tmp/forge-workflow-via-warning.txt
+  --proxy "$FORGE_QA_OPENAI_PROXY" 2>&1 | tee /tmp/forge-workflow-via-warning.txt
 
 grep -E "Routing warning|tier overrides|Proxy tier mappings" /tmp/forge-workflow-via-warning.txt || true
 
@@ -299,8 +299,8 @@ jq -e '.preflight_errors[0] | test("ANTHROPIC_API_KEY|anthropic"; "i")' \
   /tmp/forge-workflow-direct-preflight.json
 ```
 
-- [ ] `--via` resolves a compatible selected proxy and the JSON output remains parseable
-- [ ] Non-JSON workflow output prints a `Routing warning:` when `--via` selects a cross-family or live-advisory route
+- [ ] `--proxy` resolves a compatible selected proxy and the JSON output remains parseable
+- [ ] Non-JSON workflow output prints a `Routing warning:` when `--proxy` selects a cross-family or live-advisory route
   (same-family routes may have no warning)
 - [ ] The latest CLI workflow log contains a consolidated `Routing decision:` line with model, source, proxy/template,
   and model ref

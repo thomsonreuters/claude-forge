@@ -1,11 +1,11 @@
-"""Regression: --via must surface routing warnings in JSON output.
+"""Regression: --proxy must surface routing warnings in JSON output.
 
 Bug: _routing_plan_warnings() existed but was only shown for non-JSON output
 (gated by `if not json_output`). JSON consumers had no way to see that direct
-workers (e.g., claude-opus) ignore --via routing.
+workers (e.g., claude-opus) ignore --proxy routing.
 
 Fix: Plumb routing_warnings through _handle_review_output, _build_check_json,
-and format_json_output. Also update --via help text to say "proxy-backed workers".
+and format_json_output. Also update --proxy help text to say "proxy-backed workers".
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def test_bug_via_flag_warns_about_direct_workers() -> None:
                 source="direct",
                 route=None,
                 credential=None,
-                warning="Direct worker 'claude-opus' is not routed through --via proxy",
+                warning="Direct worker 'claude-opus' is not routed through --proxy proxy",
             ),
         )
 

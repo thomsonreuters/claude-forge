@@ -295,7 +295,7 @@ def resolve_subprocess_routing(
     Args:
         explicit_base_url: Highest-priority URL override (supervisor's
             ``config.base_url``). Opaque -- no compatibility check.
-        explicit_proxy: User-chosen proxy (``--via``, ``--supervisor-proxy``).
+        explicit_proxy: User-chosen proxy (``--proxy``, ``--supervisor-proxy``).
             Strict: hard error if missing, unreachable, or incompatible.
         preferred_proxy: Catalog hint (``ModelSpec.preferred_proxy``).
             Soft: warn and continue if missing.
@@ -421,7 +421,7 @@ def _resolve_strict_proxy(
         raise ProxyRoutingError(
             f"Proxy '{proxy}' (template: {template_desc}) is not compatible with this model.\n"
             f"  Compatible routes: {route_desc or '(direct only)'}\n"
-            f"Tip: Use '--via' with a compatible proxy, or 'forge proxy create <template>'."
+            f"Tip: Use '--proxy' with a compatible proxy, or 'forge proxy create <template>'."
         )
 
     return _make_result_from_entry(entry, route, source, advisory_check=advisory_check)

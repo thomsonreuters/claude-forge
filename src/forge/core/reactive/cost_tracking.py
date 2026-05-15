@@ -182,7 +182,7 @@ def resolve_proxy_urls(specs: list[Any]) -> list[str]:
 def resolve_proxy_urls_from_plan(plan: Any) -> list[str]:
     """Extract unique proxy base URLs from a WorkerRoutingPlan.
 
-    Uses actual routing decisions (correct for --via, subprocess proxy,
+    Uses actual routing decisions (correct for --proxy, subprocess proxy,
     route scan, and session proxy fallback).
     """
     seen: set[str] = set()

@@ -63,11 +63,15 @@ class CostTracker:
     def has_caps(self) -> bool:
         return self.daily_cap_micros is not None or self.monthly_cap_micros is not None
 
-    def bootstrap_from_logs(self, log_dir: Path) -> None:
+    def bootstrap_from_logs(self, log_dir: Path, *, proxy_id: str | None = None) -> None:
         """Read existing cost logs to initialize spend counters.
 
         Reads current month + previous month (for rolling 24h window
         at month boundaries). Scans all PID shards.
+
+        When proxy_id is set, only records matching that proxy are counted.
+        Records without a proxy_id field are skipped (pre-proxy-id logs).
+        When proxy_id is None, all records are counted (backward compat).
         """
         if not log_dir.is_dir():
             return
@@ -103,7 +107,10 @@ class CostTracker:
                         if record is None:
                             continue
 
-                        ts_unix, cost_micros, record_month = record
+                        ts_unix, cost_micros, record_month, record_proxy_id = record
+
+                        if proxy_id is not None and record_proxy_id != proxy_id:
+                            continue
 
                         if record_month == current_month:
                             self._monthly_total += cost_micros
@@ -122,8 +129,8 @@ class CostTracker:
         )
 
     @staticmethod
-    def _parse_record(line: str) -> tuple[float, int, str] | None:
-        """Parse a JSONL line into (unix_timestamp, cost_micros, month_key)."""
+    def _parse_record(line: str) -> tuple[float, int, str, str | None] | None:
+        """Parse a JSONL line into (unix_timestamp, cost_micros, month_key, record_proxy_id)."""
         import json
 
         data = json.loads(line)
@@ -138,7 +145,8 @@ class CostTracker:
             return None
 
         month_key = ts.strftime("%Y-%m")
-        return ts.timestamp(), cost_micros, month_key
+        record_proxy_id = data.get("proxy_id")
+        return ts.timestamp(), cost_micros, month_key, record_proxy_id
 
     def record(self, cost_micros: int) -> None:
         """Record a completed request's cost."""

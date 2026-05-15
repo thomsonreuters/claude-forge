@@ -1188,7 +1188,7 @@ async def convert_openai_to_anthropic_sse(
                 "type": "error",
                 "error": {
                     "type": "internal_server_error",
-                    "message": f"Stream processing error: {str(e)}",
+                    "message": "Stream processing error",
                 },
             }
             yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"

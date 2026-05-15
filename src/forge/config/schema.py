@@ -267,7 +267,7 @@ class ProxyConfig:
     default_tier: str = "sonnet"
     backend_dependency: BackendDependency | None = None
     default_port: int = 8082
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     tool_prefixes_to_ignore: list[str] = field(default_factory=list)
     costs: CostConfig = field(default_factory=CostConfig)
 

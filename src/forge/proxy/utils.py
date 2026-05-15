@@ -322,6 +322,103 @@ async def log_tool_failure(
         _logger.warning("Failed to write tool failure log: %s", e)
 
 
+def _redact_content(content: object) -> dict[str, object]:
+    """Replace message/response content with a redaction marker."""
+    if content is None:
+        return {"redacted": True, "length": 0}
+    if isinstance(content, str):
+        return {"redacted": True, "length": len(content)}
+    if isinstance(content, list):
+        return {
+            "redacted": True,
+            "items": len(content),
+            "block_types": [
+                (item.get("type") if isinstance(item, dict) else getattr(item, "type", "unknown")) for item in content
+            ],
+        }
+    if isinstance(content, dict):
+        return {"redacted": True, "length": len(str(content))}
+    return {"redacted": True, "length": len(str(content))}
+
+
+def _redact_tools(tools: list) -> list[dict[str, object]]:
+    """Keep tool names and structure, redact descriptions."""
+    redacted = []
+    for tool in tools:
+        if isinstance(tool, dict):
+            entry: dict[str, object] = {"name": tool.get("name")}
+            if "description" in tool:
+                entry["description"] = {"redacted": True}
+            if "input_schema" in tool:
+                entry["input_schema"] = {"redacted": True}
+            redacted.append(entry)
+        else:
+            name = getattr(tool, "name", None)
+            redacted.append({"name": name, "redacted": True})
+    return redacted
+
+
+def _redact_body_for_log(body: dict[str, object] | None) -> dict[str, object] | None:
+    """Replace sensitive content in request/response bodies with redaction markers.
+
+    Preserves structural metadata (model, role, token counts, status)
+    while removing all message text, system prompts, tool descriptions,
+    user/org metadata, and tool output.
+    """
+    if body is None:
+        return None
+
+    _SAFE_KEYS = {
+        "model",
+        "temperature",
+        "max_tokens",
+        "top_p",
+        "stream",
+        "stop_sequences",
+        "reasoning_effort",
+        "verbosity",
+        "usage",
+        "id",
+        "type",
+        "role",
+        "stop_reason",
+    }
+
+    redacted: dict[str, object] = {k: v for k, v in body.items() if k in _SAFE_KEYS}
+
+    if "messages" in body and isinstance(body["messages"], list):
+        redacted["messages"] = [
+            {
+                "role": msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", "unknown"),
+                "content": _redact_content(
+                    msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", None)
+                ),
+            }
+            for msg in body["messages"]
+        ]
+
+    if "system" in body:
+        redacted["system"] = _redact_content(body["system"])
+
+    if "tools" in body and isinstance(body["tools"], list):
+        redacted["tools"] = _redact_tools(body["tools"])
+
+    if "content" in body and isinstance(body["content"], list):
+        redacted["content"] = [
+            {
+                "type": block.get("type") if isinstance(block, dict) else getattr(block, "type", "unknown"),
+                "content": _redact_content(
+                    block.get("text", block.get("content"))
+                    if isinstance(block, dict)
+                    else getattr(block, "text", getattr(block, "content", None))
+                ),
+            }
+            for block in body["content"]
+        ]
+
+    return redacted
+
+
 async def log_request_response(
     request_id: str,
     original_model: str,
@@ -339,17 +436,17 @@ async def log_request_response(
     max_tokens: int | None = None,
     streaming: bool = False,
 ) -> None:
-    """Log request/response pairs to JSONL file for analysis and replay.
+    """Log sanitized request/response metadata to JSONL for debugging.
 
     Logs at INFO level on failure (status >= 400) and DEBUG level always.
-    This provides comprehensive visibility for debugging and creating integration tests.
+    Bodies are redacted before writing; these logs are not replay fixtures.
 
     Args:
         request_id: Unique request identifier
         original_model: Original model name requested
         mapped_model: Actual model used after mapping
-        request_body: Full request payload for replay
-        response_body: Full response payload (None for streaming)
+        request_body: Request payload (redacted before write)
+        response_body: Response payload (redacted before write; None for streaming)
         status_code: HTTP status code
         duration_ms: Request duration in milliseconds
         error: Error message if request failed
@@ -390,9 +487,8 @@ async def log_request_response(
 
         is_failure = status_code >= 400
 
-        # Always include bodies in the JSONL file for replay capability
-        event["request_body"] = request_body
-        event["response_body"] = response_body
+        event["request_body"] = _redact_body_for_log(request_body)
+        event["response_body"] = _redact_body_for_log(response_body)
 
         from forge.core.state import open_secure_append
 

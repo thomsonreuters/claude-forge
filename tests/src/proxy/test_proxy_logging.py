@@ -13,6 +13,9 @@ from types import SimpleNamespace
 import pytest
 
 from forge.proxy.utils import (
+    _redact_body_for_log,
+    _redact_content,
+    _redact_tools,
     _truncate_for_log,
     _truncate_recursive,
     log_request_response,
@@ -464,3 +467,172 @@ async def test_check_client_tool_failures_logs_raw_error_before_enrichment(
 
     assert captured["error_content"] == raw_error
     assert "HINT:" in tool_result.content
+
+
+# --- Body redaction for debug request logs ---
+
+
+class TestRedactContent:
+    def test_redacts_string(self) -> None:
+        result = _redact_content("secret prompt text")
+        assert result["redacted"] is True
+        assert result["length"] == len("secret prompt text")
+
+    def test_redacts_list_preserves_block_types(self) -> None:
+        result = _redact_content(
+            [
+                {"type": "text", "text": "hello"},
+                {"type": "tool_result", "content": "secret output"},
+            ]
+        )
+        assert result["redacted"] is True
+        assert result["items"] == 2
+        assert result["block_types"] == ["text", "tool_result"]
+
+    def test_redacts_dict(self) -> None:
+        result = _redact_content({"key": "value"})
+        assert result["redacted"] is True
+
+    def test_redacts_none(self) -> None:
+        result = _redact_content(None)
+        assert result["redacted"] is True
+        assert result["length"] == 0
+
+
+class TestRedactTools:
+    def test_preserves_name_redacts_description(self) -> None:
+        tools: list = [
+            {"name": "read_file", "description": "Read a file from the filesystem"},
+            {"name": "bash", "description": "Execute shell commands", "input_schema": {"type": "object"}},
+        ]
+        result = _redact_tools(tools)
+        assert result[0]["name"] == "read_file"
+        assert result[0]["description"] == {"redacted": True}
+        assert result[1]["name"] == "bash"
+        assert result[1]["input_schema"] == {"redacted": True}
+
+    def test_tool_without_description(self) -> None:
+        tools: list = [{"name": "simple_tool"}]
+        result = _redact_tools(tools)
+        assert result[0]["name"] == "simple_tool"
+        assert "description" not in result[0]
+
+
+class TestRedactBodyForLog:
+    @staticmethod
+    def _redact(body: dict | None) -> dict:
+        """Helper that asserts non-None and returns typed dict for test assertions."""
+        result = _redact_body_for_log(body)
+        assert result is not None
+        return result
+
+    def test_replaces_message_content_with_markers(self) -> None:
+        result = self._redact(
+            {
+                "model": "claude-sonnet-4-6",
+                "messages": [
+                    {"role": "user", "content": "Tell me a secret"},
+                    {"role": "assistant", "content": "Here is the secret: ..."},
+                ],
+            }
+        )
+        assert result["model"] == "claude-sonnet-4-6"
+        msgs = result["messages"]
+        assert isinstance(msgs, list)
+        for msg in msgs:
+            assert isinstance(msg, dict)
+            content = msg["content"]
+            assert isinstance(content, dict)
+            assert content["redacted"] is True
+            assert isinstance(content["length"], int)
+
+    def test_preserves_safe_metadata_only(self) -> None:
+        result = self._redact(
+            {
+                "model": "gpt-5.5",
+                "temperature": 0.7,
+                "max_tokens": 4096,
+                "tools": [{"name": "read_file", "description": "secret org tool"}],
+                "messages": [{"role": "user", "content": "hello"}],
+                "metadata": {"user_id": "usr_secret_123"},
+            }
+        )
+        assert result["model"] == "gpt-5.5"
+        assert result["temperature"] == 0.7
+        assert result["max_tokens"] == 4096
+        tools = result["tools"]
+        assert isinstance(tools, list)
+        assert tools[0]["name"] == "read_file"
+        assert tools[0]["description"] == {"redacted": True}
+        assert "metadata" not in result
+
+    def test_strips_unknown_keys(self) -> None:
+        result = self._redact(
+            {
+                "model": "test",
+                "custom_header": "sensitive",
+                "anthropic_metadata": {"user_id": "secret"},
+                "messages": [],
+            }
+        )
+        assert "custom_header" not in result
+        assert "anthropic_metadata" not in result
+
+    def test_handles_none(self) -> None:
+        assert _redact_body_for_log(None) is None
+
+    def test_redacts_system_prompt(self) -> None:
+        result = self._redact({"system": "You are a helpful assistant with secrets", "messages": []})
+        system = result["system"]
+        assert isinstance(system, dict)
+        assert system["redacted"] is True
+
+    def test_redacts_response_content_blocks(self) -> None:
+        result = self._redact(
+            {
+                "content": [
+                    {"type": "text", "text": "Here is some sensitive response text"},
+                    {"type": "tool_use", "content": "secret tool output"},
+                ],
+            }
+        )
+        content = result["content"]
+        assert isinstance(content, list)
+        for block in content:
+            assert isinstance(block, dict)
+            inner = block["content"]
+            assert isinstance(inner, dict)
+            assert inner["redacted"] is True
+
+    def test_no_plaintext_leak(self) -> None:
+        secret = "SUPER_SECRET_API_KEY_12345"
+        result = self._redact(
+            {
+                "model": "test",
+                "system": f"Use this key: {secret}",
+                "messages": [
+                    {"role": "user", "content": f"My secret is {secret}"},
+                ],
+                "metadata": {"user_id": secret},
+                "tools": [{"name": "tool", "description": f"Uses {secret}"}],
+            }
+        )
+        serialized = json.dumps(result)
+        assert secret not in serialized
+
+    def test_handles_all_content_types(self) -> None:
+        bodies: list[dict] = [
+            {"messages": [{"role": "user", "content": "string content"}]},
+            {"messages": [{"role": "user", "content": [{"type": "text", "text": "list content"}]}]},
+            {"messages": [{"role": "user", "content": {"key": "dict content"}}]},
+            {"messages": [{"role": "user", "content": None}]},
+        ]
+        for body in bodies:
+            result = self._redact(body)
+            msgs = result["messages"]
+            assert isinstance(msgs, list)
+            msg = msgs[0]
+            assert isinstance(msg, dict)
+            content = msg["content"]
+            assert isinstance(content, dict)
+            assert content["redacted"] is True

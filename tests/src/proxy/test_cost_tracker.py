@@ -169,6 +169,62 @@ class TestBootstrap:
         t.bootstrap_from_logs(log_dir)
         assert t.monthly_spend_micros() == 200_000
 
+    def test_bootstrap_filters_by_proxy_id(self, tmp_path: Path):
+        log_dir = tmp_path / "costs" / "requests"
+        log_dir.mkdir(parents=True)
+
+        now = datetime.now(timezone.utc)
+        month = now.strftime("%Y-%m")
+        ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        path = log_dir / f"{month}_9999.jsonl"
+        with open(path, "w") as f:
+            f.write(json.dumps({"ts": ts, "cost_micros": 100_000, "proxy_id": "proxy-a"}) + "\n")
+            f.write(json.dumps({"ts": ts, "cost_micros": 200_000, "proxy_id": "proxy-b"}) + "\n")
+            f.write(json.dumps({"ts": ts, "cost_micros": 300_000, "proxy_id": "proxy-a"}) + "\n")
+
+        t = CostTracker(daily_cap_usd=10.0, monthly_cap_usd=100.0)
+        t.bootstrap_from_logs(log_dir, proxy_id="proxy-a")
+
+        assert t.daily_spend_micros() == 400_000
+        assert t.monthly_spend_micros() == 400_000
+
+    def test_bootstrap_no_proxy_id_reads_all(self, tmp_path: Path):
+        log_dir = tmp_path / "costs" / "requests"
+        log_dir.mkdir(parents=True)
+
+        now = datetime.now(timezone.utc)
+        month = now.strftime("%Y-%m")
+        ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        path = log_dir / f"{month}_9999.jsonl"
+        with open(path, "w") as f:
+            f.write(json.dumps({"ts": ts, "cost_micros": 100_000, "proxy_id": "proxy-a"}) + "\n")
+            f.write(json.dumps({"ts": ts, "cost_micros": 200_000, "proxy_id": "proxy-b"}) + "\n")
+            f.write(json.dumps({"ts": ts, "cost_micros": 50_000}) + "\n")
+
+        t = CostTracker(daily_cap_usd=10.0)
+        t.bootstrap_from_logs(log_dir, proxy_id=None)
+        assert t.daily_spend_micros() == 350_000
+
+    def test_bootstrap_skips_records_without_proxy_id(self, tmp_path: Path):
+        """Records without proxy_id are excluded when filtering is active."""
+        log_dir = tmp_path / "costs" / "requests"
+        log_dir.mkdir(parents=True)
+
+        now = datetime.now(timezone.utc)
+        month = now.strftime("%Y-%m")
+        ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        path = log_dir / f"{month}_9999.jsonl"
+        with open(path, "w") as f:
+            f.write(json.dumps({"ts": ts, "cost_micros": 100_000, "proxy_id": "proxy-a"}) + "\n")
+            f.write(json.dumps({"ts": ts, "cost_micros": 200_000}) + "\n")
+
+        t = CostTracker(daily_cap_usd=10.0)
+        t.bootstrap_from_logs(log_dir, proxy_id="proxy-a")
+        assert t.daily_spend_micros() == 100_000
+
 
 class TestDailyWindowRolling:
     def test_old_entries_pruned(self):

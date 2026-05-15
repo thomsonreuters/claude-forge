@@ -106,7 +106,7 @@ def _initialize_cost_tracker_from_config() -> CostTracker:
             cap_mode=cost_cfg.cap_mode,
             on_cap_hit=cost_cfg.on_cap_hit,
         )
-        cost_tracker.bootstrap_from_logs(get_forge_home() / "costs" / "requests")
+        cost_tracker.bootstrap_from_logs(get_forge_home() / "costs" / "requests", proxy_id=PROXY_ID)
     else:
         cost_tracker = CostTracker()
     return cost_tracker
@@ -544,7 +544,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 status_code=401,
                 detail={
                     "type": "authentication_error",
-                    "message": f"Authentication failed: {e}",
+                    "message": f"Authentication failed [{request_id}]",
                 },
             )
 
@@ -555,10 +555,11 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                     async for chunk in client.create_streaming_completion(openai_request_dict, request_id):
                         yield chunk
                 except ToolCallError as e:
+                    logger.error(f"[{request_id}] ToolCallError: {e}")
                     yield {
                         "error": {
                             "type": e.error_type,
-                            "message": str(e),
+                            "message": f"Tool call error [{request_id}]",
                         }
                     }
                 except ProxyStreamError as e:
@@ -566,7 +567,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                     yield {
                         "error": {
                             "type": e.error_type,
-                            "message": str(e),
+                            "message": f"Streaming request failed [{request_id}]",
                             "status_code": e.status_code,
                         }
                     }
@@ -864,7 +865,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
         raise
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
-        error_msg = f"Internal error: {str(e)}"
+        error_msg = f"Internal error [{request_id}]"
 
         _err_cost = _calc_and_log_cost(
             model=actual_model_id,
@@ -1006,7 +1007,7 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
         logger.error(f"[{request_id}] Token counting failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail={"type": "api_error", "message": f"Token counting failed: {str(e)}"},
+            detail={"type": "api_error", "message": f"Token counting failed [{request_id}]"},
         )
 
 
@@ -1383,7 +1384,7 @@ def find_available_port(start_port: int, max_attempts: int = 10) -> int:
     help="Configuration template to use (e.g., openrouter-gemini, openrouter-openai, openrouter-anthropic)",
 )
 @click.option("--port", type=int, default=8082, help="Port to run the server on (default: 8082)")
-@click.option("--host", default="0.0.0.0", help="Host to bind the server to (default: 0.0.0.0)")
+@click.option("--host", default="127.0.0.1", help="Host to bind the server to (default: 127.0.0.1)")
 @click.option("--reload", is_flag=True, help="Enable auto-reload on code changes")
 @click.option(
     "--auto-port",

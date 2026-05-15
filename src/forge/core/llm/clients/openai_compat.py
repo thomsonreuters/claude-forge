@@ -229,3 +229,16 @@ class ToolCallAccumulator:
     def has_pending(self) -> bool:
         """Check if there are any pending tool calls."""
         return len(self._pending) > 0
+
+    def default_index(self) -> int | None:
+        """Suggest an index for an unindexed single-tool delta.
+
+        Returns 0 when no calls are pending (first tool call), the sole
+        pending index when exactly one exists (continuation), or None
+        when multiple calls are pending (ambiguous -- caller should drop).
+        """
+        if len(self._pending) == 0:
+            return 0
+        if len(self._pending) == 1:
+            return next(iter(self._pending))
+        return None

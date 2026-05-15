@@ -162,7 +162,12 @@ def _hydrate_credentials(env: dict[str, str]) -> None:
 
 
 def _resolve_subprocess_proxy(proxy_id: str) -> str | None:
-    """Resolve subprocess proxy to a base URL, or None if unavailable."""
+    """Resolve subprocess proxy to a base URL, or None if unavailable.
+
+    Direct URL lookup only (not resolve_subprocess_routing). build_claude_env()
+    sets env vars for child processes and only needs a URL. Model compatibility
+    validation happens at workflow routing time (resolve_invocation_routing).
+    """
     try:
         from forge.core.reactive.proxy import lookup_proxy_base_url
 

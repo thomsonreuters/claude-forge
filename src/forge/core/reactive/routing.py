@@ -353,7 +353,10 @@ def resolve_subprocess_routing(
             )
             if injected is not None:
                 return injected
-            _log.debug("Sidecar mode: skipping FORGE_SUBPROCESS_PROXY registry lookup")
+            raise ProxyRoutingError(
+                f"Subprocess proxy '{subprocess_proxy}' configured but not resolvable inside sidecar.\n"
+                "Tip: Ensure the host injects FORGE_SUBPROCESS_BASE_URL into the sidecar environment."
+            )
         else:
             return _resolve_strict_proxy(subprocess_proxy, routes, "subprocess_proxy", advisory_check=advisory_check)
     elif sidecar:

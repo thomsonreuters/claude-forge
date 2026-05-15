@@ -129,8 +129,23 @@ class OpenRouterClient:
             error_str = str(e).lower()
             if "authentication" in error_str or "unauthorized" in error_str:
                 await self._credentials.invalidate(self._provider)
+                await self._close_client()
                 raise AuthenticationError(self._provider, str(e)) from e
             raise ProviderError(self._provider, e) from e
+
+    async def _close_client(self) -> None:
+        """Close and discard the cached HTTP client.
+
+        Forces credential re-resolution on next request, preventing
+        stale credentials from being reused after invalidation.
+        """
+        client = self._client
+        self._client = None
+        if client is not None:
+            try:
+                await client.close()
+            except Exception:
+                pass
 
     async def stream(
         self,
@@ -175,8 +190,11 @@ class OpenRouterClient:
 
                 if delta.tool_calls:
                     for tc_delta in delta.tool_calls:
+                        idx = tc_delta.index
+                        if idx is None and len(delta.tool_calls) == 1:
+                            idx = accumulator.default_index()
                         tool_delta = ToolCallDelta(
-                            index=tc_delta.index,
+                            index=idx,
                             id=tc_delta.id,
                             name=tc_delta.function.name if tc_delta.function else None,
                             arguments_json=(tc_delta.function.arguments or "") if tc_delta.function else "",
@@ -198,6 +216,7 @@ class OpenRouterClient:
             error_str = str(e).lower()
             if "authentication" in error_str or "unauthorized" in error_str:
                 await self._credentials.invalidate(self._provider)
+                await self._close_client()
             yield StreamEvent(type="error", error=str(e))
 
     async def count_tokens(

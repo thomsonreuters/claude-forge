@@ -13,7 +13,7 @@ credential, routing, and cost-accounting foundations that an agent runtime layer
 headless invoker interface, Codex/Gemini native invokers, normalized hooks, and durable cross-runtime usage ledger
 remain future work.
 
-The key design move is to separate concepts that are currently too easy to blur:
+The design separates concepts that are currently too easy to blur:
 
 ```text
 Forge orchestration
@@ -28,8 +28,7 @@ worker invocation, hook policy, usage attribution, and runtime capability checks
 
 ## PR #8 Alignment
 
-The current implementation is moving in the right direction because it separates model gateways and subprocess routing
-from Claude Code session UX:
+The current implementation already separates model gateways and subprocess routing from Claude Code session UX:
 
 - Native OpenRouter support makes "gateway" a first-class Forge proxy concern rather than a side effect of LiteLLM.
 - The credential capability registry separates provider auth from runtime auth and avoids treating Claude Code login as
@@ -255,7 +254,7 @@ Initial implementations:
 
 The compatibility shim should keep current workflow callers working while the internals migrate.
 
-The review engine is the important migration wrinkle. Today the shared base subprocess runner lives in
+The review engine is the migration wrinkle. Today the shared base subprocess runner lives in
 `src/forge/core/reactive/session_runner.py`, while `src/forge/review/engine.py` still owns `run_multi_review()` and its
 direct `Popen` lifecycle management for parallel `claude -p` fan-out. The invoker layer should absorb that
 responsibility rather than leave review on a special path. `HeadlessInvoker` should therefore support timeouts,

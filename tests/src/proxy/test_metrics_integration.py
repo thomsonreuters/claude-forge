@@ -179,7 +179,7 @@ def test_python_m_proxy_app_import_initializes_spend_caps(tmp_path: Path):
         cost_dir.mkdir(parents=True, exist_ok=True)
         cost_file = cost_dir / f"{now.strftime('%Y-%m')}_9999.jsonl"
         cost_file.write_text(
-            json.dumps({"ts": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "cost_micros": 2}) + "\n",
+            json.dumps({"ts": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "cost_micros": 2, "proxy_id": proxy_id}) + "\n",
             encoding="utf-8",
         )
 

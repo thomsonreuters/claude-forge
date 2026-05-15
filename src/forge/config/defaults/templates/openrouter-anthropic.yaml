@@ -7,6 +7,7 @@
 # Use --model claude-opus-4-7 to select Opus 4.7 instead of the 4.6 default.
 
 proxy:
+  family: anthropic
   preferred_provider: openrouter
   default_port: 8095
 

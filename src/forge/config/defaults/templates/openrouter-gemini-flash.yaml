@@ -6,6 +6,7 @@
 # All tiers use Flash, differentiated by reasoning_effort.
 
 proxy:
+  family: gemini
   preferred_provider: openrouter
   default_port: 8099
 

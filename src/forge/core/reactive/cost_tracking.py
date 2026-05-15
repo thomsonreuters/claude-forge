@@ -124,8 +124,15 @@ def _log_verb_cost(result: VerbCostResult) -> None:
 
 def resolve_subprocess_proxy_url() -> str | None:
     """Resolve the current FORGE_SUBPROCESS_PROXY to a base URL, if configured."""
-    from forge.core.reactive.env import FORGE_SUBPROCESS_PROXY_VAR
+    from forge.core.reactive.env import (
+        FORGE_SUBPROCESS_BASE_URL_VAR,
+        FORGE_SUBPROCESS_PROXY_VAR,
+    )
     from forge.core.reactive.proxy import lookup_proxy_base_url
+
+    injected_url = os.environ.get(FORGE_SUBPROCESS_BASE_URL_VAR)
+    if injected_url:
+        return injected_url
 
     proxy = os.environ.get(FORGE_SUBPROCESS_PROXY_VAR)
     if not proxy:
@@ -144,23 +151,47 @@ def resolve_proxy_urls(specs: list[Any]) -> list[str]:
     when configured.
     Deduplicates by resolved URL.
     """
-    from forge.core.reactive.env import FORGE_SUBPROCESS_PROXY_VAR
+    from forge.core.reactive.env import (
+        FORGE_SUBPROCESS_BASE_URL_VAR,
+        FORGE_SUBPROCESS_PROXY_VAR,
+    )
     from forge.core.reactive.proxy import lookup_proxy_base_url
 
     subprocess_proxy = os.environ.get(FORGE_SUBPROCESS_PROXY_VAR)
+    subprocess_base_url = os.environ.get(FORGE_SUBPROCESS_BASE_URL_VAR)
     seen: set[str] = set()
     urls: list[str] = []
     for spec in specs:
-        proxy = getattr(spec, "proxy", None) or subprocess_proxy
+        proxy = getattr(spec, "preferred_proxy", None) or getattr(spec, "proxy", None) or subprocess_proxy
         if not proxy:
             continue
         try:
-            url = lookup_proxy_base_url(proxy)
+            url: str | None
+            if subprocess_base_url and proxy == subprocess_proxy:
+                url = subprocess_base_url
+            else:
+                url = lookup_proxy_base_url(proxy)
             if url and url not in seen:
                 seen.add(url)
                 urls.append(url)
         except Exception:
             pass
+    return urls
+
+
+def resolve_proxy_urls_from_plan(plan: Any) -> list[str]:
+    """Extract unique proxy base URLs from a WorkerRoutingPlan.
+
+    Uses actual routing decisions (correct for --via, subprocess proxy,
+    route scan, and session proxy fallback).
+    """
+    seen: set[str] = set()
+    urls: list[str] = []
+    for result in plan.routes:
+        url = result.base_url
+        if url and url not in seen:
+            seen.add(url)
+            urls.append(url)
     return urls
 
 

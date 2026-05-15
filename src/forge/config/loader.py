@@ -441,6 +441,7 @@ def load_proxy_instance_config_from_dict(data: dict) -> "ProxyInstanceConfig":
         port=data.get("port", 0),
         upstream_base_url=data.get("upstream_base_url", ""),
         tiers=tiers,
+        family=data.get("family", ""),
         tier_overrides=tier_overrides,
         model_alternatives=data.get("model_alternatives", {}),
         default_tier=data.get("default_tier", "sonnet"),
@@ -551,6 +552,7 @@ def _proxy_instance_to_forge_config(
     )
 
     proxy_server_config = ProxyConfig(
+        family=proxy_config.family,
         preferred_provider=proxy_config.provider,
         active_template=proxy_config.template,
         default_tier=proxy_config.default_tier,
@@ -600,6 +602,14 @@ def _load_template_config(template: str) -> "ForgeConfig":
     if not isinstance(template_data, dict):
         raise ValueError(f"Template '{template}' must be a mapping (dict)")
     template_data.pop("internal", None)
+
+    proxy_block = template_data.get("proxy")
+    if not isinstance(proxy_block, dict):
+        raise ValueError(f"Template '{template}' must have a 'proxy' mapping")
+    family = proxy_block.get("family", "")
+    if not isinstance(family, str) or not family.strip():
+        raise ValueError(f"Template '{template}' missing required 'proxy.family' field (must be a non-blank string)")
+
     secrets = env_to_dict()
     config_dict = deep_merge(template_data, secrets)
 

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from forge.core.reactive.routing import ModelRoute, RoutingResult
 from forge.review.adversarial import (
     ETHICAL_GUARDRAIL,
     STANCE_MARKER,
@@ -13,10 +14,23 @@ from forge.review.adversarial import (
     validate_resource,
 )
 from forge.review.models import ModelSpec, StanceSpec
+from forge.review.routing import WorkerRoutingPlan
 
 
-def _spec(name: str = "test-model", proxy: str | None = "test-proxy") -> ModelSpec:
-    return ModelSpec(name=name, proxy=proxy, model_flag=None, description="Test")
+def _spec(name: str = "test-model", preferred_proxy: str | None = "test-proxy") -> ModelSpec:
+    provider_refs: tuple[tuple[str, str], ...]
+    if preferred_proxy:
+        provider_refs = (("openrouter", f"openai/{name}"),)
+    else:
+        provider_refs = (("direct", name),)
+    return ModelSpec(
+        name=name,
+        model_id=name,
+        family="openai",
+        provider_refs=provider_refs,
+        description="Test",
+        preferred_proxy=preferred_proxy,
+    )
 
 
 def _mock_popen(stdout: str = "output", returncode: int = 0):
@@ -26,6 +40,30 @@ def _mock_popen(stdout: str = "output", returncode: int = 0):
     proc.poll.return_value = returncode
     proc.pid = 12345
     return proc
+
+
+def _auto_plan(specs, **_kw):
+    """Create a routing plan that matches any spec list."""
+    route = ModelRoute(
+        provider="openrouter",
+        credential="openrouter",
+        family="openai",
+        template_id="openrouter-openai",
+        template_family="openai",
+        model_ref="openai/gpt-5.5",
+    )
+    results = tuple(
+        RoutingResult(
+            base_url="http://localhost:8096",
+            proxy_id="openrouter-openai",
+            template="openrouter-openai",
+            source="preferred_proxy",
+            route=route,
+            credential="openrouter",
+        )
+        for _ in specs
+    )
+    return WorkerRoutingPlan(routes=results, resolved_at="2026-05-14T12:00:00Z", via_override=None)
 
 
 class TestValidateResource:
@@ -54,12 +92,9 @@ class TestStanceSpec:
 
 
 class TestRunAdversarial:
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_replaces_stance_marker(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_replaces_stance_marker(self, mock_popen_cls, mock_routing, tmp_path):
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {STANCE_MARKER}\nEnd.")
         mock_popen_cls.return_value = _mock_popen()
@@ -75,12 +110,9 @@ class TestRunAdversarial:
         assert "Be supportive" in worker_prompt
         assert STANCE_MARKER not in worker_prompt
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_ethical_guardrail_present(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_ethical_guardrail_present(self, mock_popen_cls, mock_routing, tmp_path):
         """Ethical guardrail is appended to ALL worker prompts."""
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {STANCE_MARKER}")
@@ -94,12 +126,9 @@ class TestRunAdversarial:
         worker_prompt = mock_popen_cls.return_value.communicate.call_args[1]["input"]
         assert ETHICAL_GUARDRAIL in worker_prompt
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_mandatory_blinding(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_mandatory_blinding(self, mock_popen_cls, mock_routing, tmp_path):
         """resume_id is always None (mandatory blinding)."""
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {STANCE_MARKER}")
@@ -114,12 +143,9 @@ class TestRunAdversarial:
         cmd = mock_popen_cls.call_args[0][0]
         assert "--resume" not in cmd
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_worker_names_include_stance(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_worker_names_include_stance(self, mock_popen_cls, mock_routing, tmp_path):
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {STANCE_MARKER}")
         mock_popen_cls.return_value = _mock_popen()
@@ -142,12 +168,9 @@ class TestRunAdversarial:
         with pytest.raises(ValueError, match="stance_prompt"):
             run_adversarial(str(resource), stances)
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_output_includes_stances(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_output_includes_stances(self, mock_popen_cls, mock_routing, tmp_path):
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {STANCE_MARKER}")
         mock_popen_cls.return_value = _mock_popen()

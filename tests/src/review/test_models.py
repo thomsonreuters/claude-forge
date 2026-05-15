@@ -28,21 +28,48 @@ ANTHROPIC_DEFAULT = get_default_model("anthropic", "opus")
 
 class TestModelSpec:
     def test_dataclass_fields(self):
-        spec = ModelSpec(name="test", proxy="my-proxy", model_flag="opus", description="Test")
+        spec = ModelSpec(
+            name="test",
+            model_id="test",
+            family="openai",
+            provider_refs=(("openrouter", "openai/gpt-5.5"),),
+            description="Test",
+            preferred_proxy="openrouter-openai",
+        )
         assert spec.name == "test"
-        assert spec.proxy == "my-proxy"
-        assert spec.model_flag == "opus"
+        assert spec.model_id == "test"
+        assert spec.family == "openai"
+        assert spec.preferred_proxy == "openrouter-openai"
 
     def test_none_proxy_for_direct(self):
-        spec = ModelSpec(name="direct", proxy=None, model_flag="opus", description="Direct")
-        assert spec.proxy is None
+        spec = ModelSpec(
+            name="direct",
+            model_id="direct",
+            family="anthropic",
+            provider_refs=(("direct", "claude-opus-4-6"),),
+            description="Direct",
+        )
+        assert spec.preferred_proxy is None
 
     def test_prompt_defaults_to_none(self):
-        spec = ModelSpec(name="test", proxy="p", model_flag=None, description="Test")
+        spec = ModelSpec(
+            name="test",
+            model_id="test",
+            family="openai",
+            provider_refs=(("openrouter", "openai/gpt-5.5"),),
+            description="Test",
+        )
         assert spec.prompt is None
 
     def test_prompt_can_be_set(self):
-        spec = ModelSpec(name="test", proxy="p", model_flag=None, description="Test", prompt="custom")
+        spec = ModelSpec(
+            name="test",
+            model_id="test",
+            family="openai",
+            provider_refs=(("openrouter", "openai/gpt-5.5"),),
+            description="Test",
+            prompt="custom",
+        )
         assert spec.prompt == "custom"
 
 
@@ -55,11 +82,11 @@ class TestDefaultModels:
         assert GEMINI_DEFAULT in DEFAULT_MODELS
         assert "claude-opus" in DEFAULT_MODELS
 
-    def test_gpt_uses_proxy(self):
-        assert DEFAULT_MODELS[OPENAI_DEFAULT].proxy == "openrouter-openai"
+    def test_gpt_uses_preferred_proxy(self):
+        assert DEFAULT_MODELS[OPENAI_DEFAULT].preferred_proxy == "openrouter-openai"
 
-    def test_gemini_uses_proxy(self):
-        assert DEFAULT_MODELS[GEMINI_DEFAULT].proxy == "openrouter-gemini"
+    def test_gemini_uses_preferred_proxy(self):
+        assert DEFAULT_MODELS[GEMINI_DEFAULT].preferred_proxy == "openrouter-gemini"
 
     def test_compact_gemini_alias_is_accepted(self):
         assert MODEL_ALIASES[GEMINI_COMPACT] == GEMINI_DEFAULT
@@ -70,18 +97,18 @@ class TestDefaultModels:
         assert [s.effective_worker_id for s in specs] == [GEMINI_COMPACT]
 
     def test_claude_is_direct(self):
-        assert DEFAULT_MODELS["claude-opus"].proxy is None
-        assert DEFAULT_MODELS["claude-opus"].model_flag == ANTHROPIC_DEFAULT
-        assert DEFAULT_MODELS["claude-opus"].direct is True
-        assert DEFAULT_MODELS["claude-opus"].direct_model == "claude-opus-4-6"
+        spec = DEFAULT_MODELS["claude-opus"]
+        assert spec.preferred_proxy is None
+        assert spec.family == "anthropic"
+        assert spec.provider_refs == (("direct", ANTHROPIC_DEFAULT),)
 
     def test_explicit_claude_47_is_selectable_not_default(self):
         assert "claude-opus-4.7" in AVAILABLE_MODELS
         assert "claude-opus-4.7" not in DEFAULT_MODELS
 
         spec = AVAILABLE_MODELS["claude-opus-4.7"]
-        assert spec.direct is True
-        assert spec.direct_model == "claude-opus-4-7"
+        assert spec.family == "anthropic"
+        assert spec.provider_refs == (("direct", "claude-opus-4-7"),)
         assert spec.prompt is not None
         assert spec.prompt_mode == "prefix"
         assert "file:line" in spec.prompt
@@ -150,7 +177,9 @@ class TestResolveModelSpecs:
 
         assert [s.name for s in specs] == ["claude-opus-4.6", "claude-opus-4.7"]
         assert [s.effective_worker_id for s in specs] == ["claude-opus-4.6", "claude-opus-4.7"]
-        assert [s.direct_model for s in specs] == ["claude-opus-4-6", "claude-opus-4-7"]
+        # Direct model refs live in provider_refs
+        assert specs[0].provider_refs == (("direct", "claude-opus-4-6"),)
+        assert specs[1].provider_refs == (("direct", "claude-opus-4-7"),)
 
     def test_unknown_model_raises(self):
         with pytest.raises(ValueError, match="nonexistent"):
@@ -195,14 +224,13 @@ class TestOssWorkflowModels:
         assert model not in DEFAULT_MODELS
 
         spec = AVAILABLE_MODELS[model]
-        assert spec.proxy == proxy
-        assert spec.direct is False
-        assert spec.model_flag is None
+        assert spec.preferred_proxy == proxy
+        assert spec.family == family
 
     def test_resolve_cheap_pair(self):
         specs = resolve_model_specs(f"{DEEPSEEK_DEFAULT},{MINIMAX_DEFAULT}")
         assert [s.name for s in specs] == [DEEPSEEK_DEFAULT, MINIMAX_DEFAULT]
-        assert [s.proxy for s in specs] == ["openrouter-deepseek", "openrouter-minimax"]
+        assert [s.preferred_proxy for s in specs] == ["openrouter-deepseek", "openrouter-minimax"]
 
     def test_resolve_mixed_oss_and_default(self):
         specs = resolve_model_specs(f"{DEEPSEEK_DEFAULT},{OPENAI_DEFAULT}")
@@ -211,41 +239,34 @@ class TestOssWorkflowModels:
 
 def _spec(
     name: str = "test-model",
-    proxy: str | None = "test-proxy",
+    preferred_proxy: str | None = "test-proxy",
+    family: str = "openai",
 ) -> ModelSpec:
-    return ModelSpec(name=name, proxy=proxy, model_flag=None, description="Test")
+    provider_refs: tuple[tuple[str, str], ...]
+    if preferred_proxy:
+        provider_refs = (("openrouter", f"openai/{name}"),)
+    else:
+        provider_refs = (("direct", name),)
+    return ModelSpec(
+        name=name,
+        model_id=name,
+        family=family,
+        provider_refs=provider_refs,
+        description="Test",
+        preferred_proxy=preferred_proxy,
+    )
 
 
 class TestCheckModelAvailability:
     @patch(
-        "forge.core.reactive.proxy.check_proxy_reachable",
-        return_value=(True, "", "http://localhost:8085"),
+        "forge.core.reactive.routing.resolve_subprocess_routing",
     )
     @patch(
         "forge.core.auth.template_secrets.resolve_env_or_credential",
         return_value="sk-test",
     )
-    def test_all_ready(self, _mock_cred, _mock_proxy):
-        specs = [_spec("a", proxy="p1"), _spec("b", proxy=None)]
-        result = check_model_availability(specs)
-        assert all(a.status == "ready" for a in result)
-        assert len(result) == 2
-
-    @patch(
-        "forge.core.reactive.proxy.check_proxy_reachable",
-        return_value=(False, "Proxy 'p1' not responding at http://localhost:8085", "http://localhost:8085"),
-    )
-    def test_proxy_unavailable(self, _mock_proxy):
-        result = check_model_availability([_spec("a", proxy="p1")])
-        assert result[0].status == "unavailable"
-        assert "not responding" in result[0].reason
-
-    @patch(
-        "forge.core.auth.template_secrets.resolve_env_or_credential",
-        return_value="sk-test",
-    )
-    def test_direct_ready_with_key(self, _mock_cred):
-        result = check_model_availability([_spec("opus", proxy=None)])
+    def test_direct_ready_with_key(self, _mock_cred, _mock_routing):
+        result = check_model_availability([_spec("opus", preferred_proxy=None)])
         assert result[0].status == "ready"
 
     @patch(
@@ -253,7 +274,7 @@ class TestCheckModelAvailability:
         return_value=None,
     )
     def test_direct_unavailable_no_key(self, _mock_cred):
-        result = check_model_availability([_spec("opus", proxy=None)])
+        result = check_model_availability([_spec("opus", preferred_proxy=None)])
         assert result[0].status == "unavailable"
         assert "ANTHROPIC_API_KEY" in result[0].reason
 
@@ -265,26 +286,6 @@ class TestCheckModelAvailability:
         result = check_model_availability([AVAILABLE_MODELS["claude-opus-4.7"]])
 
         assert result[0].status == "ready"
-
-    @patch(
-        "forge.core.reactive.proxy.check_proxy_reachable",
-        side_effect=RuntimeError("unexpected"),
-    )
-    def test_unexpected_error(self, _mock_proxy):
-        result = check_model_availability([_spec("a", proxy="p1")])
-        assert result[0].status == "error"
-        assert "unexpected" in result[0].reason
-
-    @patch(
-        "forge.core.reactive.proxy.check_proxy_reachable",
-        return_value=(True, "", "http://localhost:8085"),
-    )
-    def test_deduplicates_proxy_checks(self, mock_proxy):
-        specs = [_spec("a", proxy="same"), _spec("b", proxy="same")]
-        result = check_model_availability(specs)
-        assert len(result) == 2
-        assert all(a.status == "ready" for a in result)
-        mock_proxy.assert_called_once()
 
     @patch(
         "forge.core.reactive.proxy.check_proxy_reachable",

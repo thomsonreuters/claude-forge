@@ -202,6 +202,8 @@ class TestRunSidecarSession:
             assert "FORGE_TEMPLATE=litellm-openai" in " ".join(cmd)
             assert "CLAUDE_CODE_AUTO_COMPACT_WINDOW=300000" in " ".join(cmd)
             assert "FORGE_SESSION=test-session" in " ".join(cmd)
+            assert "FORGE_SIDECAR=1" in " ".join(cmd)
+            assert "FORGE_LAUNCH_MODE=sidecar" in " ".join(cmd)
             assert "forge-sidecar:latest" in cmd
 
     def test_run_sidecar_session_with_extra_mounts(self) -> None:

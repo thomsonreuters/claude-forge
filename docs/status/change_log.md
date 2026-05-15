@@ -1,5 +1,30 @@
 # Change Log
 
+## 2026-05-14
+
+### Capability-based model routing (Phases 0-6)
+
+**Goal**: Decouple model identity from proxy routing so routes are derived at runtime from template/auth metadata.
+
+**Key changes**:
+
+- Added `family:` metadata to all 19 proxy template YAMLs.
+- New `ModelRoute` / `RoutingResult` / `WorkerRoutingPlan` data types in `core.reactive.routing`.
+- 7-step routing resolution chain (`resolve_subprocess_routing`) with `require_route` policy knob.
+- Route derivation (`derive_model_routes`) uses template metadata and credential capabilities.
+- Migrated review `ModelSpec`: removed `proxy`/`model_flag`/`direct`/`direct_model`; added
+  `model_id`/`family`/`provider_refs`/`preferred_proxy`.
+- Engine resolves routing plan once at invocation start, never per-worker.
+- All workflow commands (`panel`, `analyze`, `debate`, `consensus`) accept `--via` to route workers through a specific
+  proxy.
+- `list-models` now groups models by primary credential with `[configured]` status.
+- Cost tracking uses `resolve_proxy_urls_from_plan()` for all workflow commands.
+
+**Breaking**: `forge workflow list-models --json` schema changed. Removed keys: `proxy`, `model_flag`, `direct`,
+`direct_model`. Added keys: `model_id`, `family`, `preferred_proxy`, `provider_refs`.
+
+**Verification**: 4,237 unit tests pass; mypy clean; ruff clean.
+
 ## 2026-05-11
 
 ### Follow-up: Make OpenRouter the OSS default for QA and workflows

@@ -2,17 +2,17 @@
 
 <!-- checklist: index -->
 
-<!-- version: 1.0.15 -->
+<!-- version: 1.0.16 -->
 
-<!-- test-count: ~460 -->
+<!-- test-count: 479 -->
 
-<!-- last-updated: 2026-05-13 -->
+<!-- last-updated: 2026-05-15 -->
 
 <!-- aligned-with: v0.1.0 -->
 
 **Test Repo**: `$FORGE_TEST_REPO`
 
-**Last updated**: 2026-05-12 (updated resume/workflow prerequisites and added OpenRouter open-model template coverage)
+**Last updated**: 2026-05-15 (updated workflow routing and preflight QA coverage)
 
 ---
 

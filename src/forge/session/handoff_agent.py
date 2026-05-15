@@ -17,7 +17,7 @@ import logging
 import re
 from pathlib import Path
 
-from forge.core.reactive.proxy import lookup_proxy_base_url
+from forge.core.reactive.routing import resolve_subprocess_routing
 from forge.core.reactive.session_runner import run_claude_session
 from forge.core.transcript import parse_jsonl_transcript
 from forge.session.claude.invoke import is_claude_available
@@ -195,23 +195,32 @@ def resolve_handoff_base_url(
     env_base_url: str | None = None,
     *,
     direct: bool = False,
+    subprocess_proxy: str | None = None,
 ) -> str | None:
     """Resolve ANTHROPIC_BASE_URL for the handoff agent.
 
     When direct=True, short-circuits the entire chain and returns None
     (forces direct Anthropic routing regardless of session proxy).
 
+    Delegates to ``resolve_subprocess_routing()`` with fail-open semantics.
+    The handoff's proxy_id is soft (preferred, not strict) because handoff
+    is async/best-effort — using the session's confirmed proxy is better
+    than failing.
+
     Priority chain (when not direct):
-    1. proxy_id -> registry lookup (explicit config override, accepts template names)
-    2. confirmed_proxy_base_url -> session's confirmed proxy (same model)
-    3. env_base_url -> current ANTHROPIC_BASE_URL from environment
-    4. None -> Anthropic direct
+    1. proxy_id -> preferred_proxy (handoff config, soft)
+    2. subprocess_proxy -> persisted session subprocess proxy (soft)
+    3. confirmed_proxy_base_url -> session's confirmed proxy
+    4. env_base_url -> current ANTHROPIC_BASE_URL
+    5. None -> Anthropic direct
 
     Args:
-        proxy_id: Optional proxy (proxy_id or template name) from HandoffConfig.
+        proxy_id: Optional proxy from HandoffConfig. Soft: falls through
+            on miss (unlike workflow's strict --via).
         confirmed_proxy_base_url: Base URL from session's confirmed proxy.
         env_base_url: Fallback base URL from environment.
         direct: When True, force direct routing (skip all proxy resolution).
+        subprocess_proxy: Session-level subprocess proxy intent.
 
     Returns:
         base_url string or None.
@@ -219,15 +228,17 @@ def resolve_handoff_base_url(
     if direct:
         return None
 
-    if proxy_id:
-        try:
-            base_url = lookup_proxy_base_url(proxy_id)
-            if base_url:
-                return base_url
-        except Exception as e:
-            # Handoff is async/best-effort — fall through to confirmed proxy
-            # (same model the session was using) rather than going direct
-            logger.warning("Handoff proxy '%s' not found, falling back: %s", proxy_id, e)
+    for candidate in (proxy_id, subprocess_proxy):
+        if not candidate:
+            continue
+        result = resolve_subprocess_routing(
+            preferred_proxy=candidate,
+            require_route=False,
+            use_environment=False,
+        )
+
+        if result.base_url:
+            return result.base_url
 
     return confirmed_proxy_base_url or env_base_url
 
@@ -432,15 +443,10 @@ def run_handoff_agent(
 
     # Use forge_root as cwd so designated doc paths (relative) resolve
     # against the correct branch content. Transcript path is absolute.
-    from forge.core.reactive.cost_tracking import (
-        resolve_subprocess_proxy_url,
-        track_verb_cost,
-    )
+    from forge.core.reactive.cost_tracking import track_verb_cost
 
     effective_timeout = timeout_seconds if timeout_seconds is not None else _default_timeout()
     tracking_url = base_url
-    if tracking_url is None and not config.direct:
-        tracking_url = resolve_subprocess_proxy_url()
 
     with track_verb_cost("handoff", [tracking_url] if tracking_url else []):
         result = run_claude_session(

@@ -233,6 +233,7 @@ def enqueue_handoff_marker(
     worktree_path: Path,
     session_name: str,
     transcript_snapshot_rel: str,
+    subprocess_proxy: str | None = None,
 ) -> Path | None:
     """Enqueue a Handoff marker for background memory doc update.
 
@@ -245,19 +246,24 @@ def enqueue_handoff_marker(
         worktree_path: Absolute path to the worktree.
         session_name: Forge session name.
         transcript_snapshot_rel: Repo-relative path to transcript artifact.
+        subprocess_proxy: Optional Stop-time subprocess proxy intent.
 
     Returns:
         Path to created marker, or None if enqueue failed.
     """
+    payload = {
+        "session_id": session_id,
+        "worktree_path": str(worktree_path),
+        "session_name": session_name,
+        "transcript_snapshot_rel": transcript_snapshot_rel,
+    }
+    if subprocess_proxy:
+        payload["subprocess_proxy"] = subprocess_proxy
+
     return enqueue(
         kind="handoff",
         marker_id=f"handoff-{session_id}",
-        payload={
-            "session_id": session_id,
-            "worktree_path": str(worktree_path),
-            "session_name": session_name,
-            "transcript_snapshot_rel": transcript_snapshot_rel,
-        },
+        payload=payload,
     )
 
 

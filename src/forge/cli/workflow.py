@@ -19,6 +19,7 @@ from typing import Any
 import click
 from rich.console import Console
 
+from forge.proxy.proxies import ProxyResolutionError
 from forge.review.models import (
     NAMED_ROLES,
     AdversarialOutput,
@@ -63,12 +64,20 @@ def _coerce_passed(val: Any) -> bool:
 console = Console()
 
 
-def _run_preflight(specs: list[ModelSpec], *, json_output: bool = False) -> None:
-    """Check proxy resolution and auth before spawning workers. Exit 1 on failure."""
+def _run_preflight(
+    specs: list[ModelSpec],
+    *,
+    json_output: bool = False,
+    routing_plan: Any | None = None,
+) -> None:
+    """Check resolved routing/auth before spawning workers. Exit 1 on failure."""
     from forge.review.engine import preflight_check
 
-    errors = preflight_check(specs)
+    errors = preflight_check(specs, routing_plan=routing_plan)
     if not errors:
+        if not json_output:
+            for warning in _routing_plan_warnings(specs, routing_plan):
+                console.print(f"[yellow]Routing warning:[/yellow] {warning}")
         return
     if json_output:
         click.echo(json.dumps({"preflight_errors": errors}))
@@ -83,6 +92,37 @@ def _run_preflight(specs: list[ModelSpec], *, json_output: bool = False) -> None
             "Create a proxy: 'forge proxy create <template>'[/dim]"
         )
     sys.exit(1)
+
+
+def _routing_plan_warnings(specs: list[ModelSpec], routing_plan: Any | None) -> list[str]:
+    """Return deduped route warnings for human-facing workflow output."""
+    if routing_plan is None:
+        return []
+
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for spec, result in zip(specs, routing_plan.routes):
+        if not result.warning:
+            continue
+        message = f"{spec.name}: {result.warning}"
+        if message in seen:
+            continue
+        seen.add(message)
+        warnings.append(message)
+    return warnings
+
+
+def _handle_routing_error(error: Exception, *, json_output: bool = False) -> None:
+    """Handle routing resolution errors with clean CLI output. Calls sys.exit(1)."""
+    msg = str(error)
+    if json_output:
+        click.echo(json.dumps({"routing_error": msg}))
+    else:
+        console.print(f"[red]Error:[/red] Routing failed: {msg}")
+    sys.exit(1)
+
+
+_ROUTING_ERRORS = (RuntimeError, ValueError, ProxyResolutionError)
 
 
 def _load_workflow_resource(name: str) -> str:
@@ -121,10 +161,10 @@ def list_models(json_output: bool, available_only: bool) -> None:
         items = [
             {
                 "name": a.spec.name,
-                "proxy": a.spec.proxy,
-                "model_flag": a.spec.model_flag,
-                "direct": a.spec.direct,
-                "direct_model": a.spec.direct_model,
+                "model_id": a.spec.model_id,
+                "family": a.spec.family,
+                "provider_refs": list(a.spec.provider_refs),
+                "preferred_proxy": a.spec.preferred_proxy,
                 "description": a.spec.description,
                 "status": a.status,
                 "reason": a.reason,
@@ -141,27 +181,72 @@ def list_models(json_output: bool, available_only: bool) -> None:
         )
         return
 
-    from rich.table import Table
+    _print_grouped_models(availabilities)
 
-    table = Table(title="Available Models")
-    table.add_column("Name", style="cyan")
-    table.add_column("Proxy ID", style="green")
-    table.add_column("Model Flag")
-    table.add_column("Description")
-    table.add_column("Status")
+
+def _primary_credential(spec: ModelSpec) -> str:
+    """Determine the primary credential for a model spec.
+
+    Uses derive_model_routes() to get the first route's credential,
+    which is stable and deterministic (no registry read).
+    """
+    from forge.review.routing import derive_model_routes
+
+    routes = derive_model_routes(spec)
+    if routes:
+        return routes[0].credential
+    return "unknown"
+
+
+def _credential_env_var(credential_name: str) -> str:
+    """Map a credential name to its primary env var for display."""
+    from forge.core.auth.capabilities import CREDENTIALS
+
+    cred = CREDENTIALS.get(credential_name)
+    if cred:
+        for ev in cred.env_vars:
+            if ev.required and ev.secret:
+                return ev.name
+    return ""
+
+
+def _credential_configured(credential_name: str) -> bool:
+    """Check whether a credential's primary secret is available."""
+    env_var = _credential_env_var(credential_name)
+    if not env_var:
+        return False
+    from forge.core.auth.template_secrets import resolve_env_or_credential
+
+    return resolve_env_or_credential(env_var) is not None
+
+
+def _print_grouped_models(availabilities: list) -> None:
+    """Print models grouped by primary credential."""
+    from collections import OrderedDict
+
+    groups: OrderedDict[str, list] = OrderedDict()
+    for a in availabilities:
+        cred = _primary_credential(a.spec)
+        groups.setdefault(cred, []).append(a)
 
     _STATUS_STYLES = {"ready": "green", "unavailable": "yellow", "error": "red"}
 
-    for a in availabilities:
-        proxy_display = a.spec.proxy or "(direct Anthropic)"
-        model_display = a.spec.direct_model or a.spec.model_flag or "(proxy default)"
-        desc = a.spec.description
-        if a.reason:
-            desc += f" [dim]({a.reason})[/dim]"
-        style = _STATUS_STYLES.get(a.status, "")
-        table.add_row(a.spec.name, proxy_display, model_display, desc, f"[{style}]{a.status}[/{style}]")
+    console.print("\n[bold]Available Models[/bold]\n")
 
-    console.print(table)
+    for cred_name, items in groups.items():
+        env_var = _credential_env_var(cred_name)
+        configured = _credential_configured(cred_name)
+        config_tag = "[green]configured[/green]" if configured else "[yellow]not configured[/yellow]"
+        env_display = f" ({env_var})" if env_var else ""
+        console.print(f"  [bold]{cred_name}[/bold]{env_display}  [{config_tag}]")
+
+        for a in items:
+            style = _STATUS_STYLES.get(a.status, "")
+            desc = a.spec.description
+            if a.reason:
+                desc += f" [dim]({a.reason})[/dim]"
+            console.print(f"    [cyan]{a.spec.name:<24}[/cyan] {desc:<50} [{style}]{a.status}[/{style}]")
+        console.print()
 
 
 @workflow_cmd.command(name="panel")
@@ -213,6 +298,7 @@ def list_models(json_output: bool, available_only: bool) -> None:
     default=None,
     help="Minimum severity to report",
 )
+@click.option("--via", type=str, default=None, help="Route all workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def panel(
@@ -228,6 +314,7 @@ def panel(
     roles: str | None,
     review_type: str,
     severity: str | None,
+    via: str | None,
     cwd: str | None,
 ) -> None:
     """Fan out a review to multiple models.
@@ -295,15 +382,26 @@ def panel(
             return
         specs = _apply_panel_roles(specs, role_list, resolved_prompt)
 
-    _run_preflight(specs, json_output=json_output)
-
-    from forge.core.reactive.cost_tracking import resolve_proxy_urls, track_verb_cost
+    from forge.core.reactive.cost_tracking import (
+        resolve_proxy_urls_from_plan,
+        track_verb_cost,
+    )
     from forge.review.engine import run_multi_review
+    from forge.review.routing import resolve_invocation_routing
 
-    with track_verb_cost("panel", resolve_proxy_urls(specs)):
+    try:
+        routing_plan = resolve_invocation_routing(specs, via=via)
+    except _ROUTING_ERRORS as e:
+        _handle_routing_error(e, json_output=json_output)
+        return
+
+    _run_preflight(specs, json_output=json_output, routing_plan=routing_plan)
+
+    with track_verb_cost("panel", resolve_proxy_urls_from_plan(routing_plan)):
         output = run_multi_review(
             resolved_prompt,
             models=specs,
+            routing_plan=routing_plan,
             timeout_seconds=timeout,
             cwd=cwd or str(Path.cwd()),
             resume_id=resume_id,
@@ -582,6 +680,7 @@ def _handle_review_output(
     is_flag=True,
     help="Gate on verdict: exit 0 if passed, exit 1 if failed",
 )
+@click.option("--via", type=str, default=None, help="Route all workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def analyze(
@@ -592,6 +691,7 @@ def analyze(
     timeout: int,
     json_output: bool,
     check_mode: bool,
+    via: str | None,
     cwd: str | None,
 ) -> None:
     """Deep structured analysis on a topic (single-model).
@@ -615,18 +715,29 @@ def analyze(
         ctx.exit(2)
         return
 
-    _run_preflight(specs, json_output=json_output)
-
     framework = _load_workflow_resource("thinkdeep.md")
     combined_prompt = f"{framework}\n\n---\n\n## Topic to Analyze\n\n{resolved_topic}\n"
 
-    from forge.core.reactive.cost_tracking import resolve_proxy_urls, track_verb_cost
+    from forge.core.reactive.cost_tracking import (
+        resolve_proxy_urls_from_plan,
+        track_verb_cost,
+    )
     from forge.review.engine import run_multi_review
+    from forge.review.routing import resolve_invocation_routing
 
-    with track_verb_cost("analyze", resolve_proxy_urls(specs)):
+    try:
+        routing_plan = resolve_invocation_routing(specs, via=via)
+    except _ROUTING_ERRORS as e:
+        _handle_routing_error(e, json_output=json_output)
+        return
+
+    _run_preflight(specs, json_output=json_output, routing_plan=routing_plan)
+
+    with track_verb_cost("analyze", resolve_proxy_urls_from_plan(routing_plan)):
         output = run_multi_review(
             combined_prompt,
             models=specs,
+            routing_plan=routing_plan,
             timeout_seconds=timeout,
             cwd=cwd or str(Path.cwd()),
         )
@@ -941,6 +1052,7 @@ def _resolve_debate_prompt(
     type=str,
     help='Worker spec: model:stance or model:"custom prompt" (repeatable)',
 )
+@click.option("--via", type=str, default=None, help="Route all workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def debate(
@@ -953,6 +1065,7 @@ def debate(
     json_output: bool,
     check_mode: bool,
     workers: tuple[str, ...],
+    via: str | None,
     cwd: str | None,
 ) -> None:
     """Adversarial evaluation with stance-injected workers.
@@ -1016,19 +1129,28 @@ def debate(
                 return
             stances = _build_stances(specs, code_mode=code_mode)
 
-        _run_preflight([s.model for s in stances], json_output=json_output)
-
         from forge.core.reactive.cost_tracking import (
-            resolve_proxy_urls,
+            resolve_proxy_urls_from_plan,
             track_verb_cost,
         )
+        from forge.review.routing import resolve_invocation_routing
 
-        with track_verb_cost("debate", resolve_proxy_urls([s.model for s in stances])):
+        stance_models = [s.model for s in stances]
+        try:
+            routing_plan = resolve_invocation_routing(stance_models, via=via)
+        except _ROUTING_ERRORS as e:
+            _handle_routing_error(e, json_output=json_output)
+            return
+
+        _run_preflight(stance_models, json_output=json_output, routing_plan=routing_plan)
+
+        with track_verb_cost("debate", resolve_proxy_urls_from_plan(routing_plan)):
             output = run_adversarial(
                 resource_path,
                 stances,
                 timeout_seconds=timeout,
                 cwd=cwd or str(Path.cwd()),
+                routing_plan=routing_plan,
             )
     finally:
         if tmp_file is not None:
@@ -1570,6 +1692,7 @@ def _print_consensus_text(output: ConsensusOutput) -> None:
     type=str,
     help='Worker spec: model:role or model:"custom prompt" (repeatable)',
 )
+@click.option("--via", type=str, default=None, help="Route all workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def consensus(
@@ -1582,6 +1705,7 @@ def consensus(
     json_output: bool,
     check_mode: bool,
     workers: tuple[str, ...],
+    via: str | None,
     cwd: str | None,
 ) -> None:
     """Two-round consensus building with role-assigned workers.
@@ -1649,20 +1773,29 @@ def consensus(
                 return
             role_specs = _build_consensus_roles(specs, code_mode)
 
-        _run_preflight([r.model for r in role_specs], json_output=json_output)
-
         from forge.core.reactive.cost_tracking import (
-            resolve_proxy_urls,
+            resolve_proxy_urls_from_plan,
             track_verb_cost,
         )
+        from forge.review.routing import resolve_invocation_routing
 
-        with track_verb_cost("consensus", resolve_proxy_urls([r.model for r in role_specs])):
+        role_models = [r.model for r in role_specs]
+        try:
+            routing_plan = resolve_invocation_routing(role_models, via=via)
+        except _ROUTING_ERRORS as e:
+            _handle_routing_error(e, json_output=json_output)
+            return
+
+        _run_preflight(role_models, json_output=json_output, routing_plan=routing_plan)
+
+        with track_verb_cost("consensus", resolve_proxy_urls_from_plan(routing_plan)):
             output = run_consensus(
                 resource_path,
                 role_specs,
                 timeout_seconds=timeout,
                 cwd=cwd or str(Path.cwd()),
                 original_subject=raw_subject or "",
+                routing_plan=routing_plan,
             )
     finally:
         if tmp_file is not None:

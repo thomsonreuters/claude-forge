@@ -86,6 +86,10 @@ def run_sidecar_session(
         f"CLAUDE_CODE_AUTO_COMPACT_WINDOW={context_limit}",
         "-e",
         f"FORGE_SESSION={session_name}",
+        "-e",
+        "FORGE_SIDECAR=1",
+        "-e",
+        "FORGE_LAUNCH_MODE=sidecar",
         "-w",
         "/workspace",
     ]

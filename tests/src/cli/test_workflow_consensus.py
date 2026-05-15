@@ -9,7 +9,33 @@ import pytest
 from click.testing import CliRunner
 
 from forge.cli.main import main
+from forge.core.reactive.routing import ModelRoute, RoutingResult
 from forge.review.models import ConsensusOutput, ReviewResult
+from forge.review.routing import WorkerRoutingPlan
+
+
+def _auto_routing_plan(specs, **_kw):
+    """Create a valid routing plan for any spec list (test helper)."""
+    route = ModelRoute(
+        provider="openrouter",
+        credential="openrouter",
+        family="openai",
+        template_id="openrouter-openai",
+        template_family="openai",
+        model_ref="openai/gpt-5.5",
+    )
+    results = tuple(
+        RoutingResult(
+            base_url="http://localhost:8096",
+            proxy_id="openrouter-openai",
+            template="openrouter-openai",
+            source="preferred_proxy",
+            route=route,
+            credential="openrouter",
+        )
+        for _ in specs
+    )
+    return WorkerRoutingPlan(routes=results, resolved_at="2026-05-14T12:00:00Z", via_override=None)
 
 
 @pytest.fixture(autouse=True)
@@ -75,8 +101,9 @@ class TestConsensusSubject:
         assert result.exit_code == 2
         assert "No subject" in result.output
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_positional_subject(self, mock_run):
+    def test_positional_subject(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -92,8 +119,9 @@ class TestConsensusSubject:
         )
         assert result.exit_code == 0
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_prompt_flag(self, mock_run):
+    def test_prompt_flag(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -109,8 +137,9 @@ class TestConsensusSubject:
         )
         assert result.exit_code == 0
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_stdin_subject(self, mock_run):
+    def test_stdin_subject(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -131,8 +160,9 @@ class TestConsensusSubject:
 
 
 class TestConsensusJson:
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_json_output_has_round1_and_round2(self, mock_run):
+    def test_json_output_has_round1_and_round2(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -156,8 +186,9 @@ class TestConsensusJson:
         assert data["subject"] == "test"
         assert "role_map" in data
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_json_includes_role_per_result(self, mock_run):
+    def test_json_includes_role_per_result(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -181,8 +212,9 @@ class TestConsensusJson:
 
 
 class TestConsensusCode:
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_code_flag_uses_code_template(self, mock_run):
+    def test_code_flag_uses_code_template(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -201,8 +233,9 @@ class TestConsensusCode:
         r1_prompt = mock_run.call_args_list[0][1]["models"][0].prompt
         assert "Code Under Evaluation" in r1_prompt
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_without_code_uses_proposal_template(self, mock_run):
+    def test_without_code_uses_proposal_template(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -222,8 +255,9 @@ class TestConsensusCode:
 
 
 class TestConsensusCheck:
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_check_pass_with_support(self, mock_run):
+    def test_check_pass_with_support(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -248,8 +282,9 @@ class TestConsensusCheck:
         assert data["passed"] is True
         assert data["check_mode"] == "position"
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_check_reject_with_oppose(self, mock_run):
+    def test_check_reject_with_oppose(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -273,8 +308,9 @@ class TestConsensusCheck:
         data = json.loads(result.output)
         assert data["passed"] is False
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_support_with_conditions_passes(self, mock_run):
+    def test_support_with_conditions_passes(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -298,8 +334,9 @@ class TestConsensusCheck:
         data = json.loads(result.output)
         assert data["passed"] is True
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_check_rejects_legacy_passed_field(self, mock_run):
+    def test_check_rejects_legacy_passed_field(self, mock_run, _mock_routing):
         """Consensus check must require 'position', not accept 'passed'."""
         from forge.review.models import MultiReviewOutput
 
@@ -325,8 +362,9 @@ class TestConsensusCheck:
         assert data["passed"] is False
         assert "without position" in data["reason"]
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_check_rejects_legacy_verdict_field(self, mock_run):
+    def test_check_rejects_legacy_verdict_field(self, mock_run, _mock_routing):
         """Consensus check must require 'position', not accept 'verdict'."""
         from forge.review.models import MultiReviewOutput
 
@@ -370,8 +408,9 @@ class TestConsensusWorkerCli:
         assert result.exit_code == 2
         assert "mutually exclusive" in result.output
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_worker_named_role(self, mock_run):
+    def test_worker_named_role(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(
@@ -390,8 +429,9 @@ class TestConsensusWorkerCli:
         specs = mock_run.call_args_list[0][1]["models"]
         assert any("security" in (s.prompt or "").lower() for s in specs)
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.consensus.run_multi_review")
-    def test_worker_custom_prompt(self, mock_run):
+    def test_worker_custom_prompt(self, mock_run, _mock_routing):
         from forge.review.models import MultiReviewOutput
 
         mock_run.return_value = MultiReviewOutput(

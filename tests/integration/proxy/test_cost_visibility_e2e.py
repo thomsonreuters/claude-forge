@@ -251,8 +251,9 @@ def test_panel_with_subprocess_proxy_records_verb_cost(
         "e2e-haiku-subprocess",
         ModelSpec(
             name="e2e-haiku-subprocess",
-            proxy=None,
-            model_flag="claude-3-5-haiku-20241022",
+            model_id="e2e-haiku-subprocess",
+            family="anthropic",
+            provider_refs=(("openrouter", "claude-3-5-haiku-20241022"),),
             description="e2e subprocess-proxy panel canary",
         ),
     )

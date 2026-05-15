@@ -488,6 +488,8 @@ def fork(
         console.print("The parent session may not have been started yet.")
         sys.exit(1)
 
+    use_sidecar, mounts, image = _get_launch_preferences(fork_manifest)
+
     # Set env vars for fork registration (hook uses FORGE_FORK_NAME for fork detection)
     env_vars, unset_env_vars = _sess()._build_session_env(
         session_name=fork_manifest.name,
@@ -498,6 +500,7 @@ def fork(
         parent_session=parent,
         forge_root=fork_manifest.forge_root,
         subprocess_proxy=fork_manifest.intent.subprocess_proxy,
+        sidecar=use_sidecar,
     )
     fork_name = fork_manifest.name  # Capture for cleanup
     is_worktree_fork = bool(fork_manifest.worktree and fork_manifest.worktree.is_worktree)
@@ -676,7 +679,6 @@ def fork(
             console.print(f"\n[dim]Tip: {_resume_tip_command(fork_manifest)}[/dim]")
         sys.exit(0)
 
-    use_sidecar, mounts, image = _get_launch_preferences(fork_manifest)
     runtime_base_url = _get_runtime_base_url(use_sidecar=use_sidecar, effective_url=effective_url)
 
     if use_sidecar:

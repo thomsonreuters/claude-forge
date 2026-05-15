@@ -509,6 +509,7 @@ def stop() -> None:
                     worktree_path=cwd,
                     session_name=manifest.name,
                     transcript_snapshot_rel=str(dst_rel),
+                    subprocess_proxy=effective.subprocess_proxy,
                 )
                 is not None
             )

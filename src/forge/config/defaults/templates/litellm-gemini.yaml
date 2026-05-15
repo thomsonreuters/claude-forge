@@ -5,6 +5,7 @@
 # Requires LITELLM_API_KEY and LITELLM_BASE_URL in .env (or environment).
 
 proxy:
+  family: gemini
   preferred_provider: litellm
   default_port: 8084
 

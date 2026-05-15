@@ -18,6 +18,11 @@ FORGE_DEPTH_VAR = "FORGE_DEPTH"
 FORGE_MAX_DEPTH = 2
 
 FORGE_SUBPROCESS_PROXY_VAR = "FORGE_SUBPROCESS_PROXY"
+FORGE_SUBPROCESS_BASE_URL_VAR = "FORGE_SUBPROCESS_BASE_URL"
+FORGE_SUBPROCESS_PROXY_ID_VAR = "FORGE_SUBPROCESS_PROXY_ID"
+FORGE_SUBPROCESS_TEMPLATE_VAR = "FORGE_SUBPROCESS_TEMPLATE"
+FORGE_SIDECAR_VAR = "FORGE_SIDECAR"
+FORGE_LAUNCH_MODE_VAR = "FORGE_LAUNCH_MODE"
 
 # --bare (Claude Code >= 2.1.81) disables OAuth/keychain auth, requiring
 # ANTHROPIC_API_KEY in the environment. Only safe when the key is present.
@@ -103,12 +108,17 @@ def build_claude_env(
     elif direct:
         env.pop("ANTHROPIC_BASE_URL", None)
         env.pop(FORGE_SUBPROCESS_PROXY_VAR, None)
+        env.pop(FORGE_SUBPROCESS_BASE_URL_VAR, None)
+        env.pop(FORGE_SUBPROCESS_PROXY_ID_VAR, None)
+        env.pop(FORGE_SUBPROCESS_TEMPLATE_VAR, None)
     else:
         # No explicit base_url and not forced direct: check subprocess proxy fallback.
         # FORGE_SUBPROCESS_PROXY is set by `forge session start --subprocess-proxy`
         # and inherited by all child processes.
-        subprocess_proxy = env.get(FORGE_SUBPROCESS_PROXY_VAR)
-        if subprocess_proxy:
+        injected_subprocess_base_url = env.get(FORGE_SUBPROCESS_BASE_URL_VAR)
+        if injected_subprocess_base_url:
+            env["ANTHROPIC_BASE_URL"] = injected_subprocess_base_url
+        elif subprocess_proxy := env.get(FORGE_SUBPROCESS_PROXY_VAR):
             resolved = _resolve_subprocess_proxy(subprocess_proxy)
             if resolved:
                 env["ANTHROPIC_BASE_URL"] = resolved

@@ -19,11 +19,20 @@ Validates workflow runners + skill architecture.
 forge workflow list-models
 forge workflow list-models --json
 forge workflow list-models --available
+
+# Verify structured model metadata used by routing/preflight.
+forge workflow list-models --json \
+  | jq -e 'map(has("name") and has("model_id") and has("family") and has("provider_refs") and has("preferred_proxy") and has("status") and has("reason")) | all'
+
+# `--available` JSON should include only ready models.
+forge workflow list-models --available --json \
+  | jq -e 'all(.status == "ready")'
 ```
 
-- [ ] Shows configured models with proxy and description
-- [ ] Shows status column (ready/unavailable/error)
-- [ ] `--json` outputs structured JSON array with status field
+- [ ] Groups models by primary credential and shows `[configured]` / `[not configured]`
+- [ ] Shows model name, description, and status (`ready`/`unavailable`/`error`)
+- [ ] `--json` outputs a structured JSON array with `name`, `model_id`, `family`, `provider_refs`,
+      `preferred_proxy`, `status`, and `reason`
 - [ ] `--available` filters to ready models only
 - [ ] `--available` with no ready models shows explanatory message (table), `[]` (JSON)
 - [ ] Proxy in registry but not running shows "unavailable" (not "ready")
@@ -243,5 +252,59 @@ forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODEL_B --json 2>&1 | jq 
 - [ ] Single `--models` value produces 1 result key in `.results`
 - [ ] Comma-separated `--models` produces one result per specified model (`.successful` count matches)
 - [ ] Result keys in `.results` correspond to the requested model names
+
+### 14.12 Workflow Routing, `--via`, and Preflight
+
+<!-- prereq: 4.2, 14.1 -->
+
+<!-- requires: api_key -->
+
+<!-- auto -->
+
+```bash
+# Explicit proxy routing: one selected proxy handles this worker.
+FORGE_DEBUG=1 forge workflow panel docs/ \
+  --models "$FORGE_QA_WORKFLOW_MODEL_A" \
+  --via "$FORGE_QA_OPENAI_PROXY" \
+  --json > /tmp/forge-workflow-via.json
+
+jq '{results: (.results | keys), successful, failed}' /tmp/forge-workflow-via.json
+
+echo "---"
+
+# Human output should surface non-blocking routing advisories when they apply.
+forge workflow analyze -p "Reply with READY only." \
+  --models "$FORGE_QA_WORKFLOW_MODEL_A" \
+  --via "$FORGE_QA_OPENAI_PROXY" 2>&1 | tee /tmp/forge-workflow-via-warning.txt
+
+grep -E "Routing warning|tier overrides|Proxy tier mappings" /tmp/forge-workflow-via-warning.txt || true
+
+echo "---"
+
+# Routing decisions are logged for observability when logging is enabled.
+latest_log="$(ls -t "$FORGE_HOME"/logs/cli/workflow.*.log 2>/dev/null | head -n 1)"
+test -n "$latest_log" && grep "Routing decision: model=$FORGE_QA_WORKFLOW_MODEL_A" "$latest_log"
+
+echo "---"
+
+# Direct Anthropic workers fail fast when no Anthropic credential is available.
+tmp_home="$(mktemp -d)"
+env -u ANTHROPIC_API_KEY FORGE_HOME="$tmp_home" \
+  forge workflow analyze -p "This should not call the model." \
+    --models claude-opus-4.6 \
+    --json 2>&1 | tee /tmp/forge-workflow-direct-preflight.json
+rm -rf "$tmp_home"
+
+jq -e '.preflight_errors[0] | test("ANTHROPIC_API_KEY|anthropic"; "i")' \
+  /tmp/forge-workflow-direct-preflight.json
+```
+
+- [ ] `--via` resolves a compatible selected proxy and the JSON output remains parseable
+- [ ] Non-JSON workflow output prints a `Routing warning:` when `--via` selects a cross-family or live-advisory route
+      (same-family routes may have no warning)
+- [ ] The latest CLI workflow log contains a consolidated `Routing decision:` line with model, source, proxy/template,
+      and model ref
+- [ ] Direct Anthropic workflow workers fail during preflight with an actionable credential error when
+      `ANTHROPIC_API_KEY` is absent
 
 ---

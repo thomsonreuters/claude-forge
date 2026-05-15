@@ -34,11 +34,13 @@ def handoff() -> None:
     help="Repo-relative path to transcript artifact",
 )
 @click.option("--timeout", default=None, type=int, help="Max seconds for agent to run")
+@click.option("--subprocess-proxy", default=None, hidden=True, help="Stop-time subprocess proxy snapshot")
 def run_cmd(
     session_name: str,
     worktree_path: str,
     transcript_rel: str,
     timeout: int | None,
+    subprocess_proxy: str | None,
 ) -> None:
     """Run the handoff agent for a completed session.
 
@@ -86,6 +88,7 @@ def run_cmd(
         confirmed_proxy_base_url=confirmed_proxy_url,
         env_base_url=os.environ.get("ANTHROPIC_BASE_URL"),
         direct=config.direct,
+        subprocess_proxy=subprocess_proxy or effective.subprocess_proxy,
     )
 
     designated_docs = effective.memory.designated_docs if effective.memory else []

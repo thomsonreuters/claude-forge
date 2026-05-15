@@ -96,6 +96,16 @@ def proxy() -> None:
 proxy.add_command(costs_cmd)
 
 
+def _clear_workflow_template_cache() -> None:
+    """Invalidate workflow routing template metadata after template edits."""
+    try:
+        from forge.review.routing import clear_template_cache
+
+        clear_template_cache()
+    except Exception:
+        pass
+
+
 # --- List ---
 
 
@@ -1752,6 +1762,7 @@ def template_edit_cmd(name: str) -> None:
         if first_edit:
             console.print(f"[dim]Created user copy at {display_path(user_path)}[/dim]")
         console.print(f"[green]Updated[/green] template '{name}'")
+        _clear_workflow_template_cache()
 
     finally:
         if success and tmp_path.exists():
@@ -1802,3 +1813,4 @@ def template_reset_cmd(name: str, yes: bool, force: bool) -> None:
 
     user_path.unlink()
     console.print(f"[green]Reset[/green] template '{name}' to built-in defaults")
+    _clear_workflow_template_cache()

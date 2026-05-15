@@ -205,6 +205,126 @@ class TestLoadConfig:
     # Proxies own full config; no ~/.claude/forge.config.yaml
 
 
+class TestTemplateFamilyMetadata:
+    """Every shipped template must declare a model family."""
+
+    TEMPLATE_DIR = Path("src/forge/config/defaults/templates")
+
+    EXPECTED_FAMILIES = {
+        "openrouter-anthropic": "anthropic",
+        "openrouter-openai": "openai",
+        "openrouter-openai-codex": "openai",
+        "openrouter-gemini": "gemini",
+        "openrouter-gemini-flash": "gemini",
+        "openrouter-deepseek": "deepseek",
+        "openrouter-kimi": "kimi",
+        "openrouter-minimax": "minimax",
+        "openrouter-qwen": "qwen",
+        "openrouter-glm": "glm",
+        "litellm-anthropic": "anthropic",
+        "litellm-anthropic-local": "anthropic",
+        "litellm-openai": "openai",
+        "litellm-openai-local": "openai",
+        "litellm-openai-codex-local": "openai",
+        "litellm-gemini": "gemini",
+        "litellm-gemini-local": "gemini",
+        "litellm-gemini-flash-local": "gemini",
+        "litellm-gemini-test": "gemini",
+    }
+
+    def _shipped_template_names(self) -> list[str]:
+        return sorted(p.stem for p in self.TEMPLATE_DIR.glob("*.yaml"))
+
+    def test_every_shipped_template_has_family(self):
+        for name in self._shipped_template_names():
+            config = load_config(template=name)
+            assert config.proxy.family, f"Template '{name}' missing proxy.family"
+
+    def test_template_families_match_expected(self):
+        for name, expected_family in self.EXPECTED_FAMILIES.items():
+            config = load_config(template=name)
+            assert (
+                config.proxy.family == expected_family
+            ), f"Template '{name}': expected family '{expected_family}', got '{config.proxy.family}'"
+
+    def test_family_propagates_through_proxy_instance(self, tmp_path, monkeypatch):
+        """family round-trips through proxy.yaml creation and reload."""
+        from forge.config.loader import (
+            load_proxy_instance_config,
+            write_proxy_instance_config,
+        )
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        monkeypatch.setenv("FORGE_HOME", str(tmp_path))
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter-openai",
+            template_digest="sha256:test",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8096",
+            port=8096,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(haiku="openai/gpt-5.4-mini", sonnet="openai/gpt-5.5", opus="openai/gpt-5.5"),
+            family="openai",
+        )
+
+        write_proxy_instance_config("test-proxy", config)
+        loaded = load_proxy_instance_config("test-proxy")
+        assert loaded is not None
+        assert loaded.family == "openai"
+
+    def test_family_in_proxy_config_from_instance(self, tmp_path, monkeypatch):
+        """family on ProxyInstanceConfig flows into ProxyConfig via loader."""
+        from forge.config.loader import _proxy_instance_to_forge_config
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter-gemini",
+            template_digest="sha256:test",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8097",
+            port=8097,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(
+                haiku="google/gemini-3-flash", sonnet="google/gemini-3.1-pro", opus="google/gemini-3.1-pro"
+            ),
+            family="gemini",
+        )
+
+        forge_config = _proxy_instance_to_forge_config(config)
+        assert forge_config.proxy.family == "gemini"
+
+    @pytest.fixture()
+    def user_templates_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        monkeypatch.setenv("FORGE_HOME", str(tmp_path))
+        tpl_dir = tmp_path / "templates"
+        tpl_dir.mkdir()
+        return tpl_dir
+
+    def test_family_validation_rejects_numeric(self, user_templates_dir):
+        """family: 123 is rejected (must be a non-blank string)."""
+        bad = user_templates_dir / "bad-numeric.yaml"
+        bad.write_text("proxy:\n  family: 123\n  preferred_provider: openrouter\n  default_port: 9999\n")
+        with pytest.raises(ValueError, match="non-blank string"):
+            load_config(template="bad-numeric")
+
+    def test_family_validation_rejects_blank(self, user_templates_dir):
+        """family: '   ' (whitespace-only) is rejected."""
+        bad = user_templates_dir / "bad-blank.yaml"
+        bad.write_text("proxy:\n  family: '   '\n  preferred_provider: openrouter\n  default_port: 9999\n")
+        with pytest.raises(ValueError, match="non-blank string"):
+            load_config(template="bad-blank")
+
+    def test_family_validation_rejects_null_proxy(self, user_templates_dir):
+        """proxy: null produces a clear error, not AttributeError."""
+        bad = user_templates_dir / "bad-null.yaml"
+        bad.write_text("proxy: null\n")
+        with pytest.raises(ValueError, match="must have a 'proxy' mapping"):
+            load_config(template="bad-null")
+
+
 class TestProxyFileIO:
     """Tests for proxy file I/O functions."""
 

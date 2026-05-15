@@ -1,6 +1,6 @@
 # Subprocess Routing Unification — Capability-Based Model Routing
 
-**Status**: Proposal. Iterating on design.
+**Status**: Implemented (2026-05-14).
 
 **Context**: Every Forge subprocess (workflow workers, supervisor, handoff agent) resolves its proxy routing
 differently. Workflow models hardcode a proxy name per model. The supervisor has its own proxy flag and auto-seeding
@@ -636,8 +636,8 @@ not from runtime proxy availability:
 2. Pick the first statically preferred route (`preferred_proxy` if it matches, otherwise `provider_refs` order).
 3. Use that route's credential for grouping.
 
-This keeps `forge workflow list-models` stable: `gpt-5.5` does not move between `openrouter` and `litellm-remote`
-just because different proxies happen to be running.
+This keeps `forge workflow list-models` stable: `gpt-5.5` does not move between `openrouter` and `litellm-remote` just
+because different proxies happen to be running.
 
 ```
 Available Models (grouped by primary credential)

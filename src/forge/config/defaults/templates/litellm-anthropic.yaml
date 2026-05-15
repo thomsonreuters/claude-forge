@@ -8,6 +8,7 @@
 # prompt_caching: passthrough respects Anthropic's 4-breakpoint cache_control limit.
 
 proxy:
+  family: anthropic
   preferred_provider: litellm
   default_port: 8092
 

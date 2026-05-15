@@ -6,6 +6,7 @@
 # Requires OPENROUTER_API_KEY in .env (or environment).
 
 proxy:
+  family: deepseek
   preferred_provider: openrouter
   default_port: 8100
 

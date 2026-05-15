@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -2202,8 +2203,10 @@ class TestProxyTemplate:
         """Edit creates user copy from shipped template."""
         monkeypatch.setenv("EDITOR", "true")
 
-        result = runner.invoke(main, ["proxy", "template", "edit", "litellm-openai"])
+        with patch("forge.review.routing.clear_template_cache") as mock_clear:
+            result = runner.invoke(main, ["proxy", "template", "edit", "litellm-openai"])
         assert result.exit_code == 0
+        mock_clear.assert_called_once()
 
         forge_home = Path(os.environ["FORGE_HOME"])
         user_path = forge_home / "templates" / "litellm-openai.yaml"
@@ -2262,8 +2265,10 @@ class TestProxyTemplate:
         user_path = tpl_dir / "litellm-openai.yaml"
         user_path.write_text("# user override\n")
 
-        result = runner.invoke(main, ["proxy", "template", "reset", "litellm-openai", "--force"])
+        with patch("forge.review.routing.clear_template_cache") as mock_clear:
+            result = runner.invoke(main, ["proxy", "template", "reset", "litellm-openai", "--force"])
         assert result.exit_code == 0
+        mock_clear.assert_called_once()
         assert "Reset" in result.output
         assert not user_path.is_file()
 

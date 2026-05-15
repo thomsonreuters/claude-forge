@@ -261,6 +261,7 @@ class ProxyConfig:
     litellm: ProviderConfig = field(default_factory=ProviderConfig)
     openrouter: ProviderConfig = field(default_factory=ProviderConfig)
 
+    family: str = ""  # model family (e.g., "openai", "anthropic", "gemini")
     preferred_provider: str = ""  # set by --template flag
     active_template: str = ""
     default_tier: str = "sonnet"
@@ -319,6 +320,7 @@ class ProxyInstanceConfig:
     upstream_base_url: str  # e.g., https://litellm.corp.com
 
     tiers: TierModels
+    family: str = ""  # model family (e.g., "openai", "anthropic", "gemini")
     tier_overrides: TierOverrides = field(default_factory=TierOverrides)
     model_alternatives: dict[str, dict[str, str]] = field(default_factory=dict)
     default_tier: str = "sonnet"

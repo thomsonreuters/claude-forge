@@ -28,6 +28,12 @@ import click
 from rich.console import Console
 
 from forge.core.paths import display_path
+from forge.core.reactive.env import (
+    FORGE_SUBPROCESS_BASE_URL_VAR,
+    FORGE_SUBPROCESS_PROXY_ID_VAR,
+    FORGE_SUBPROCESS_PROXY_VAR,
+    FORGE_SUBPROCESS_TEMPLATE_VAR,
+)
 from forge.core.state import parse_iso
 from forge.session import (
     LAUNCH_MODE_HOST,
@@ -375,6 +381,7 @@ def _build_session_env(
     parent_session: str | None = None,
     forge_root: str | None = None,
     subprocess_proxy: str | None = None,
+    sidecar: bool = False,
 ) -> tuple[dict[str, str], list[str]]:
     """Build Claude env vars plus explicit unsets for a session launch."""
     env_vars: dict[str, str] = {
@@ -399,7 +406,8 @@ def _build_session_env(
             env_vars["ACTIVE_TEMPLATE"] = template
 
     if subprocess_proxy:
-        env_vars["FORGE_SUBPROCESS_PROXY"] = subprocess_proxy
+        env_vars[FORGE_SUBPROCESS_PROXY_VAR] = subprocess_proxy
+        env_vars.update(_resolve_subprocess_proxy_launch_metadata(subprocess_proxy, sidecar=sidecar))
 
     if fork_name is not None:
         env_vars["FORGE_FORK_NAME"] = fork_name
@@ -407,6 +415,40 @@ def _build_session_env(
         env_vars["FORGE_PARENT_SESSION"] = parent_session
 
     return env_vars, unset_env_vars
+
+
+def _resolve_subprocess_proxy_launch_metadata(proxy_id: str, *, sidecar: bool = False) -> dict[str, str]:
+    """Resolve subprocess proxy metadata to inject into launched sessions."""
+    try:
+        from forge.proxy.proxies import ProxyRegistryStore, resolve_proxy_optional
+
+        registry = ProxyRegistryStore().read()
+        entry = resolve_proxy_optional(registry, proxy_id)
+        if entry is None:
+            return {}
+
+        base_url = _container_reachable_url(entry.base_url) if sidecar else entry.base_url
+        return {
+            FORGE_SUBPROCESS_BASE_URL_VAR: base_url,
+            FORGE_SUBPROCESS_PROXY_ID_VAR: entry.proxy_id,
+            FORGE_SUBPROCESS_TEMPLATE_VAR: entry.template,
+        }
+    except Exception as e:
+        logger.debug("Could not resolve subprocess proxy metadata for %s: %s", proxy_id, e)
+        return {}
+
+
+def _container_reachable_url(base_url: str) -> str:
+    """Map host loopback proxy URLs to Docker's host gateway name."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    parsed = urlsplit(base_url)
+    if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        return base_url
+
+    host = "host.docker.internal"
+    netloc = f"{host}:{parsed.port}" if parsed.port else host
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
 
 def _resolve_extension_detection_root(cwd: Path) -> Path:

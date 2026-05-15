@@ -411,6 +411,28 @@ class TestSupervisorResumeTargetResolution:
         invoke_supervisor(_make_config(resume_id=raw_uuid, fork_session=False), _make_context())
         assert mock_run.call_args.kwargs["fork_session"] is False
 
+    @patch("forge.guard.semantic.supervisor.resolve_subprocess_routing")
+    @patch("forge.guard.semantic.supervisor.run_claude_session")
+    def test_direct_mode_skips_routing_resolver(self, mock_run: MagicMock, mock_resolve: MagicMock) -> None:
+        """direct=True should not consult proxy/env routing before invoking Claude."""
+        from forge.core.reactive.session_runner import SessionResult
+        from forge.guard.semantic.supervisor import invoke_supervisor
+
+        mock_run.return_value = SessionResult(
+            stdout='```json\n{"verdict": "aligned", "confidence": 0.9, "violations": []}\n```',
+            stderr="",
+            returncode=0,
+        )
+
+        raw_uuid = "12345678-1234-1234-1234-123456789abc"
+        with patch.dict("os.environ", {"FORGE_SUBPROCESS_PROXY": "broken-proxy"}):
+            result = invoke_supervisor(_make_config(resume_id=raw_uuid, direct=True), _make_context())
+
+        assert result.decision == "allow"
+        mock_resolve.assert_not_called()
+        assert mock_run.call_args.kwargs["base_url"] is None
+        assert mock_run.call_args.kwargs["direct"] is True
+
 
 # --- Engine Integration Tests ---
 

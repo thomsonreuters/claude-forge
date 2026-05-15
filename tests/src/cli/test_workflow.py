@@ -9,18 +9,46 @@ import pytest
 from click.testing import CliRunner
 
 from forge.cli.main import main
+from forge.core.reactive.routing import ModelRoute, RoutingResult
+from forge.proxy.proxies import ProxyNotFoundError
 from forge.review.models import (
     ModelAvailability,
     ModelSpec,
     MultiReviewOutput,
     ReviewResult,
 )
+from forge.review.routing import WorkerRoutingPlan
+
+
+def _auto_routing_plan(specs, **_kw):
+    """Create a valid routing plan for any spec list (test helper)."""
+    route = ModelRoute(
+        provider="openrouter",
+        credential="openrouter",
+        family="openai",
+        template_id="openrouter-openai",
+        template_family="openai",
+        model_ref="openai/gpt-5.5",
+    )
+    results = tuple(
+        RoutingResult(
+            base_url="http://localhost:8096",
+            proxy_id="openrouter-openai",
+            template="openrouter-openai",
+            source="preferred_proxy",
+            route=route,
+            credential="openrouter",
+        )
+        for _ in specs
+    )
+    return WorkerRoutingPlan(routes=results, resolved_at="2026-05-14T12:00:00Z", via_override=None)
 
 
 @pytest.fixture(autouse=True)
 def _skip_preflight(monkeypatch):
-    """Bypass preflight in CLI workflow tests (engine is mocked anyway)."""
+    """Bypass preflight and routing resolution in CLI workflow tests."""
     monkeypatch.setattr("forge.cli.workflow._run_preflight", lambda *a, **kw: None)
+    monkeypatch.setattr("forge.review.routing.resolve_invocation_routing", _auto_routing_plan)
 
 
 def _mock_output(
@@ -54,14 +82,28 @@ class TestRunHelp:
         assert result.exit_code != 0
 
 
+def _make_spec(name: str = "test", preferred_proxy: str | None = "p") -> ModelSpec:
+    provider_refs: tuple[tuple[str, str], ...]
+    if preferred_proxy:
+        provider_refs = (("openrouter", f"openai/{name}"),)
+    else:
+        provider_refs = (("direct", name),)
+    return ModelSpec(
+        name=name,
+        model_id=name,
+        family="openai",
+        provider_refs=provider_refs,
+        description="Test model",
+        preferred_proxy=preferred_proxy,
+    )
+
+
 def _avail_ready(name: str = "test", proxy: str | None = "p") -> ModelAvailability:
-    spec = ModelSpec(name=name, proxy=proxy, model_flag=None, description="Test model")
-    return ModelAvailability(spec=spec, status="ready", reason="")
+    return ModelAvailability(spec=_make_spec(name, proxy), status="ready", reason="")
 
 
 def _avail_unavailable(name: str = "test", proxy: str | None = "p", reason: str = "not found") -> ModelAvailability:
-    spec = ModelSpec(name=name, proxy=proxy, model_flag=None, description="Test model")
-    return ModelAvailability(spec=spec, status="unavailable", reason=reason)
+    return ModelAvailability(spec=_make_spec(name, proxy), status="unavailable", reason=reason)
 
 
 class TestListModels:
@@ -74,12 +116,11 @@ class TestListModels:
         assert "model-a" in result.output
 
     @patch("forge.review.models.check_model_availability")
-    def test_table_shows_status_column(self, mock_avail):
+    def test_table_shows_status(self, mock_avail):
         mock_avail.return_value = [_avail_ready("model-a")]
         runner = CliRunner()
         result = runner.invoke(main, ["workflow", "list-models"])
         assert result.exit_code == 0
-        assert "Status" in result.output
         assert "ready" in result.output
 
     @patch("forge.review.models.check_model_availability")
@@ -93,7 +134,9 @@ class TestListModels:
         assert len(data) == 1
         assert data[0]["name"] == "model-a"
         assert data[0]["status"] == "ready"
-        assert "proxy" in data[0]
+        assert "model_id" in data[0]
+        assert "family" in data[0]
+        assert "preferred_proxy" in data[0]
 
     @patch("forge.review.models.check_model_availability")
     def test_json_mixed_status(self, mock_avail):
@@ -164,6 +207,31 @@ class TestListModels:
         result = runner.invoke(main, ["workflow", "list-models", "--json", "--available"])
         data = json.loads(result.output)
         assert data == []
+
+    @patch("forge.review.models.check_model_availability")
+    def test_grouped_display_shows_credential(self, mock_avail):
+        mock_avail.return_value = [_avail_ready("model-a")]
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "list-models"])
+        assert result.exit_code == 0
+        assert "Available Models" in result.output
+        assert "model-a" in result.output
+
+    @patch("forge.review.models.check_model_availability")
+    def test_grouped_display_shows_unavailable(self, mock_avail):
+        mock_avail.return_value = [_avail_unavailable("model-b", reason="gone")]
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "list-models"])
+        assert "unavailable" in result.output
+
+    @patch("forge.review.models.check_model_availability")
+    def test_json_includes_provider_refs(self, mock_avail):
+        mock_avail.return_value = [_avail_ready("model-a")]
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "list-models", "--json"])
+        data = json.loads(result.output)
+        assert "provider_refs" in data[0]
+        assert isinstance(data[0]["provider_refs"], list)
 
 
 class TestRunPanel:
@@ -249,6 +317,173 @@ class TestRunPanel:
         assert result.exit_code == 2
         assert "Invalid --context" in result.output
 
+    @patch("forge.review.engine.run_multi_review")
+    def test_via_flag_accepted(self, mock_run):
+        mock_run.return_value = _mock_output()
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "openrouter-openai"])
+        assert result.exit_code == 0
+
+    def test_panel_help_shows_via(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "panel", "--help"])
+        assert "--via" in result.output
+
+
+class TestViaFlag:
+    """Tests for --via flag across all workflow commands."""
+
+    def test_panel_help_has_via(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "panel", "--help"])
+        assert "--via" in result.output
+
+    def test_analyze_help_has_via(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "analyze", "--help"])
+        assert "--via" in result.output
+
+    def test_debate_help_has_via(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "debate", "--help"])
+        assert "--via" in result.output
+
+    def test_consensus_help_has_via(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "consensus", "--help"])
+        assert "--via" in result.output
+
+    @patch("forge.review.engine.run_multi_review")
+    def test_via_passed_to_routing(self, mock_run):
+        """--via is forwarded to resolve_invocation_routing."""
+        mock_run.return_value = _mock_output()
+        runner = CliRunner()
+
+        with patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan) as mock_routing:
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "my-proxy"])
+
+        assert result.exit_code == 0
+        assert mock_routing.call_args[1]["via"] == "my-proxy"
+
+    @patch("forge.review.engine.run_multi_review")
+    def test_analyze_via_passed(self, mock_run):
+        mock_run.return_value = _mock_output()
+        runner = CliRunner()
+
+        with patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan) as mock_routing:
+            result = runner.invoke(main, ["workflow", "analyze", "topic", "--via", "my-proxy"])
+
+        assert result.exit_code == 0
+        assert mock_routing.call_args[1]["via"] == "my-proxy"
+
+    def test_panel_via_routing_error_exits_1(self):
+        """Invalid --via produces clean error, not a traceback."""
+        runner = CliRunner()
+        with patch(
+            "forge.review.routing.resolve_invocation_routing",
+            side_effect=RuntimeError("No running proxy found for model 'gpt-5.5'."),
+        ):
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "dead-proxy"])
+        assert result.exit_code == 1
+        assert "Routing failed" in result.output
+        assert "gpt-5.5" in result.output
+
+    def test_panel_via_proxy_not_found_exits_1(self):
+        """Proxy registry errors are rendered as routing errors."""
+        runner = CliRunner()
+        with patch(
+            "forge.review.routing.resolve_invocation_routing",
+            side_effect=ProxyNotFoundError("dead-proxy"),
+        ):
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "dead-proxy"])
+        assert result.exit_code == 1
+        assert "Routing failed" in result.output
+        assert "dead-proxy" in result.output
+
+    def test_panel_via_routing_error_json(self):
+        """--json mode emits structured routing_error."""
+        runner = CliRunner()
+        with patch(
+            "forge.review.routing.resolve_invocation_routing",
+            side_effect=RuntimeError("No running proxy"),
+        ):
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "dead-proxy", "--json"])
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert "routing_error" in data
+        assert "No running proxy" in data["routing_error"]
+
+    def test_panel_resolves_routing_before_preflight(self, monkeypatch):
+        """Preflight validates the actual --via routing plan."""
+        calls = []
+
+        def record_preflight(_specs, **kwargs):
+            calls.append(("preflight", kwargs.get("routing_plan")))
+
+        def record_routing(specs, **kwargs):
+            plan = _auto_routing_plan(specs, **kwargs)
+            calls.append(("routing", plan))
+            return plan
+
+        monkeypatch.setattr("forge.cli.workflow._run_preflight", record_preflight)
+
+        runner = CliRunner()
+        with (
+            patch("forge.review.routing.resolve_invocation_routing", side_effect=record_routing),
+            patch("forge.review.engine.run_multi_review", return_value=_mock_output()),
+        ):
+            result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--via", "my-proxy"])
+
+        assert result.exit_code == 0
+        assert [name for name, _ in calls] == ["routing", "preflight"]
+        assert calls[1][1] is calls[0][1]
+
+    def test_debate_via_routing_error_exits_1(self):
+        runner = CliRunner()
+        with patch(
+            "forge.review.routing.resolve_invocation_routing",
+            side_effect=RuntimeError("Proxy 'bad' not found"),
+        ):
+            result = runner.invoke(main, ["workflow", "debate", "proposal", "--via", "bad"])
+        assert result.exit_code == 1
+        assert "Routing failed" in result.output
+
+    @patch("forge.review.adversarial.run_multi_review")
+    def test_debate_reuses_cli_routing_plan(self, mock_run):
+        """Debate does not re-resolve after the CLI has built a routing plan."""
+        mock_run.return_value = _mock_output()
+        runner = CliRunner()
+        with patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan) as mock_routing:
+            result = runner.invoke(main, ["workflow", "debate", "proposal", "--via", "my-proxy"])
+
+        assert result.exit_code == 0
+        assert mock_routing.call_count == 1
+        assert mock_run.call_args[1]["routing_plan"] is not None
+
+    def test_consensus_via_routing_error_exits_1(self):
+        runner = CliRunner()
+        with patch(
+            "forge.review.routing.resolve_invocation_routing",
+            side_effect=RuntimeError("Proxy 'bad' not found"),
+        ):
+            result = runner.invoke(main, ["workflow", "consensus", "subject", "--via", "bad"])
+        assert result.exit_code == 1
+        assert "Routing failed" in result.output
+
+    @patch("forge.review.consensus.run_multi_review")
+    def test_consensus_reuses_cli_routing_plan_for_both_rounds(self, mock_run):
+        """Consensus cost tracking plan matches both executed rounds."""
+        mock_run.return_value = _mock_output()
+        runner = CliRunner()
+        with patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan) as mock_routing:
+            result = runner.invoke(main, ["workflow", "consensus", "subject", "--via", "my-proxy"])
+
+        assert result.exit_code == 0
+        assert mock_routing.call_count == 1
+        round_plans = [call.kwargs["routing_plan"] for call in mock_run.call_args_list]
+        assert len(round_plans) == 2
+        assert round_plans[0] is round_plans[1]
+
 
 class TestParseRoles:
     def test_valid_single_role(self):
@@ -302,9 +537,8 @@ class TestParseRoles:
 class TestApplyPanelRoles:
     def test_assigns_role_prefix_to_prompt(self):
         from forge.cli.workflow import _apply_panel_roles
-        from forge.review.models import ModelSpec
 
-        spec = ModelSpec(name="test-model", proxy=None, model_flag=None, description="test")
+        spec = _make_spec("test-model", None)
         result = _apply_panel_roles([spec], ["security"], "base prompt")
         assert len(result) == 1
         assert result[0].prompt is not None
@@ -313,18 +547,16 @@ class TestApplyPanelRoles:
 
     def test_sets_worker_id(self):
         from forge.cli.workflow import _apply_panel_roles
-        from forge.review.models import ModelSpec
 
-        spec = ModelSpec(name="gpt-5.5", proxy=None, model_flag=None, description="test")
+        spec = _make_spec("gpt-5.5", None)
         result = _apply_panel_roles([spec], ["architecture"], "prompt")
         assert result[0].worker_id == "gpt-5.5-architecture"
         assert result[0].effective_worker_id == "gpt-5.5-architecture"
 
     def test_cycles_roles_across_models(self):
         from forge.cli.workflow import _apply_panel_roles
-        from forge.review.models import ModelSpec
 
-        specs = [ModelSpec(name=f"model-{i}", proxy=None, model_flag=None, description="test") for i in range(3)]
+        specs = [_make_spec(f"model-{i}", None) for i in range(3)]
         result = _apply_panel_roles(specs, ["security", "architecture"], "prompt")
         assert result[0].worker_id == "model-0-security"
         assert result[1].worker_id == "model-1-architecture"
@@ -332,31 +564,26 @@ class TestApplyPanelRoles:
 
     def test_preserves_original_spec_fields(self):
         from forge.cli.workflow import _apply_panel_roles
-        from forge.review.models import ModelSpec
 
-        spec = ModelSpec(name="gpt-5.5", proxy="litellm-openai", model_flag="gpt-5.5", description="test")
+        spec = _make_spec("gpt-5.5", "litellm-openai")
         result = _apply_panel_roles([spec], ["correctness"], "prompt")
         assert result[0].name == "gpt-5.5"
-        assert result[0].proxy == "litellm-openai"
-        assert result[0].model_flag == "gpt-5.5"
+        assert result[0].preferred_proxy == "litellm-openai"
+        assert result[0].family == "openai"
 
     def test_no_collision_same_model_different_roles(self):
-        """Same model with different roles gets distinct worker_ids."""
         from forge.cli.workflow import _apply_panel_roles
-        from forge.review.models import ModelSpec
 
-        spec = ModelSpec(name="gpt-5.5", proxy=None, model_flag=None, description="test")
+        spec = _make_spec("gpt-5.5", None)
         result = _apply_panel_roles([spec, spec], ["security", "architecture"], "prompt")
         ids = [s.effective_worker_id for s in result]
         assert ids[0] != ids[1]
         assert ids == ["gpt-5.5-security", "gpt-5.5-architecture"]
 
     def test_collision_same_model_same_role_gets_suffix(self):
-        """Same model + same role gets index suffix to prevent collision."""
         from forge.cli.workflow import _apply_panel_roles
-        from forge.review.models import ModelSpec
 
-        spec = ModelSpec(name="gpt-5.5", proxy=None, model_flag=None, description="test")
+        spec = _make_spec("gpt-5.5", None)
         result = _apply_panel_roles([spec, spec], ["security"], "prompt")
         ids = [s.effective_worker_id for s in result]
         assert ids[0] != ids[1]
@@ -717,8 +944,9 @@ class TestRunDebate:
         assert result.exit_code == 2
         assert "No subject" in result.output
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_debate_invokes_adversarial(self, mock_run):
+    def test_debate_invokes_adversarial(self, mock_run, _mock_routing):
         """Debate subcommand delegates to adversarial runner."""
         mock_run.return_value = _mock_output()
         runner = CliRunner()
@@ -731,8 +959,9 @@ class TestRunDebate:
         # Verify blinding: resume_id must be None
         assert mock_run.call_args[1]["resume_id"] is None
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_debate_check_pass(self, mock_run):
+    def test_debate_check_pass(self, mock_run, _mock_routing):
         mock_run.return_value = _mock_output(
             results=[
                 ReviewResult(
@@ -754,8 +983,9 @@ class TestRunDebate:
         assert data["passed"] is True
         assert data["check_mode"] == "verdict"
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_debate_check_reject(self, mock_run):
+    def test_debate_check_reject(self, mock_run, _mock_routing):
         mock_run.return_value = _mock_output(
             results=[
                 ReviewResult(
@@ -776,8 +1006,9 @@ class TestRunDebate:
         data = json.loads(result.output)
         assert data["passed"] is False
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_debate_json_includes_stance_per_result(self, mock_run):
+    def test_debate_json_includes_stance_per_result(self, mock_run, _mock_routing):
         """Each result record should include its stance for JSON consumers."""
         mock_run.return_value = _mock_output(
             results=[
@@ -793,8 +1024,9 @@ class TestRunDebate:
         data = json.loads(result.output)
         assert data["results"]["gpt-5.5-for"]["stance"] == "for"
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_debate_json_resource_path_is_generated(self, mock_run):
+    def test_debate_json_resource_path_is_generated(self, mock_run, _mock_routing):
         """Debate JSON should emit '(generated)' not a dangling temp path."""
         mock_run.return_value = _mock_output(
             results=[
@@ -810,8 +1042,9 @@ class TestRunDebate:
         data = json.loads(result.output)
         assert data["resource_path"] == "(generated)"
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_debate_fail_closed_on_missing_verdict(self, mock_run):
+    def test_debate_fail_closed_on_missing_verdict(self, mock_run, _mock_routing):
         """Debate fails when a successful worker doesn't emit a verdict."""
         mock_run.return_value = _mock_output(
             results=[
@@ -827,8 +1060,9 @@ class TestRunDebate:
         data = json.loads(result.output)
         assert data["passed"] is False
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_debate_accept_with_conditions(self, mock_run):
+    def test_debate_accept_with_conditions(self, mock_run, _mock_routing):
         """ACCEPT_WITH_CONDITIONS is treated as a pass in debate."""
         mock_run.return_value = _mock_output(
             results=[
@@ -854,8 +1088,9 @@ class TestRunDebate:
 class TestRunDebateCode:
     """Tests for debate --code mode, mirroring TestRunPanel code-mode coverage."""
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_subject_loads_proposal_framework(self, mock_run):
+    def test_subject_loads_proposal_framework(self, mock_run, _mock_routing):
         """Positional subject without --code loads generic evaluation template."""
         mock_run.return_value = _mock_output()
         runner = CliRunner()
@@ -868,8 +1103,9 @@ class TestRunDebateCode:
         assert "Feasibility" in prompt_arg
         assert "event sourcing" in prompt_arg
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_subject_with_code_flag_loads_code_framework(self, mock_run):
+    def test_subject_with_code_flag_loads_code_framework(self, mock_run, _mock_routing):
         """Positional subject with --code loads code evaluation template."""
         mock_run.return_value = _mock_output()
         runner = CliRunner()
@@ -890,8 +1126,9 @@ class TestRunDebateCode:
         assert result.exit_code == 2
         assert "No target" in result.output
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_code_mode_check_pass(self, mock_run):
+    def test_code_mode_check_pass(self, mock_run, _mock_routing):
         mock_run.return_value = _mock_output(
             results=[
                 ReviewResult(
@@ -912,8 +1149,9 @@ class TestRunDebateCode:
         data = json.loads(result.output)
         assert data["passed"] is True
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_code_mode_json_output(self, mock_run):
+    def test_code_mode_json_output(self, mock_run, _mock_routing):
         mock_run.return_value = _mock_output(
             results=[
                 ReviewResult("gpt-5.5-for", "analysis", "", True, 1.0),
@@ -929,8 +1167,9 @@ class TestRunDebateCode:
         assert data["results"]["gpt-5.5-for"]["stance"] == "for"
         assert data["resource_path"] == "(generated)"
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_code_mode_default_models_all(self, mock_run):
+    def test_code_mode_default_models_all(self, mock_run, _mock_routing):
         """Default for debate --code is all models (N=all adversarial)."""
         mock_run.return_value = _mock_output()
         runner = CliRunner()
@@ -938,8 +1177,9 @@ class TestRunDebateCode:
         specs = mock_run.call_args[1]["models"]
         assert len(specs) >= 3
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_without_code_flag_unchanged(self, mock_run):
+    def test_without_code_flag_unchanged(self, mock_run, _mock_routing):
         """Proposal mode still uses generic evaluation template (regression guard)."""
         mock_run.return_value = _mock_output()
         runner = CliRunner()
@@ -1080,8 +1320,9 @@ class TestDebateWorkerCli:
         assert result.exit_code == 2
         assert "mutually exclusive" in result.output
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_worker_flag_routes_to_parse(self, mock_run):
+    def test_worker_flag_routes_to_parse(self, mock_run, _mock_routing):
         mock_run.return_value = _mock_output()
         runner = CliRunner()
         result = runner.invoke(
@@ -1093,8 +1334,9 @@ class TestDebateWorkerCli:
         # Worker should have "for" stance prompt injected
         assert any("SUPPORTER" in (s.prompt or "") for s in specs)
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
-    def test_custom_worker_prompt_injected(self, mock_run):
+    def test_custom_worker_prompt_injected(self, mock_run, _mock_routing):
         mock_run.return_value = _mock_output()
         runner = CliRunner()
         result = runner.invoke(

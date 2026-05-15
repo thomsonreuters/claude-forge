@@ -36,21 +36,29 @@ forge workflow consensus "Should we adopt gRPC for internal services?"
 
 Unless you pass `-m`, the multi-model workflows use this built-in worker set:
 
-- `gpt-5.5` -> proxy id `openrouter-openai`
-- `gemini-3.1-pro-preview` -> proxy id `openrouter-gemini`
-- `claude-opus` -> direct Anthropic, pinned to stable Claude Opus 4.6
+- `gpt-5.5` -- OpenRouter (preferred proxy: `openrouter-openai`)
+- `gemini-3.1-pro-preview` -- OpenRouter (preferred proxy: `openrouter-gemini`)
+- `claude-opus` -- direct Anthropic, pinned to stable Claude Opus 4.6
 
-Selectable direct Claude workers also include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Use
-`claude-opus-4.7` as an explicit bounded-review/quorum worker, for example:
+Routing is **capability-based**: models declare what they are (family, provider refs), and Forge derives routes at
+runtime from proxy templates and credentials. The preferred proxy is a catalog hint, not a hard requirement -- any
+compatible proxy found in the registry will work.
+
+Selectable direct Claude workers include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Additional OSS
+models include `deepseek-v4-pro`, `minimax-m2.7`, `qwen3.6-max-preview`, `kimi-k2.6`, and `glm-5.1`. Use `--via` to
+route all workers through a specific proxy:
 
 ```bash
+# Route all workers through one proxy (single OPENROUTER_API_KEY setup)
+forge workflow panel src/ --code -m gpt-5.5,deepseek-v4-pro --via openrouter-openai
+
+# Explicit direct Claude workers
 forge workflow panel src/ --code -m claude-opus-4.6,claude-opus-4.7
 ```
 
-Check which models are locally routable with `forge workflow list-models`. Models whose proxy isn't running or whose
-direct Anthropic API key isn't configured show as **unavailable**. This checks local proxy reachability, not upstream
-provider auth -- use `forge proxy create <template> --smoke-test` to verify end-to-end connectivity. Use `--available`
-to see only ready models, or `--json` for structured output.
+Check which models are locally routable with `forge workflow list-models`. Models are grouped by primary credential and
+show `[configured]` / `[not configured]` status. Models whose proxy isn't running or whose API key isn't configured show
+as **unavailable**. Use `--available` to see only ready models, or `--json` for structured output.
 
 ---
 
@@ -149,6 +157,7 @@ All `forge workflow` subcommands support:
 | `--json`  | Structured JSON output (model responses, durations, success/fail)        |
 | `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)              |
 | `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-3.1-pro-preview`) |
+| `--via`   | Route all workers through this proxy (e.g., `--via openrouter-openai`)   |
 | `-t`      | Per-model timeout in seconds (default: 600)                              |
 | `--cwd`   | Working directory for subprocesses                                       |
 
@@ -213,24 +222,27 @@ your decision rather than the executor freelancing.
 
 ### "No active proxy found" or a worker fails immediately
 
-The built-in `gpt-5.5` and `gemini-3.1-pro-preview` workers expect active proxies with ids `openrouter-openai` and
-`openrouter-gemini`. Check availability and create missing proxies:
+Workflow routing is capability-based: Forge looks for a running proxy whose template matches the model's provider. The
+default models prefer `openrouter-openai` and `openrouter-gemini`, but any compatible proxy will work.
 
 ```bash
-# See which models are ready vs unavailable
+# See which models are ready vs unavailable (grouped by credential)
 forge workflow list-models
 
-# Create missing proxies
+# Create the default proxies
 forge proxy create openrouter-openai
 forge proxy create openrouter-gemini
+
+# Or route everything through one proxy
+forge workflow panel src/ --code --via openrouter-openai
 
 # Filter to only ready models (useful for scripting)
 forge workflow list-models --available
 forge workflow list-models --available --json
 ```
 
-Unknown model names such as `gemini-pro` are rejected before execution. Models with unavailable proxies are flagged by
-the preflight check with an actionable suggestion.
+Unknown model names are rejected before execution. Models without a compatible running proxy are flagged by the
+preflight check with an actionable suggestion (which proxy to create or start).
 
 ### "--check failed but output looks fine"
 

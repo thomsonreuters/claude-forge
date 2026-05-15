@@ -5,10 +5,14 @@ from __future__ import annotations
 import pytest
 
 from forge.core.reactive.env import (
+    FORGE_SUBPROCESS_BASE_URL_VAR,
+    FORGE_SUBPROCESS_PROXY_ID_VAR,
     FORGE_SUBPROCESS_PROXY_VAR,
+    FORGE_SUBPROCESS_TEMPLATE_VAR,
     build_claude_env,
 )
 from forge.core.reactive.session_runner import run_claude_session
+from forge.proxy.proxies import ProxyEntry, ProxyRegistry
 
 
 class TestBuildClaudeEnvSubprocessProxy:
@@ -39,10 +43,22 @@ class TestBuildClaudeEnvSubprocessProxy:
     def test_direct_mode_ignores_subprocess_proxy(self, monkeypatch: pytest.MonkeyPatch):
         """direct=True removes ANTHROPIC_BASE_URL even when subprocess proxy is set."""
         monkeypatch.setenv(FORGE_SUBPROCESS_PROXY_VAR, "some-proxy")
+        monkeypatch.setenv(FORGE_SUBPROCESS_BASE_URL_VAR, "http://host.docker.internal:8096")
         monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://inherited:8000")
         env = build_claude_env(direct=True)
         assert "ANTHROPIC_BASE_URL" not in env
         assert FORGE_SUBPROCESS_PROXY_VAR not in env
+        assert FORGE_SUBPROCESS_BASE_URL_VAR not in env
+
+    def test_injected_subprocess_base_url_used_without_registry(self, monkeypatch: pytest.MonkeyPatch):
+        """Host-resolved subprocess metadata works where registry lookup is unavailable."""
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.setenv(FORGE_SUBPROCESS_PROXY_VAR, "openrouter")
+        monkeypatch.setenv(FORGE_SUBPROCESS_BASE_URL_VAR, "http://host.docker.internal:8096")
+
+        env = build_claude_env()
+
+        assert env["ANTHROPIC_BASE_URL"] == "http://host.docker.internal:8096"
 
     def test_direct_mode_removes_extra_vars_base_url(self, monkeypatch: pytest.MonkeyPatch):
         """direct=True cannot be bypassed by extra_vars."""
@@ -165,6 +181,38 @@ class TestBuildSessionEnv:
         )
         assert env_vars[FORGE_SUBPROCESS_PROXY_VAR] == "openrouter"
 
+    def test_subprocess_proxy_metadata_set_in_env_for_sidecar(self, monkeypatch: pytest.MonkeyPatch):
+        from forge.cli.session import _build_session_env
+
+        entry = ProxyEntry(
+            proxy_id="openrouter",
+            template="openrouter-openai",
+            base_url="http://localhost:8096",
+            port=8096,
+            status="healthy",
+        )
+        registry = ProxyRegistry(proxies={"openrouter": entry})
+
+        class Store:
+            def read(self) -> ProxyRegistry:
+                return registry
+
+        monkeypatch.setattr("forge.proxy.proxies.ProxyRegistryStore", Store)
+
+        env_vars, _ = _build_session_env(
+            session_name="test",
+            context_limit=200000,
+            template=None,
+            base_url=None,
+            subprocess_proxy="openrouter",
+            sidecar=True,
+        )
+
+        assert env_vars[FORGE_SUBPROCESS_PROXY_VAR] == "openrouter"
+        assert env_vars[FORGE_SUBPROCESS_BASE_URL_VAR] == "http://host.docker.internal:8096"
+        assert env_vars[FORGE_SUBPROCESS_PROXY_ID_VAR] == "openrouter"
+        assert env_vars[FORGE_SUBPROCESS_TEMPLATE_VAR] == "openrouter-openai"
+
     def test_no_subprocess_proxy_omits_env_var(self):
         from forge.cli.session import _build_session_env
 
@@ -194,8 +242,9 @@ class TestReviewSubprocessProxy:
             [
                 ModelSpec(
                     name="claude-opus",
-                    proxy=None,
-                    model_flag="claude-opus-4-6",
+                    model_id="claude-opus",
+                    family="anthropic",
+                    provider_refs=(("direct", "claude-opus-4-6"),),
                     description="direct worker",
                 )
             ]
@@ -203,61 +252,26 @@ class TestReviewSubprocessProxy:
 
         assert errors == []
 
-    def test_preflight_reports_missing_subprocess_proxy(self, monkeypatch: pytest.MonkeyPatch):
+    def test_direct_spec_ignores_dead_subprocess_proxy(self, monkeypatch: pytest.MonkeyPatch):
+        """Direct-only specs bypass subprocess proxy and resolve via direct route."""
         from forge.review.engine import preflight_check
         from forge.review.models import ModelSpec
 
         monkeypatch.setenv(FORGE_SUBPROCESS_PROXY_VAR, "dead-proxy")
-        monkeypatch.setattr(
-            "forge.core.reactive.proxy.check_proxy_reachable",
-            lambda proxy, timeout_s=1.0: (False, "not responding", None),
-        )
 
         errors = preflight_check(
             [
                 ModelSpec(
                     name="claude-opus",
-                    proxy=None,
-                    model_flag="claude-opus-4-6",
+                    model_id="claude-opus",
+                    family="anthropic",
+                    provider_refs=(("direct", "claude-opus-4-6"),),
                     description="direct worker",
                 )
             ]
         )
 
-        assert len(errors) == 1
-        assert "dead-proxy" in errors[0]
-        assert "forge proxy start dead-proxy" in errors[0]
-
-    def test_run_multi_review_fails_when_subprocess_proxy_unavailable(self, monkeypatch: pytest.MonkeyPatch):
-        from forge.review.engine import run_multi_review
-        from forge.review.models import ModelSpec
-
-        monkeypatch.setenv(FORGE_SUBPROCESS_PROXY_VAR, "dead-proxy")
-        monkeypatch.setattr(
-            "forge.core.reactive.env._resolve_subprocess_proxy",
-            lambda proxy_id: None,
-        )
-
-        def fail_if_popen_called(*args, **kwargs):
-            raise AssertionError("Popen should not be called when subprocess proxy is unavailable")
-
-        monkeypatch.setattr("forge.review.engine.subprocess.Popen", fail_if_popen_called)
-
-        output = run_multi_review(
-            "review this",
-            models=[
-                ModelSpec(
-                    name="claude-opus",
-                    proxy=None,
-                    model_flag="claude-opus-4-6",
-                    description="direct worker",
-                )
-            ],
-        )
-
-        assert output.failed == 1
-        assert "dead-proxy" in (output.results[0].error or "")
-        assert "not available" in (output.results[0].error or "")
+        assert errors == []
 
     def test_cost_tracking_resolves_subprocess_proxy_for_direct_specs(self, monkeypatch: pytest.MonkeyPatch):
         from forge.core.reactive.cost_tracking import resolve_proxy_urls
@@ -273,8 +287,9 @@ class TestReviewSubprocessProxy:
             [
                 ModelSpec(
                     name="claude-opus",
-                    proxy=None,
-                    model_flag="claude-opus-4-6",
+                    model_id="claude-opus",
+                    family="anthropic",
+                    provider_refs=(("direct", "claude-opus-4-6"),),
                     description="direct worker",
                 )
             ]

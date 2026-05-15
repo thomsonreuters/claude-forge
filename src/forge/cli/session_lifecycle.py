@@ -350,6 +350,7 @@ def _launch_claude_for_session(
         parent_session=parent_session,
         forge_root=manifest.forge_root,
         subprocess_proxy=manifest.intent.subprocess_proxy,
+        sidecar=use_sidecar,
     )
 
     _sess()._warn_if_hooks_missing(forge_root)

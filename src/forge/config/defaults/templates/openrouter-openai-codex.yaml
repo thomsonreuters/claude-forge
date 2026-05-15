@@ -4,6 +4,7 @@
 # Requires OPENROUTER_API_KEY in .env (or environment).
 
 proxy:
+  family: openai
   preferred_provider: openrouter
   default_port: 8098
 

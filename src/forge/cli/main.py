@@ -177,6 +177,9 @@ def _process_pending_work_best_effort() -> None:
                 "--transcript-rel",
                 payload["transcript_snapshot_rel"],
             ]
+            subprocess_proxy = payload.get("subprocess_proxy")
+            if subprocess_proxy:
+                cmd.extend(["--subprocess-proxy", subprocess_proxy])
 
             subprocess.Popen(
                 cmd,

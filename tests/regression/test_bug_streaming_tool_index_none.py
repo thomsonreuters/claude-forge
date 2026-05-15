@@ -154,7 +154,7 @@ async def test_bug_openrouter_stream_drops_none_index_when_multi_pending() -> No
         yield _make_chunk(tool_calls=[_make_tool_call_delta(index=1, tc_id="call_2", name="Write", args="")])
         yield _make_chunk(tool_calls=[_make_tool_call_delta(index=1, args='{"content": "b"}')])
         # Late chunk with index=None -- ambiguous, should be dropped
-        yield _make_chunk(tool_calls=[_make_tool_call_delta(index=None, args='CORRUPT')])
+        yield _make_chunk(tool_calls=[_make_tool_call_delta(index=None, args="CORRUPT")])
         yield _make_final_chunk()
 
     mock_client = AsyncMock()

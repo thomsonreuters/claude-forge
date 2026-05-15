@@ -167,15 +167,19 @@ def _calc_and_log_cost(
         return 0
 
 
+_CAP_CONFIG_KEY = {"daily": "per_day", "monthly": "per_month"}
+
+
 def _cap_result_message(cap_result) -> str:
     """Format a spend cap result for HTTP headers and errors."""
     cap_type = cap_result.cap_type or "configured"
+    config_key = _CAP_CONFIG_KEY.get(cap_type, f"per_{cap_type}")
     return (
         f"{'Projected ' if cap_result.projected else ''}"
         f"{cap_type} spend cap reached: "
         f"${cap_result.current_micros / 1_000_000:.2f} / "
         f"${cap_result.limit_micros / 1_000_000:.2f}. "
-        f"Adjust with: forge proxy set <id> costs.caps.per_{cap_type}=<amount>"
+        f"Adjust with: forge proxy set <id> costs.caps.{config_key}=<amount>"
     )
 
 
@@ -354,41 +358,6 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
     spend_warning: str | None = None
 
-    # Spend cap check (before any model resolution or forwarding)
-    if cost_tracker is not None and cost_tracker.has_caps:
-        projected = 0
-        if cost_tracker.cap_mode == "strict":
-            from forge.core.models.pricing import calculate_cost as _est_cost
-
-            _est_max_output = request_data.max_tokens or 4096
-            _est_input = _estimate_input_tokens(request_data)
-            try:
-                projected = _est_cost(
-                    request_data.model or "claude-sonnet-4-6",
-                    _est_input,
-                    _est_max_output,
-                    0,
-                )
-            except Exception:
-                projected = 0
-
-        cap_result = cost_tracker.check_cap(projected_cost_micros=projected)
-        if cap_result.exceeded:
-            spend_warning = _cap_result_message(cap_result)
-            if cost_tracker.on_cap_hit == "reject":
-                return JSONResponse(
-                    status_code=429,
-                    content={
-                        "type": "error",
-                        "error": {
-                            "type": "spend_cap_exceeded",
-                            "message": spend_warning,
-                        },
-                    },
-                    headers={"X-Request-ID": request_id},
-                )
-            logger.warning("[%s] %s", request_id, spend_warning)
-
     # Resolve effective tier (routing invariants):
     # Precedence: request explicit tier > config.proxy.default_tier
     # If neither is available, fail fast (misconfiguration).
@@ -456,6 +425,36 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
         tier_default = config.proxy.get_model_for_tier(resolved_tier)
         actual_model_id = _resolve_model_with_alternatives(resolved_tier, original_model_name, tier_default)
         logger.debug(f"[{request_id}] Tier-resolved model: tier={resolved_tier} -> '{actual_model_id}'")
+
+    # Spend cap check (after model resolution so strict preflight prices the actual model)
+    if cost_tracker is not None and cost_tracker.has_caps:
+        projected = 0
+        if cost_tracker.cap_mode == "strict":
+            from forge.core.models.pricing import calculate_cost as _est_cost
+
+            _est_max_output = request_data.max_tokens or 4096
+            _est_input = _estimate_input_tokens(request_data)
+            try:
+                projected = _est_cost(actual_model_id, _est_input, _est_max_output, 0)
+            except Exception:
+                projected = 0
+
+        cap_result = cost_tracker.check_cap(projected_cost_micros=projected)
+        if cap_result.exceeded:
+            spend_warning = _cap_result_message(cap_result)
+            if cost_tracker.on_cap_hit == "reject":
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "type": "error",
+                        "error": {
+                            "type": "spend_cap_exceeded",
+                            "message": spend_warning,
+                        },
+                    },
+                    headers={"X-Request-ID": request_id},
+                )
+            logger.warning("[%s] %s", request_id, spend_warning)
 
     try:
         num_messages = len(request_data.messages) if request_data.messages else 0

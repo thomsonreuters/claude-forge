@@ -69,7 +69,7 @@ async def test_bug_openrouter_client_reset_on_auth_failure_complete() -> None:
         await client.complete([Message(role="user", content="test")])
 
     assert client._client is None
-    client._credentials.invalidate.assert_awaited_once()
+    client._credentials.invalidate.assert_awaited_once()  # type: ignore[attr-defined]  # AsyncMock
     mock_openai.close.assert_awaited_once()
 
 
@@ -85,7 +85,7 @@ async def test_bug_openrouter_client_reset_on_auth_failure_stream() -> None:
         events.append(event)
 
     assert client._client is None
-    client._credentials.invalidate.assert_awaited_once()
+    client._credentials.invalidate.assert_awaited_once()  # type: ignore[attr-defined]  # AsyncMock
     mock_openai.close.assert_awaited_once()
     assert any(e.type == "error" for e in events)
 
@@ -104,7 +104,7 @@ async def test_bug_litellm_client_reset_on_auth_failure_complete() -> None:
         await client.complete([Message(role="user", content="test")])
 
     assert client._client is None
-    client._credentials.invalidate.assert_awaited_once()
+    client._credentials.invalidate.assert_awaited_once()  # type: ignore[attr-defined]  # AsyncMock
     mock_openai.close.assert_awaited_once()
 
 
@@ -123,7 +123,7 @@ async def test_bug_litellm_client_reset_on_auth_failure_stream_chat_completions(
         events.append(event)
 
     assert client._client is None
-    client._credentials.invalidate.assert_awaited_once()
+    client._credentials.invalidate.assert_awaited_once()  # type: ignore[attr-defined]  # AsyncMock
     mock_openai.close.assert_awaited_once()
     assert any(e.type == "error" for e in events)
 
@@ -143,7 +143,7 @@ async def test_bug_litellm_client_reset_on_auth_failure_stream_responses_api() -
         events.append(event)
 
     assert client._client is None
-    client._credentials.invalidate.assert_awaited_once()
+    client._credentials.invalidate.assert_awaited_once()  # type: ignore[attr-defined]  # AsyncMock
     mock_openai.close.assert_awaited_once()
     assert any(e.type == "error" for e in events)
 
@@ -162,7 +162,7 @@ async def test_bug_openrouter_client_not_reset_on_non_auth_error() -> None:
         await client.complete([Message(role="user", content="test")])
 
     assert client._client is mock_openai
-    client._credentials.invalidate.assert_not_awaited()
+    client._credentials.invalidate.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock
 
 
 @pytest.mark.asyncio
@@ -176,4 +176,4 @@ async def test_bug_litellm_client_not_reset_on_non_auth_error() -> None:
         await client.complete([Message(role="user", content="test")])
 
     assert client._client is mock_openai
-    client._credentials.invalidate.assert_not_awaited()
+    client._credentials.invalidate.assert_not_awaited()  # type: ignore[attr-defined]  # AsyncMock

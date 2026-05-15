@@ -813,10 +813,9 @@ def edit_cmd(proxy_id: str) -> None:
             console.print(f"Your changes are saved at: {display_path(tmp_path)}")
             sys.exit(1)
 
-        write_tmp = proxy_path.with_suffix(".yaml.tmp")
-        shutil.copy(tmp_path, write_tmp)
-        write_tmp.chmod(0o600)
-        write_tmp.rename(proxy_path)
+        from forge.core.state import atomic_write_text
+
+        atomic_write_text(proxy_path, tmp_path.read_text(), create_parents=False)
 
         success = True
         console.print(f"[green]Updated[/green] proxy '{proxy_id}'")
@@ -903,13 +902,19 @@ def set_cmd(proxy_id: str, key_value: str) -> None:
         console.print(f"[red]Error:[/red] Invalid value — {e}")
         sys.exit(1)
 
-    tmp_path = proxy_path.with_suffix(".yaml.tmp")
-    with open(tmp_path, "w") as f:
-        yaml.dump(data, f)
-    tmp_path.chmod(0o600)
-    tmp_path.rename(proxy_path)
+    import io
+
+    from forge.core.state import atomic_write_text
+
+    buf = io.StringIO()
+    yaml.dump(data, buf)
+    atomic_write_text(proxy_path, buf.getvalue(), create_parents=False)
 
     console.print(f"[green]Set[/green] {key}={coerced_value} in proxy '{proxy_id}'")
+    if key.startswith("costs."):
+        console.print(
+            "[dim]Tip: Cost config is read at proxy startup. Restart the proxy for this change to take effect.[/dim]"
+        )
 
 
 # --- Delete ---

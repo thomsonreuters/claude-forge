@@ -28,7 +28,7 @@ classifiers = [
 dependencies = [
     "dacite>=1.8.0",
     "click>=8.3.1",
-    "coolname>=2.2.0,<3",
+    "coolname>=5.0.0,<6",
     "rich>=13.0.0",
     "pydantic>=2.0.0",
     "openai>=1.0.0",
@@ -45,7 +45,7 @@ dependencies = [
     "fastapi>=0.115.11",
     "uvicorn>=0.31.1",
     "watchfiles>=0.20",
-    "litellm[proxy]>=1.83.0",
+    "litellm[proxy]>=1.84.0",
 ]
 
 [project.scripts]
@@ -149,7 +149,7 @@ dev = [
 ]
 provider-check = [
     "anthropic>=0.52.0",
-    "google-genai>=1.0.0",
+    "google-genai>=2.3.0",
     "openai>=1.0.0",
     "tiktoken>=0.12.0",
 ]

@@ -120,7 +120,8 @@ def _process_pending_work_best_effort() -> None:
             worktree_path = Path(payload["worktree_path"])
             transcript_rel = payload["transcript_snapshot_rel"]
 
-            forge_root = resolve_forge_root(worktree_path)
+            marker_forge_root = payload.get("forge_root")
+            forge_root = Path(marker_forge_root) if marker_forge_root else resolve_forge_root(worktree_path)
             transcript_abs = (forge_root / transcript_rel).resolve()
 
             # Validate path containment to prevent path traversal
@@ -180,6 +181,9 @@ def _process_pending_work_best_effort() -> None:
             subprocess_proxy = payload.get("subprocess_proxy")
             if subprocess_proxy:
                 cmd.extend(["--subprocess-proxy", subprocess_proxy])
+            marker_forge_root = payload.get("forge_root")
+            if marker_forge_root:
+                cmd.extend(["--forge-root", marker_forge_root])
 
             subprocess.Popen(
                 cmd,

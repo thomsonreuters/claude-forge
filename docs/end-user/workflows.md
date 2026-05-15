@@ -152,14 +152,14 @@ forge workflow consensus --worker gpt-5.5:architect --worker claude-opus:securit
 
 All `forge workflow` subcommands support:
 
-| Flag      | Description                                                              |
-| --------- | ------------------------------------------------------------------------ |
-| `--json`  | Structured JSON output (model responses, durations, success/fail)        |
-| `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)              |
-| `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-3.1-pro-preview`) |
-| `--via`   | Route all workers through this proxy (e.g., `--via openrouter-openai`)   |
-| `-t`      | Per-model timeout in seconds (default: 600)                              |
-| `--cwd`   | Working directory for subprocesses                                       |
+| Flag      | Description                                                                                           |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| `--json`  | Structured JSON output (model responses, durations, success/fail)                                     |
+| `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)                                           |
+| `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-3.1-pro-preview`)                              |
+| `--via`   | Route proxy-backed workers through this proxy; direct workers (e.g., `claude-opus`) stay on Anthropic |
+| `-t`      | Per-model timeout in seconds (default: 600)                                                           |
+| `--cwd`   | Working directory for subprocesses                                                                    |
 
 ---
 

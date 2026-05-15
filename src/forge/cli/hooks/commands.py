@@ -479,12 +479,14 @@ def stop() -> None:
     # Important: enqueue even if manifest update failed - the transcript artifact
     # exists on disk and deferred work should still be triggered.
     # Only enqueue if verification passed (we reach here only if should_allow_stop=True)
+    effective_forge_root = str(store.forge_root) if store else None
     queued_stop = (
         enqueue_stop_marker(
             session_id=session_id,
             worktree_path=cwd,
             session_name=manifest.name,
             transcript_snapshot_rel=str(dst_rel),
+            forge_root=effective_forge_root,
         )
         is not None
     )
@@ -494,6 +496,7 @@ def stop() -> None:
             worktree_path=cwd,
             session_name=manifest.name,
             transcript_snapshot_rel=str(dst_rel),
+            forge_root=effective_forge_root,
         )
         is not None
     )
@@ -510,6 +513,7 @@ def stop() -> None:
                     session_name=manifest.name,
                     transcript_snapshot_rel=str(dst_rel),
                     subprocess_proxy=effective.subprocess_proxy,
+                    forge_root=effective_forge_root,
                 )
                 is not None
             )
@@ -669,6 +673,7 @@ def stop_failure() -> None:
     # Enqueuing for a nonexistent artifact wastes retries until poison handling.
     queued_stop = False
     queued_index = False
+    effective_forge_root = str(store.forge_root) if store else None
     if dst_abs.is_file():
         queued_stop = (
             enqueue_stop_marker(
@@ -676,6 +681,7 @@ def stop_failure() -> None:
                 worktree_path=cwd,
                 session_name=manifest.name,
                 transcript_snapshot_rel=str(dst_rel),
+                forge_root=effective_forge_root,
             )
             is not None
         )
@@ -685,6 +691,7 @@ def stop_failure() -> None:
                 worktree_path=cwd,
                 session_name=manifest.name,
                 transcript_snapshot_rel=str(dst_rel),
+                forge_root=effective_forge_root,
             )
             is not None
         )

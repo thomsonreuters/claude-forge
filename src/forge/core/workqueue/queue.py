@@ -167,6 +167,7 @@ def enqueue_stop_marker(
     worktree_path: Path,
     session_name: str,
     transcript_snapshot_rel: str,
+    forge_root: str | None = None,
 ) -> Path | None:
     """Enqueue a Stop marker for deferred processing.
 
@@ -177,20 +178,21 @@ def enqueue_stop_marker(
         worktree_path: Absolute path to the worktree.
         session_name: Forge session name.
         transcript_snapshot_rel: Repo-relative path to transcript artifact.
+        forge_root: Explicit Forge project root (for nested projects where
+            forge_root != worktree_path).
 
     Returns:
         Path to created marker, or None if enqueue failed.
     """
-    return enqueue(
-        kind="stop",
-        marker_id=session_id,
-        payload={
-            "session_id": session_id,
-            "worktree_path": str(worktree_path),
-            "session_name": session_name,
-            "transcript_snapshot_rel": transcript_snapshot_rel,
-        },
-    )
+    payload = {
+        "session_id": session_id,
+        "worktree_path": str(worktree_path),
+        "session_name": session_name,
+        "transcript_snapshot_rel": transcript_snapshot_rel,
+    }
+    if forge_root:
+        payload["forge_root"] = forge_root
+    return enqueue(kind="stop", marker_id=session_id, payload=payload)
 
 
 def enqueue_index_marker(
@@ -199,6 +201,7 @@ def enqueue_index_marker(
     worktree_path: Path,
     session_name: str,
     transcript_snapshot_rel: str,
+    forge_root: str | None = None,
 ) -> Path | None:
     """Enqueue an Index marker for deferred search indexing.
 
@@ -211,20 +214,20 @@ def enqueue_index_marker(
         worktree_path: Absolute path to the worktree.
         session_name: Forge session name.
         transcript_snapshot_rel: Repo-relative path to transcript artifact.
+        forge_root: Explicit Forge project root (for nested projects).
 
     Returns:
         Path to created marker, or None if enqueue failed.
     """
-    return enqueue(
-        kind="index",
-        marker_id=f"idx-{session_id}",
-        payload={
-            "session_id": session_id,
-            "worktree_path": str(worktree_path),
-            "session_name": session_name,
-            "transcript_snapshot_rel": transcript_snapshot_rel,
-        },
-    )
+    payload = {
+        "session_id": session_id,
+        "worktree_path": str(worktree_path),
+        "session_name": session_name,
+        "transcript_snapshot_rel": transcript_snapshot_rel,
+    }
+    if forge_root:
+        payload["forge_root"] = forge_root
+    return enqueue(kind="index", marker_id=f"idx-{session_id}", payload=payload)
 
 
 def enqueue_handoff_marker(
@@ -234,6 +237,7 @@ def enqueue_handoff_marker(
     session_name: str,
     transcript_snapshot_rel: str,
     subprocess_proxy: str | None = None,
+    forge_root: str | None = None,
 ) -> Path | None:
     """Enqueue a Handoff marker for background memory doc update.
 
@@ -259,6 +263,8 @@ def enqueue_handoff_marker(
     }
     if subprocess_proxy:
         payload["subprocess_proxy"] = subprocess_proxy
+    if forge_root:
+        payload["forge_root"] = forge_root
 
     return enqueue(
         kind="handoff",

@@ -74,13 +74,17 @@ def _run_preflight(
     from forge.review.engine import preflight_check
 
     errors = preflight_check(specs, routing_plan=routing_plan)
+    warnings = _routing_plan_warnings(specs, routing_plan)
     if not errors:
         if not json_output:
-            for warning in _routing_plan_warnings(specs, routing_plan):
+            for warning in warnings:
                 console.print(f"[yellow]Routing warning:[/yellow] {warning}")
         return
     if json_output:
-        click.echo(json.dumps({"preflight_errors": errors}))
+        data: dict[str, Any] = {"preflight_errors": errors}
+        if warnings:
+            data["routing_warnings"] = warnings
+        click.echo(json.dumps(data))
     else:
         console.print("[red]Error:[/red] Workflow preflight failed:")
         for err in errors:
@@ -298,7 +302,7 @@ def _print_grouped_models(availabilities: list) -> None:
     default=None,
     help="Minimum severity to report",
 )
-@click.option("--via", type=str, default=None, help="Route all workers through this proxy")
+@click.option("--via", type=str, default=None, help="Route proxy-backed workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def panel(
@@ -407,7 +411,13 @@ def panel(
             resume_id=resume_id,
         )
 
-    _handle_review_output(ctx, output, check_mode=check_mode, json_output=json_output)
+    _handle_review_output(
+        ctx,
+        output,
+        check_mode=check_mode,
+        json_output=json_output,
+        routing_warnings=_routing_plan_warnings(specs, routing_plan),
+    )
 
 
 def _resolve_panel_prompt(
@@ -618,6 +628,7 @@ def _build_check_json(
     output: MultiReviewOutput,
     passed: bool,
     reason: str,
+    routing_warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build JSON output for --check mode with gating fields."""
     from forge.review.synthesis import build_json_dict
@@ -626,6 +637,8 @@ def _build_check_json(
     data["passed"] = passed
     data["check_mode"] = "verdict"
     data["reason"] = reason
+    if routing_warnings:
+        data["routing_warnings"] = routing_warnings
     return data
 
 
@@ -635,19 +648,23 @@ def _handle_review_output(
     *,
     check_mode: bool,
     json_output: bool,
+    routing_warnings: list[str] | None = None,
 ) -> None:
     """Shared output handler for panel-based commands."""
-    from forge.review.synthesis import format_json_output, format_synthesis_prompt
+    from forge.review.synthesis import build_json_dict, format_synthesis_prompt
 
     if check_mode:
         passed, reason = _evaluate_verdicts(output.results)
-        data = _build_check_json(output, passed, reason)
+        data = _build_check_json(output, passed, reason, routing_warnings)
         click.echo(json.dumps(data, indent=2))
         ctx.exit(0 if passed else 1)
         return
 
     if json_output:
-        click.echo(format_json_output(output))
+        data = build_json_dict(output)
+        if routing_warnings:
+            data["routing_warnings"] = routing_warnings
+        click.echo(json.dumps(data, indent=2))
     else:
         click.echo(format_synthesis_prompt(output))
 
@@ -680,7 +697,7 @@ def _handle_review_output(
     is_flag=True,
     help="Gate on verdict: exit 0 if passed, exit 1 if failed",
 )
-@click.option("--via", type=str, default=None, help="Route all workers through this proxy")
+@click.option("--via", type=str, default=None, help="Route proxy-backed workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def analyze(
@@ -742,7 +759,13 @@ def analyze(
             cwd=cwd or str(Path.cwd()),
         )
 
-    _handle_review_output(ctx, output, check_mode=check_mode, json_output=json_output)
+    _handle_review_output(
+        ctx,
+        output,
+        check_mode=check_mode,
+        json_output=json_output,
+        routing_warnings=_routing_plan_warnings(specs, routing_plan),
+    )
 
 
 # --- Debate subcommand ---
@@ -1052,7 +1075,7 @@ def _resolve_debate_prompt(
     type=str,
     help='Worker spec: model:stance or model:"custom prompt" (repeatable)',
 )
-@click.option("--via", type=str, default=None, help="Route all workers through this proxy")
+@click.option("--via", type=str, default=None, help="Route proxy-backed workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def debate(
@@ -1156,15 +1179,19 @@ def debate(
         if tmp_file is not None:
             Path(tmp_file.name).unlink(missing_ok=True)
 
+    debate_warnings = _routing_plan_warnings(stance_models, routing_plan)
+
     if check_mode:
         passed, reason = _evaluate_verdicts(output.results)
-        data = _build_adversarial_json(output, passed=passed, check_mode_str="verdict", reason=reason)
+        data = _build_adversarial_json(
+            output, passed=passed, check_mode_str="verdict", reason=reason, routing_warnings=debate_warnings
+        )
         click.echo(json.dumps(data, indent=2))
         ctx.exit(0 if passed else 1)
         return
 
     if json_output:
-        data = _build_adversarial_json(output)
+        data = _build_adversarial_json(output, routing_warnings=debate_warnings)
         click.echo(json.dumps(data, indent=2))
     else:
         _print_debate_text(output)
@@ -1253,6 +1280,7 @@ def _build_adversarial_json(
     passed: bool | None = None,
     check_mode_str: str | None = None,
     reason: str | None = None,
+    routing_warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build JSON output for adversarial evaluation."""
     data: dict[str, Any] = {
@@ -1277,6 +1305,8 @@ def _build_adversarial_json(
         data["check_mode"] = check_mode_str
     if reason is not None:
         data["reason"] = reason
+    if routing_warnings:
+        data["routing_warnings"] = routing_warnings
     return data
 
 
@@ -1566,6 +1596,7 @@ def _build_consensus_json(
     passed: bool | None = None,
     check_mode_str: str | None = None,
     reason: str | None = None,
+    routing_warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build JSON output for consensus workflow."""
     data: dict[str, Any] = {
@@ -1602,6 +1633,8 @@ def _build_consensus_json(
         data["check_mode"] = check_mode_str
     if reason is not None:
         data["reason"] = reason
+    if routing_warnings:
+        data["routing_warnings"] = routing_warnings
     return data
 
 
@@ -1692,7 +1725,7 @@ def _print_consensus_text(output: ConsensusOutput) -> None:
     type=str,
     help='Worker spec: model:role or model:"custom prompt" (repeatable)',
 )
-@click.option("--via", type=str, default=None, help="Route all workers through this proxy")
+@click.option("--via", type=str, default=None, help="Route proxy-backed workers through this proxy")
 @click.option("--cwd", type=click.Path(exists=True), default=None, help="Working directory")
 @click.pass_context
 def consensus(
@@ -1801,15 +1834,19 @@ def consensus(
         if tmp_file is not None:
             Path(tmp_file.name).unlink(missing_ok=True)
 
+    consensus_warnings = _routing_plan_warnings(role_models, routing_plan)
+
     if check_mode:
         passed, reason = _evaluate_consensus_positions(output.round2_results)
-        data = _build_consensus_json(output, passed=passed, check_mode_str="position", reason=reason)
+        data = _build_consensus_json(
+            output, passed=passed, check_mode_str="position", reason=reason, routing_warnings=consensus_warnings
+        )
         click.echo(json.dumps(data, indent=2))
         ctx.exit(0 if passed else 1)
         return
 
     if json_output:
-        data = _build_consensus_json(output)
+        data = _build_consensus_json(output, routing_warnings=consensus_warnings)
         click.echo(json.dumps(data, indent=2))
     else:
         _print_consensus_text(output)

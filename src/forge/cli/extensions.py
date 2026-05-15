@@ -204,7 +204,7 @@ def _validate_anchor(anchor: Path) -> None:
     resolved = anchor.expanduser().resolve()
     if ".claude" in resolved.parts:
         raise click.UsageError(
-            f"--path points inside a .claude directory: {anchor}\n"
+            f"--root points inside a .claude directory: {anchor}\n"
             "Provide the project root instead (the parent of .claude/)."
         )
 
@@ -428,7 +428,8 @@ def extensions() -> None:
     help="Installation scope: local (gitignored), project (committed), user (global)",
 )
 @click.option(
-    "--path",
+    "--root",
+    "path",
     type=click.Path(exists=True, file_okay=False, resolve_path=True),
     default=None,
     help="Target directory (default: walk up from cwd to find .claude/)",
@@ -493,8 +494,8 @@ def enable_cmd(
     Examples:
         forge extension enable                                # Auto-detect scope
         forge extension enable --scope local                  # Local at nearest .claude/
-        forge extension enable --scope local --path /repo/api # Local at specific path
-        forge extension enable --path /repo/api               # Same (defaults to local)
+        forge extension enable --scope local --root /repo/api # Local at specific path
+        forge extension enable --root /repo/api               # Same (defaults to local)
         forge extension enable --scope user                   # Global ~/.claude
         forge extension enable --profile minimal              # Commands only
         forge extension enable --dry-run                      # Preview changes
@@ -511,15 +512,15 @@ def enable_cmd(
 
         anchor = Path(path) if path else None
 
-        # Validate: --scope user + --path is contradictory
+        # Validate: --scope user + --root is contradictory
         if scope == "user" and anchor is not None:
-            raise click.UsageError("--scope user is global; --path is not applicable.")
+            raise click.UsageError("--scope user is global; --root is not applicable.")
 
         # Validate: anchor must not point inside .claude/
         if anchor is not None:
             _validate_anchor(anchor)
 
-        # Default: --path without --scope implies local
+        # Default: --root without --scope implies local
         if anchor is not None and scope is None:
             scope = "local"
 
@@ -598,7 +599,7 @@ def enable_cmd(
         console.print(f"[red]Error:[/red] {e}")
         console.print(
             "\n[dim]Tip: Use '--scope user' to enable globally, "
-            "or '--path <dir>' to target a specific directory.[/dim]"
+            "or '--root <dir>' to target a specific directory.[/dim]"
         )
         sys.exit(1)
     except SettingsConflictError as e:
@@ -825,7 +826,8 @@ def disable_cmd(scope: str | None, uninstall_all: bool, yes: bool, force: bool) 
     help="Installation scope",
 )
 @click.option(
-    "--path",
+    "--root",
+    "path",
     type=click.Path(exists=True, file_okay=False, resolve_path=True),
     default=None,
     help="Target directory to check (default: walk up from cwd)",
@@ -847,8 +849,8 @@ def status_cmd(scope: str | None, path: str | None, show_all: bool, as_json: boo
     \b
     Examples:
         forge extension status                                # Auto-detect
-        forge extension status --scope local --path /repo/api # Check specific install
-        forge extension status --path /repo/api               # Auto-detect scope at path
+        forge extension status --scope local --root /repo/api # Check specific install
+        forge extension status --root /repo/api               # Auto-detect scope at path
         forge extension status --all                          # Show all scopes
     """
     import os
@@ -858,9 +860,9 @@ def status_cmd(scope: str | None, path: str | None, show_all: bool, as_json: boo
     if show_all and scope is not None:
         raise click.UsageError("--all and --scope are mutually exclusive.")
     if show_all and anchor is not None:
-        raise click.UsageError("--all and --path are mutually exclusive.")
+        raise click.UsageError("--all and --root are mutually exclusive.")
     if scope == "user" and anchor is not None:
-        raise click.UsageError("--scope user is global; --path is not applicable.")
+        raise click.UsageError("--scope user is global; --root is not applicable.")
 
     try:
         tracking = TrackingStore()
@@ -872,7 +874,7 @@ def status_cmd(scope: str | None, path: str | None, show_all: bool, as_json: boo
     cwd = os.getcwd()
 
     # When auto-detect finds the real install root (which may differ from
-    # anchor if --path points at a subdirectory), use it for tracking lookups.
+    # anchor if --root points at a subdirectory), use it for tracking lookups.
     detected_root: Path | None = None
 
     detected_scope_name: str | None = None
@@ -886,7 +888,7 @@ def status_cmd(scope: str | None, path: str | None, show_all: bool, as_json: boo
         except NoForgeInstallationError:
             scopes = [InstallScope.USER, InstallScope.PROJECT, InstallScope.LOCAL]
     elif scope is None and anchor is not None:
-        # --path without --scope: auto-detect scope at that path
+        # --root without --scope: auto-detect scope at that path
         try:
             detected_scope, detected_root = find_forge_installation(start=anchor)
             detected_scope_name = detected_scope.value

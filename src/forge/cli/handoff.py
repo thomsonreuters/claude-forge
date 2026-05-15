@@ -35,7 +35,7 @@ def handoff() -> None:
 )
 @click.option("--timeout", default=None, type=int, help="Max seconds for agent to run")
 @click.option("--subprocess-proxy", default=None, hidden=True, help="Stop-time subprocess proxy snapshot")
-@click.option("--forge-root", default=None, type=click.Path(), hidden=True, help="Explicit Forge project root")
+@click.option("--root", "forge_root", default=None, type=click.Path(), hidden=True, help="Explicit Forge project root")
 def run_cmd(
     session_name: str,
     worktree_path: str,

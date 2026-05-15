@@ -1,4 +1,4 @@
-"""Tests for extension enable: scope/path resolution, anchor validation, Rule 4."""
+"""Tests for extension enable: scope/root resolution, anchor validation, Rule 4."""
 
 from __future__ import annotations
 
@@ -412,7 +412,7 @@ class TestResolveProjectRootAnchor:
 
 
 class TestEnableWithPath:
-    """Tests for enable_cmd with --scope and --path options."""
+    """Tests for enable_cmd with --scope and --root options."""
 
     def test_path_with_scope_local(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from unittest.mock import MagicMock, patch
@@ -445,7 +445,7 @@ class TestEnableWithPath:
             mock_ver.return_value = MagicMock(ok=True)
 
             runner = CliRunner()
-            result = runner.invoke(enable_cmd, ["--scope", "local", "--path", str(repo)])
+            result = runner.invoke(enable_cmd, ["--scope", "local", "--root", str(repo)])
 
         assert result.exit_code == 0
         MockInstaller.assert_called_once()
@@ -484,7 +484,7 @@ class TestEnableWithPath:
             mock_ver.return_value = MagicMock(ok=True)
 
             runner = CliRunner()
-            result = runner.invoke(enable_cmd, ["--path", str(repo)])
+            result = runner.invoke(enable_cmd, ["--root", str(repo)])
 
         assert result.exit_code == 0
         call_kwargs = MockInstaller.call_args
@@ -503,7 +503,7 @@ class TestEnableWithPath:
         with patch("forge.install.version.check_minimum_version") as mock_ver:
             mock_ver.return_value = MagicMock(ok=True)
             runner = CliRunner()
-            result = runner.invoke(enable_cmd, ["--scope", "user", "--path", str(repo)])
+            result = runner.invoke(enable_cmd, ["--scope", "user", "--root", str(repo)])
 
         assert result.exit_code != 0
         assert "not applicable" in result.output.lower()
@@ -538,7 +538,7 @@ class TestEnableWithPath:
             mock_ver.return_value = MagicMock(ok=True)
 
             runner = CliRunner()
-            result = runner.invoke(enable_cmd, ["--scope", "local", "--path", str(repo), "--dry-run"])
+            result = runner.invoke(enable_cmd, ["--scope", "local", "--root", str(repo), "--dry-run"])
 
         assert result.exit_code == 0
         assert not (repo / ".claude").is_dir()
@@ -557,7 +557,7 @@ class TestEnableWithPath:
         with patch("forge.install.version.check_minimum_version") as mock_ver:
             mock_ver.return_value = MagicMock(ok=True)
             runner = CliRunner()
-            result = runner.invoke(enable_cmd, ["--scope", "local", "--path", str(claude_dir)])
+            result = runner.invoke(enable_cmd, ["--scope", "local", "--root", str(claude_dir)])
 
         assert result.exit_code != 0
         assert "inside a .claude directory" in result.output
@@ -592,7 +592,7 @@ class TestScopeAllConflict:
         from forge.cli.extensions import status_cmd
 
         runner = CliRunner()
-        result = runner.invoke(status_cmd, ["--all", "--path", str(tmp_path)])
+        result = runner.invoke(status_cmd, ["--all", "--root", str(tmp_path)])
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output.lower()
 
@@ -602,6 +602,6 @@ class TestScopeAllConflict:
         from forge.cli.extensions import status_cmd
 
         runner = CliRunner()
-        result = runner.invoke(status_cmd, ["--scope", "user", "--path", str(tmp_path)])
+        result = runner.invoke(status_cmd, ["--scope", "user", "--root", str(tmp_path)])
         assert result.exit_code != 0
         assert "not applicable" in result.output.lower()

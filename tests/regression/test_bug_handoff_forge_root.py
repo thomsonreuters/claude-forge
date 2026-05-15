@@ -6,7 +6,7 @@ checkout_root), the agent would look for the session manifest in the wrong
 directory.
 
 Fix: All three enqueue functions accept forge_root. Hook callers pass
-store.forge_root. The handoff CLI and main.py handler forward it.
+store.forge_root. The handoff CLI (--root) and main.py handler forward it.
 """
 
 from __future__ import annotations

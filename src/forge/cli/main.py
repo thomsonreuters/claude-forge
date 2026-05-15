@@ -183,7 +183,7 @@ def _process_pending_work_best_effort() -> None:
                 cmd.extend(["--subprocess-proxy", subprocess_proxy])
             marker_forge_root = payload.get("forge_root")
             if marker_forge_root:
-                cmd.extend(["--forge-root", marker_forge_root])
+                cmd.extend(["--root", marker_forge_root])
 
             subprocess.Popen(
                 cmd,

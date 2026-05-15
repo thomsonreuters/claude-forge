@@ -22,11 +22,16 @@ so wheel-installed users get the right Day 1 path.
 Use `uv` for dependencies and `make` for the standard workflow:
 
 - `uv sync` installs runtime and dev dependencies.
+- `./scripts/setup.sh --local` performs the editable local install used for development.
+- `make deps` syncs dev dependencies and is the prerequisite behind the standard targets.
 - `uv run forge --help` checks the CLI entry point.
 - `make test-unit` runs tests.
 - `make test-integration` builds Docker images, starts test infrastructure, and runs integration-marked tests.
 - `make test-regression` runs regression tests.
+- `make test` runs the full test suite.
 - `make lint`, `make format`, `make type-check`, and `make pre-commit` run individual checks or the full hook suite.
+- For targeted reruns, use direct `pytest` only after `make` has prepared prerequisites; integration flows depend on the
+  setup performed by `make test-integration`.
 
 ## OSS Release & UX Verification
 

@@ -25,6 +25,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from forge.core.models.catalog import get_model_spec, model_exists
 from forge.runtime_config import get_runtime_config
 
 from ..credentials import CredentialManager
@@ -49,33 +50,6 @@ from .openai_compat import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# GPT-5 family models that use the Responses API (supports tools + verbosity + reasoning_effort)
-GPT5_MODELS = frozenset(
-    {
-        "gpt-5",
-        "gpt-5-chat",
-        "gpt-5-codex",
-        "gpt-5-mini",
-        "gpt-5-nano",
-        "gpt-5-pro",
-        "gpt-5.1",
-        "gpt-5.1-codex",
-        "gpt-5.1-codex-max",
-        "gpt-5.1-codex-mini",
-        "gpt-5.1-mini",
-        "gpt-5.2",
-        "gpt-5.2-codex",
-        "gpt-5.2-pro",
-        "gpt-5.3-codex",
-        "gpt-5.5",
-        "gpt-5.4",
-        "gpt-5.4-mini",
-        "gpt-5.4-nano",
-        "gpt-5.4-pro",
-    }
-)
 
 
 class LiteLLMClient:
@@ -138,16 +112,16 @@ class LiteLLMClient:
     _is_retryable_error = staticmethod(is_retryable_error)
 
     def _is_gpt5_model(self) -> bool:
-        """Check if the current model is a GPT-5 family model.
+        """Check if the current model belongs to the GPT-5 family.
 
-        GPT-5 models support the Responses API with verbosity control.
-        Uses exact match against known GPT-5 model names.
-
-        Returns:
-            True if the model is a GPT-5 family model.
+        Used by the Chat Completions safety net (`_build_request_kwargs`) to
+        strip `reasoning_effort` when tools are present -- a Chat Completions
+        API limitation that affects all GPT-5 models regardless of whether
+        we route them to Responses API. Distinct from `_should_use_responses_api`
+        which determines routing.
         """
         model_name = self._model.split("/")[-1].lower()
-        return model_name in GPT5_MODELS
+        return model_name.startswith("gpt-5")
 
     def _should_use_responses_api(
         self,
@@ -156,11 +130,14 @@ class LiteLLMClient:
     ) -> bool:
         """Determine if Responses API should be used.
 
-        GPT-5 models always use Responses API which supports tools, verbosity,
-        and reasoning_effort together. Chat Completions API does NOT support
-        reasoning_effort with function tools for GPT-5.
+        Reads `use_responses_api` from the model catalog (single source of truth).
+        Returns False for models not in the catalog (graceful for OpenRouter's
+        open model space).
         """
-        return self._is_gpt5_model()
+        model_name = self._model.split("/")[-1].lower()
+        if not model_exists(model_name):
+            return False
+        return get_model_spec(model_name).use_responses_api
 
     @staticmethod
     def _convert_messages_for_responses(messages: list[Message]) -> list[dict[str, Any]]:

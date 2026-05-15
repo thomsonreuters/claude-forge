@@ -2,7 +2,7 @@
 
 import pytest
 
-from forge.core.llm.clients.litellm import GPT5_MODELS, LiteLLMClient
+from forge.core.llm.clients.litellm import LiteLLMClient
 from forge.core.llm.clients.openai_compat import extract_cached_tokens
 from forge.core.llm.types import Message, ModelHyperparameters, ToolCall
 
@@ -30,6 +30,7 @@ class TestGPT5ModelDetection:
             "openai/gpt-5.1-codex",
             "openai/gpt-5.4-mini",
             "openai/gpt-5.4-nano",
+            "openai/gpt-5.5-pro",
         ]
         for model in gpt5_model_specs:
             client = make_client(model)
@@ -53,8 +54,8 @@ class TestResponsesApiSelection:
 
     @pytest.fixture
     def gpt5_client(self):
-        """GPT-5 client for testing."""
-        return LiteLLMClient(model="openai/gpt-5.2", provider="litellm_remote")
+        """GPT-5 client (catalog: use_responses_api=true) for routing tests."""
+        return LiteLLMClient(model="openai/gpt-5.5", provider="litellm_remote")
 
     @pytest.fixture
     def non_gpt5_client(self):
@@ -539,29 +540,6 @@ class TestRetryExclusion:
         """500 server error should be retried."""
         error = self._make_status_error(500)
         assert LiteLLMClient._is_retryable_error(error)
-
-
-class TestGPT5Constants:
-    """Tests for GPT5_MODELS constant."""
-
-    def test_expected_models_in_set(self):
-        """Expected GPT-5 models are in the constant."""
-        expected = [
-            "gpt-5",
-            "gpt-5.1",
-            "gpt-5.2",
-            "gpt-5-mini",
-            "gpt-5-codex",
-            "gpt-5.4-mini",
-            "gpt-5.4-nano",
-            "gpt-5.5",
-        ]
-        for model in expected:
-            assert model in GPT5_MODELS, f"Expected {model} in GPT5_MODELS"
-
-    def test_is_frozenset(self):
-        """GPT5_MODELS is immutable."""
-        assert isinstance(GPT5_MODELS, frozenset)
 
 
 class TestExtractCachedTokens:

@@ -130,11 +130,14 @@ async def test_bug_litellm_client_reset_on_auth_failure_stream_chat_completions(
 
 @pytest.mark.asyncio
 async def test_bug_litellm_client_reset_on_auth_failure_stream_responses_api() -> None:
-    """LiteLLMClient.stream() GPT-5 Responses API fallback path (litellm.py line ~547).
+    """LiteLLMClient.stream() Responses API fallback path.
 
-    GPT-5 models fall back to non-streaming Responses API in the stream() method.
+    Models marked use_responses_api: true in the catalog fall back to
+    non-streaming Responses API in the stream() method. Pick a model
+    the catalog actually marks (not gpt-5 base) so the routing decision
+    follows the catalog's source of truth.
     """
-    client = _make_litellm_client("openai/gpt-5")
+    client = _make_litellm_client("openai/gpt-5-pro")
     mock_openai = _inject_mock_client(client)
     mock_openai.responses.create = AsyncMock(side_effect=Exception("unauthorized request"))
 

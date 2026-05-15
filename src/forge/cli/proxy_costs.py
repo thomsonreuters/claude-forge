@@ -45,7 +45,11 @@ def _format_usd(micros: int) -> str:
         return f"${usd:,.2f}"
     if usd >= 0.01:
         return f"${usd:.2f}"
-    return f"${usd:.4f}"
+    if usd >= 0.0001:
+        return f"${usd:.4f}"
+    if usd > 0:
+        return f"${usd:.6f}"
+    return "$0.00"
 
 
 def _format_tokens(n: int) -> str:

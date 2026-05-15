@@ -301,6 +301,13 @@ delta, request count delta, and `estimated=true`.
 The proxy `GET /` endpoint reports in-memory metrics and cost totals for live status. The JSONL request logs remain the
 bootstrap source for cap enforcement after restart.
 
+Cap enforcement is process-local. Each proxy process bootstraps from shared JSONL logs at startup, but in-flight spend
+is not coordinated across concurrent processes. For strict multi-process cap enforcement, run a single proxy process per
+proxy ID.
+
+Cost logs accumulate indefinitely. Safely delete old JSONL files in `~/.forge/costs/`. The proxy re-bootstraps from
+remaining logs at next startup.
+
 ---
 
 ## B. Direct Command Reference

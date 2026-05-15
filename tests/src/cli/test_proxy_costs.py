@@ -6,7 +6,27 @@ import json
 
 from click.testing import CliRunner
 
-from forge.cli.proxy_costs import _scope_verb_records_to_proxy, costs_cmd
+from forge.cli.proxy_costs import _format_usd, _scope_verb_records_to_proxy, costs_cmd
+
+
+class TestFormatUsd:
+    def test_normal_dollar_amount(self) -> None:
+        assert _format_usd(1_500_000) == "$1.50"
+
+    def test_large_amount_with_comma(self) -> None:
+        assert _format_usd(1_234_567_890) == "$1,234.57"
+
+    def test_cents(self) -> None:
+        assert _format_usd(50_000) == "$0.05"
+
+    def test_sub_cent(self) -> None:
+        assert _format_usd(500) == "$0.0005"
+
+    def test_sub_microdollar(self) -> None:
+        assert _format_usd(3) == "$0.000003"
+
+    def test_zero(self) -> None:
+        assert _format_usd(0) == "$0.00"
 
 
 def test_scope_verb_records_to_proxy_slices_multi_proxy_record() -> None:

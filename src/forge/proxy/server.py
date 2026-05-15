@@ -163,7 +163,7 @@ def _calc_and_log_cost(
 
         return cost_micros
     except Exception as e:
-        logger.warning("Cost calculation failed (non-fatal): %s", e)
+        logger.warning("Cost calculation failed for model=%s (non-fatal): %s", model, e)
         return 0
 
 

@@ -1,7 +1,6 @@
 # Model pricing: USD per million tokens.
 #
 # Forge uses this for cost estimates. Prices change — update with releases.
-# Per-proxy overrides: proxy.yaml -> costs.pricing_overrides
 #
 # cached_input = price for prompt-cache HIT tokens (a subset of input_tokens).
 # Cost formula: (input - cached) * input + cached * cached_input + output * output

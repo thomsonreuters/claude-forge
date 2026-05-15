@@ -21,10 +21,6 @@ proxy:
         minimax-m2.5: minimax/minimax-m2.5
       opus:
         minimax-m2.5: minimax/minimax-m2.5
-    tier_overrides:
-      sonnet:
-        reasoning_effort: high
-      opus:
-        reasoning_effort: high
+    tier_overrides: {}
     base_url: "https://openrouter.ai/api/v1"
     error_hints: true

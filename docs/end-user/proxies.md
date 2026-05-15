@@ -440,6 +440,10 @@ forge proxy set openrouter-anthropic costs.on_cap_hit=warn
 before forwarding it. `on_cap_hit=reject` returns HTTP 429 with `spend_cap_exceeded`; `on_cap_hit=warn` lets the request
 continue and returns `X-Spend-Warning`.
 
+Cap enforcement is process-local and best-effort. For reliable cap enforcement, run a single proxy process per proxy ID.
+Cost logs accumulate in `~/.forge/costs/` — safely delete old JSONL files to reclaim space; the proxy re-bootstraps from
+remaining logs at next startup.
+
 ---
 
 ## Troubleshooting

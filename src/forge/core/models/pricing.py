@@ -113,8 +113,10 @@ def get_pricing(model: str) -> ModelPricing:
 
     default = data.get("default")
     if default:
+        logger.warning("No catalog pricing for model %r; using default rates", model)
         return _parse_model_pricing(default, "default")
 
+    logger.warning("No pricing data for model %r; using hardcoded fallback rates", model)
     return ModelPricing(
         input_per_mtok=3.0,
         output_per_mtok=15.0,

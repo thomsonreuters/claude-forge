@@ -31,8 +31,8 @@ forge workflow list-models --available --json \
 
 - [ ] Groups models by primary credential and shows `[configured]` / `[not configured]`
 - [ ] Shows model name, description, and status (`ready`/`unavailable`/`error`)
-- [ ] `--json` outputs a structured JSON array with `name`, `model_id`, `family`, `provider_refs`,
-      `preferred_proxy`, `status`, and `reason`
+- [ ] `--json` outputs a structured JSON array with `name`, `model_id`, `family`, `provider_refs`, `preferred_proxy`,
+  `status`, and `reason`
 - [ ] `--available` filters to ready models only
 - [ ] `--available` with no ready models shows explanatory message (table), `[]` (JSON)
 - [ ] Proxy in registry but not running shows "unavailable" (not "ready")
@@ -301,10 +301,10 @@ jq -e '.preflight_errors[0] | test("ANTHROPIC_API_KEY|anthropic"; "i")' \
 
 - [ ] `--via` resolves a compatible selected proxy and the JSON output remains parseable
 - [ ] Non-JSON workflow output prints a `Routing warning:` when `--via` selects a cross-family or live-advisory route
-      (same-family routes may have no warning)
+  (same-family routes may have no warning)
 - [ ] The latest CLI workflow log contains a consolidated `Routing decision:` line with model, source, proxy/template,
-      and model ref
+  and model ref
 - [ ] Direct Anthropic workflow workers fail during preflight with an actionable credential error when
-      `ANTHROPIC_API_KEY` is absent
+  `ANTHROPIC_API_KEY` is absent
 
 ---

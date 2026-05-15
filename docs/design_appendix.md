@@ -76,7 +76,9 @@ proxy:
 A proxy template is an operational profile:
 
 - Location: `src/forge/config/defaults/templates/*.yaml`
-- Defines: `proxy.preferred_provider`, `proxy.default_port`, tier->model mappings, `tier_overrides`
+- Defines: `proxy.preferred_provider`, `proxy.default_port`, `proxy.family`, tier->model mappings, `tier_overrides`
+- `proxy.family` (e.g., `openai`, `anthropic`, `gemini`) -- explicit model family metadata used by route derivation for
+  native-family ranking. Required on all templates; validated at load time.
 - **NOT a user edit surface** -- clone into a proxy to customize
 
 **User-defined proxies:**
@@ -119,6 +121,17 @@ The model catalog is **authoritative internal data**:
 - Defines: model capabilities, context windows, provider mappings
 - **NOT a user edit surface**
 
+**Workflow model specs** (`src/forge/review/models.py`):
+
+```python
+ModelSpec(name, model_id, family, provider_refs, description,
+         preferred_proxy=None, prompt=None, prompt_mode="override", worker_id=None)
+```
+
+Key fields: `model_id` is Forge-canonical (e.g., `gpt-5.5`, not `openai/gpt-5.5`). `family` is the model's native family
+(e.g., `openai`, `anthropic`, `gemini`). `provider_refs` is ordered `(namespace, model_ref)` tuples declaring how to
+reach the model via each provider. `preferred_proxy` is a soft catalog hint, overridable by `--via` or route scan.
+
 ### A.6 Credentials and Connection Values (§3.6.9)
 
 Credentials resolve from environment variables first (`.env`, shell exports), then fall back to the Forge credential
@@ -142,6 +155,23 @@ flag. `build_claude_env()` hydrates credential-file values into subprocess env d
 **Rule:** Credential storage holds secrets and connection values (e.g., `LITELLM_BASE_URL`). Connection values are a
 convenience fallback for bootstrapping proxy creation (`forge proxy create`). Once `proxy.yaml` exists, proxy-owned
 routing is authoritative. Do NOT store other routing configuration in credential storage.
+
+**Capability registry** (`src/forge/core/auth/capabilities.py`):
+
+Single source of truth for credential metadata. Key types and functions:
+
+```python
+EnvVar(name, required=True, secret=True, connection_value=False, default_value=None)
+Credential(name, env_vars, unlocks_features, signup_url, note, not_needed_for)
+
+credentials_for_template(template: str) -> list[Credential]
+format_missing_credential_error(credential, *, missing_vars, template=None,
+    context=None, extra_hint=None, profile=None, env_ignored=False) -> str
+```
+
+`credentials_for_template()` bridges `TEMPLATE_SECRETS` (template → env var names) to `CREDENTIALS` (credential →
+metadata) via reverse lookup. `format_missing_credential_error()` produces actionable messages with signup URLs,
+`forge auth login` commands, and `not_needed_for` disambiguation (rendered only for `anthropic-api`).
 
 ### A.7 Runtime config (§3.6.10 -- `~/.forge/config.yaml`)
 
@@ -522,6 +552,7 @@ design principles, skills-vs-policies relationship, and CLI surfaces remain in d
 - Per-worker context: `--context resume:<id>` or `--context blind`
 - Direct Claude workers use `ANTHROPIC_MODEL` plus `ANTHROPIC_DEFAULT_*_MODEL`, not Claude CLI `--model`
 - Parallel via `ThreadPoolExecutor` + process group cleanup
+- Workers receive pre-resolved `RoutingResult` from a `WorkerRoutingPlan` (see [§L](#l-subprocess-routing-reference))
 - `/forge:analyze`: single-model fan-out with an analyze resource
 
 ### F.2 Adversarial runner details (from §5.5.5)
@@ -543,8 +574,9 @@ collects independent findings for synthesis.
 
 **Engine:** `forge workflow panel` CLI command.
 
-Spawns N `claude -p` subprocesses, each with a different `ANTHROPIC_BASE_URL`. Each reviewer is a full Claude Code agent
--- it can read files, investigate, and find issues with real file:line evidence.
+Spawns N `claude -p` subprocesses, each with a different `ANTHROPIC_BASE_URL`. Routing for all panel workers is resolved
+once at invocation start via `resolve_invocation_routing()` (see [§L](#l-subprocess-routing-reference)). Each reviewer
+is a full Claude Code agent -- it can read files, investigate, and find issues with real file:line evidence.
 
 **Execution:** Fork mode gives each reviewer the main agent's full context. Summary mode sends a focused prompt.
 
@@ -864,3 +896,132 @@ Migrated from the former archived Appendix C. Contextualizes why the tagger->che
 Cost model for a divergence-from-mean workflow: tagger ($0.001/call) filters 80% of changes as non-architectural. Of the
 20% that reach a checker ($0.001), ~80% short-circuit as aligned. Only ~4% reach the reviewer ($0.05). Total: ~$0.32/100
 changes vs $5.00 reviewing everything.
+
+---
+
+## L. Subprocess Routing Reference
+
+Extracted from [design.md §3.6.12](design.md#3612-subprocess-routing-resolution-normative). Resolution chain concept,
+fail-open/fail-closed semantics, and per-invocation routing plan remain in design.md.
+
+### L.1 Core types (from `core.reactive.routing`)
+
+```python
+RoutingSource = Literal[
+    "explicit",          # CLI flag override (--via, --supervisor-proxy, config URL)
+    "subprocess_proxy",  # Session ambient (FORGE_SUBPROCESS_PROXY)
+    "preferred_proxy",   # Catalog hint (ModelSpec.preferred_proxy)
+    "route_scan",        # Compatible running proxy found via route matching
+    "session_proxy",     # Inherited ANTHROPIC_BASE_URL
+    "direct",            # Intentional direct execution (direct-only model specs)
+    "unresolved",        # No route found (shared resolver terminal step)
+]
+
+@dataclass(frozen=True)
+class ModelRoute:
+    provider: str              # "openrouter", "litellm", or "direct"
+    credential: str            # Credential from capabilities.py (e.g., "openrouter", "anthropic-api")
+    family: str                # Model family (e.g., "openai", "gemini", "anthropic")
+    template_id: str | None    # Proxy template this route can use; None for direct
+    template_family: str | None  # Template's explicit family metadata; None for direct
+    model_ref: str             # Provider-specific model ID (e.g., "openai/gpt-5.5")
+
+@dataclass(frozen=True)
+class RoutingResult:
+    base_url: str | None       # None = direct Anthropic or unresolved
+    proxy_id: str | None       # Resolved proxy identity (for cost tracking, logging)
+    template: str | None       # Proxy template (for tier override awareness)
+    source: RoutingSource      # Which chain step resolved this route
+    route: ModelRoute | None   # Present when model compatibility is known; None for unresolved or opaque routing
+    credential: str | None     # route.credential, duplicated for ergonomics
+    warning: str | None = None # Non-fatal diagnostic (e.g., "preferred proxy not running")
+```
+
+`direct` and `unresolved` are both "no proxy" but semantically different. `direct` = intentional direct execution
+(produced by `review.routing` for direct-only specs like `claude-opus`). `unresolved` = no route found (produced by the
+shared resolver as its terminal step). `route` is present when model compatibility is known; `None` can mean unresolved
+or opaque/non-model-specific routing (e.g., explicit base URL with no routes supplied). `source` and `base_url`
+distinguish them.
+
+### L.2 Workflow types (from `review.routing`)
+
+```python
+@dataclass(frozen=True)
+class WorkerRoutingPlan:
+    routes: tuple[RoutingResult, ...]  # Indexed by worker position (same order as spec list)
+    resolved_at: str                   # ISO timestamp for staleness detection
+    via_override: str | None           # --via value, if set (for logging)
+```
+
+### L.3 Key function signatures
+
+```python
+def resolve_subprocess_routing(
+    explicit_base_url: str | None = None,
+    explicit_proxy: str | None = None,
+    preferred_proxy: str | None = None,
+    routes: tuple[ModelRoute, ...] = (),
+    *,
+    require_route: bool = False,
+    use_environment: bool = True,
+    advisory_check: bool = False,
+) -> RoutingResult:
+    """Unified routing resolution for all Forge subprocesses.
+
+    Walks the 6-step chain. Callers decide fail-open vs fail-closed
+    based on source and their use case.
+    """
+
+def derive_model_routes(spec: RoutableSpec) -> tuple[ModelRoute, ...]:
+    """Expand compact model metadata into concrete routing options.
+
+    Combines ModelSpec fields with template/auth metadata. Does not
+    inspect the proxy registry or check running state.
+    """
+
+def resolve_invocation_routing(
+    specs: Sequence[Any],
+    via: str | None = None,
+) -> WorkerRoutingPlan:
+    """Resolve routing for all workers at invocation start.
+
+    Fail-closed: raises if any worker has no route.
+    """
+
+def resolve_model_flag(route: ModelRoute) -> str | None:
+    """Return --model flag for a routed workflow worker.
+
+    Proxied workers: route.model_ref. Direct workers: None (use env pins).
+    """
+```
+
+### L.4 Route derivation ranking
+
+`derive_model_routes()` produces routes in deterministic order:
+
+1. preferred_proxy match first (if it matches a derived route)
+2. provider_refs order (from `ModelSpec.provider_refs`)
+3. Native-family templates before OpenRouter passthrough cross-family templates
+4. Alphabetical template name tiebreaker
+
+Registry scan then ranks matched proxies:
+
+1. Route preference order (from `derive_model_routes()` ranking above)
+2. Alphabetical proxy_id as tiebreaker
+
+### L.5 Sidecar constraints
+
+In sidecar mode (`~/.forge` not mounted), registry-dependent steps are unavailable:
+
+| Step                | Host mode | Sidecar mode                                                   |
+| ------------------- | --------- | -------------------------------------------------------------- |
+| `explicit_base_url` | Opaque    | Works (returned before sidecar checks; opaque URL passthrough) |
+| `explicit_proxy`    | Registry  | Works only via injected env metadata                           |
+| `subprocess_proxy`  | Registry  | Works via `FORGE_SUBPROCESS_BASE_URL`/`PROXY_ID`/`TEMPLATE`    |
+| `preferred_proxy`   | Registry  | No-op (registry unavailable)                                   |
+| `route_scan`        | Registry  | No-op (registry unavailable)                                   |
+| `session_proxy`     | Env       | Works (`ANTHROPIC_BASE_URL` inherited from host)               |
+
+Proxy IDs are resolved on the host before entering the sidecar. If a user supplies a plain proxy ID inside a sidecar
+with no injected metadata, Forge fails with an actionable error suggesting `--subprocess-proxy` at session start or
+running the workflow on the host.

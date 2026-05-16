@@ -454,6 +454,20 @@ Cap enforcement is process-local and best-effort. For reliable cap enforcement, 
 Cost logs accumulate in `~/.forge/costs/` — safely delete old JSONL files to reclaim space; the proxy re-bootstraps from
 remaining logs at next startup.
 
+### Budget planning
+
+If your provider gives you a monthly API credit or your team has a fixed budget for model usage, set caps to match:
+
+```bash
+forge proxy set openrouter-openai costs.caps.per_month=100
+forge proxy set openrouter-openai costs.cap_mode=strict
+forge proxy set openrouter-openai costs.on_cap_hit=reject
+```
+
+`strict` mode estimates each request before forwarding, which helps catch likely over-budget requests before they run.
+Use `on_cap_hit=warn` if you prefer alerts without hard stops. Pair with `forge proxy costs --period month` to monitor
+burn rate.
+
 ---
 
 ## Prerequisites

@@ -87,6 +87,10 @@ def costs_cmd(
         forge proxy costs --period week      # This week
         forge proxy costs --period all       # All time
         forge proxy costs openrouter         # Filter by proxy
+
+    \b
+    Tip: pair with 'forge proxy set <id> costs.caps.per_month=<amount>' to keep
+    metered provider usage within a monthly budget.
     """
     from forge.core.reactive.cost_tracking import read_verb_logs
     from forge.proxy.cost_logger import read_cost_logs

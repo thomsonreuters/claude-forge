@@ -29,6 +29,7 @@ Claude Code talks to Anthropic and tracks conversations. Forge adds an operation
 
 - **Session Tracking** -- Named sessions that persist artifacts, plans, and transcripts. Works with or without a proxy.
 - **Multi-Model Routing** -- Route to GPT, Gemini, or any model via OpenRouter or LiteLLM through a local proxy.
+- **Cost Control** -- Proxy cost logs and spend caps keep metered API and multi-model workflow usage predictable.
 - **Context Compatibility** -- When routing to models with different context windows, Forge sets the native
   `CLAUDE_CODE_AUTO_COMPACT_WINDOW` so compaction timing matches the routed model.
 - **Autonomous Loops** -- Verification policies that keep Claude working until tests pass.

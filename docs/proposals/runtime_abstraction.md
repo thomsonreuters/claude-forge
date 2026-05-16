@@ -44,6 +44,10 @@ The current implementation already separates model gateways and subprocess routi
 - Proxy request logs, verb-level cost attribution, `forge proxy costs`, and per-proxy spend caps provide an initial
   cost-control layer before a full runtime usage ledger exists.
 
+Anthropic's May 2026 Agent SDK credit announcement makes this boundary concrete: proxy-level accounting is necessary for
+API-routed work, but runtime-native headless usage also needs a usage ledger because it may be billed or quota-limited
+outside the proxy.
+
 What it does not yet do:
 
 - It does not introduce a runtime registry.
@@ -317,9 +321,12 @@ Each event should include:
 - `runtime`, `provider`, `model`, `proxy_id`
 - token counts and cached-token counts when available
 - latency, status, and failure type
-- `billing_mode`: `api`, `subscription_quota`, or `unknown`
+- `billing_mode`: `api`, `subscription_interactive`, `subscription_headless_credit`, `subscription_quota`, or `unknown`
 - dollar cost only when the route is API-priced and pricing is known
 - quota/token units for subscription-backed routes, without estimating dollar cost
+
+For example, a future `ClaudeHeadlessInvoker` should record `claude -p` usage even when no Forge proxy is involved,
+because that usage can draw from a runtime-managed headless credit pool rather than proxy-visible API billing.
 
 Attribution environment variables should be injected into Forge-spawned processes:
 

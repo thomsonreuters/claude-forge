@@ -26,6 +26,25 @@ Forge orchestration
 This lets Forge keep Claude Code as the user-facing shell while extracting the parts that are not inherently Claude:
 worker invocation, hook policy, usage attribution, and runtime capability checks.
 
+## Conceptual Frame: Agency at Boundaries
+
+Forge sits at several boundaries where Claude-Code-shaped workflows cross between user, model, runtime, and provider. At
+each boundary, Forge's role is to give the user **agency** -- visibility, the ability to intervene, control over what
+propagates -- where the default would otherwise be opacity or external control.
+
+| Boundary                                            | What's at stake                                                 | Forge's intervention surface                                          |
+| --------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Wire (request/response with model provider)         | Unobserved harness/provider drift in defaults, prompts, routing | Proxy capture + parameter pinning + prompt augmentation               |
+| Cost / spend                                        | Runaway API or subscription credit consumption                  | Spend caps + per-verb attribution + usage ledger                      |
+| Session topology (same runtime, cross-CWD/worktree) | Reasoning continuity vs portability                             | Native resume / native-relocate / curated handoff strategies          |
+| Runtime (Claude Code / Codex / Gemini)              | Different internal state formats, different operator quirks     | Runtime registry + `HeadlessInvoker` + curated handoff as interchange |
+| Knowledge across sessions                           | Loss of context, decisions, intent                              | Designated memory docs + handoff agent                                |
+
+The runtime abstraction is one application of this frame: it gives the user agency over **which runtime executes their
+work** without forcing them to commit to one. Other applications in this proposal -- the optional always-on audit proxy,
+curated handoff as cross-runtime substrate, and native-relocate for cross-CWD continuity -- share the same architectural
+commitment. They are not separate features; they are the same pattern applied at different layers.
+
 ## PR #8 Alignment
 
 The current implementation already separates model gateways and subprocess routing from Claude Code session UX:
@@ -50,11 +69,11 @@ outside the proxy.
 
 What it does not yet do:
 
-- It does not introduce a runtime registry.
-- It does not abstract `claude -p` behind a runtime-neutral `HeadlessInvoker`.
-- It does not add native `codex exec` or `gemini -p` workers.
-- It does not normalize Claude/Codex hooks into a shared policy event model.
-- It does not unify proxy logs and runtime-native usage events into a single durable ledger.
+- Introduce a runtime registry.
+- Abstract `claude -p` behind a runtime-neutral `HeadlessInvoker`.
+- Add native `codex exec` or `gemini -p` workers.
+- Normalize Claude/Codex hooks into a shared policy event model.
+- Unify proxy logs and runtime-native usage events into a single durable ledger.
 
 So the proposal should remain in the PR as future architecture, but framed as the next layer above this PR's
 multi-provider routing and cost-control work.
@@ -91,6 +110,58 @@ Forge should preserve these boundaries:
 
 The immediate product value is not "replace Claude Code." It is to stop hard-coding Claude Code assumptions so Forge can
 choose the best runtime for each job.
+
+## Wire-Level Properties: Thinking Encryption and Its Implications
+
+The runtime abstraction's choices about proxy intervention, cross-endpoint replay, and cross-runtime resume rest on
+specific properties of how Anthropic represents extended thinking on the wire. This section separates three categories:
+documented API behavior, Forge's engineering inferences from that behavior, and claims that require contract tests
+before they become architecture. The source documents are Anthropic's
+[extended thinking docs](https://platform.claude.com/docs/en/build-with-claude/extended-thinking) and
+[AWS Bedrock's extended thinking docs](https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-extended-thinking.html).
+
+A thinking block returned by the API has three fields:
+
+```json
+{
+  "type": "thinking",
+  "thinking": "<summary text, or empty>",
+  "signature": "<encrypted hash of full thinking>"
+}
+```
+
+**Documented properties relevant to Forge:**
+
+| Property                                                                                           | Implication                                                                                    |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| The API returns `thinking` blocks with summarized or empty `thinking` text plus a `signature`      | A proxy can see block envelopes and summaries, but not the hidden full reasoning               |
+| The `signature` carries encrypted full thinking for multi-turn continuity                          | The proxy cannot decrypt or fabricate reasoning; validation belongs to the model service       |
+| Round-tripped thinking blocks must be passed back complete and unmodified during tool-use loops    | Forge must preserve signed assistant content byte-for-byte when forwarding Anthropic traffic   |
+| Anthropic documents signature compatibility across its API, Bedrock, and Vertex AI                 | Cross-endpoint replay is a plausible Anthropic-family feature, but still deserves Forge tests  |
+| Thinking mode/display changes and message-prefix mutations can invalidate prompt cache breakpoints | Signature safety and cache efficiency are separate concerns                                    |
+| Thinking blocks may be ignored or stripped from context outside active tool-result continuation    | Forge should not equate "block present in JSONL" with "block used in the model's next context" |
+
+**Implications for the runtime abstraction:**
+
+- **Official Anthropic-family endpoints:** signed thinking blocks should travel cleanly between Anthropic API, Bedrock,
+  and Vertex when the request shape is preserved. Treat this as documented behavior that Forge should still regression
+  test before depending on it.
+- **Third-party Anthropic-compatible gateways:** OpenRouter Anthropic passthrough and similar routes may be
+  wire-compatible, but Forge should treat them as empirically verified only after a contract test proves signed thinking
+  survives replay.
+- **Cross-model within Anthropic:** signatures may be model-specific. Assume same model id is required for safe replay
+  until a contract test proves otherwise.
+- **Cross-runtime (Claude / Codex / Gemini):** signatures and reasoning state are structurally non-portable. Each
+  runtime's internal model state belongs to that runtime. **Curated handoff** is the only viable substrate for crossing
+  runtime boundaries.
+- **Wire-level intervention can be signature-safe** when restricted to current-request control surfaces: generation
+  parameters, context-management headers, cache-aware system prompt augmentation, and validation/guards that do not
+  touch signed historical content. Mutating historical user/tool content may be signature-safe in the narrow
+  cryptographic sense, but it is semantically dangerous and should not be part of the default design.
+
+These properties are the technical foundation for two later sections in this proposal: the optional always-on proxy
+(which exploits "current-request mutation is signature-safe") and curated handoff as cross-runtime substrate (which
+accepts that cross-runtime reasoning replay is impossible).
 
 ## Source-Grounded Posture
 
@@ -340,8 +411,7 @@ FORGE_WORKFLOW
 FORGE_PROXY_ID
 ```
 
-This gives users the answer they actually want: which command or workflow caused which provider/model call, and what it
-cost or consumed.
+This shows which command or workflow caused which provider/model call, and what it cost or consumed.
 
 The first instrumentation points are small enough to ship before the runtime abstraction:
 
@@ -384,6 +454,159 @@ reservation strategy so multiple workers cannot race past a hard cap.
 Subscription-backed routes use quota/token caps, not fake dollar estimates. API-backed routes use API dollar caps when
 pricing is known.
 
+### Optional Always-On Proxy (Audit and Control)
+
+The default Forge configuration treats the proxy as opt-in: users run sessions in direct mode unless they need cost
+tracking, tier mapping, or multi-provider routing. An optional **always-on proxy mode** routes every session through a
+Forge proxy by default, giving the user a single chokepoint for visibility and control over the wire.
+
+**Motivation (the April 2026 postmortem case).** Between March 4 and April 16, 2026, three Claude Code product/harness
+changes degraded behavior while the underlying API and inference layer were not the root cause:
+
+1. Default reasoning effort silently downgraded from `high` to `medium`.
+2. A caching bug cleared thinking blocks every turn instead of once-after-idle, making Claude "forgetful and
+   repetitive."
+3. A system-prompt instruction was injected limiting responses to "\<=100 words," silently hurting coding quality.
+
+See [Anthropic's April 23 postmortem](https://www.anthropic.com/engineering/april-23-postmortem). The lesson for Forge
+is not "the provider is untrustworthy"; it is that agent quality can change at the harness boundary without leaving
+users enough local evidence to diagnose the cause. Owning the wire gives Forge a durable observation point for the
+subset of changes that are expressed in outbound requests, response usage, headers, and routing behavior.
+
+**What an always-on proxy buys (per the wire-level properties above):**
+
+| Capability                                                                                | Mechanism                                                                                |
+| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Detect drift in outbound system prompts and tool definitions                              | Hash and log every request's captured prompt/tool surface; alert on change               |
+| Pin reasoning effort against runtime default drift when the runtime exposes the parameter | `tier_overrides.<tier>.reasoning_effort: high` enforced on outbound request              |
+| Reject or warn on known-bad outbound prompt/header/context-management patterns            | `system_prompt_guards` and request-shape guards in `proxy.yaml`                          |
+| Augment outbound system prompt with user-authored instructions                            | Cache-aware `system_prompt_augment`, logged as active mutation                           |
+| Audit-log full request/response for offline analysis                                      | Optional `audit_full_body: true` extension of the cost logger                            |
+| A/B test official Anthropic-family endpoints (Anthropic direct, Bedrock, Vertex)          | Replay same request shape through documented compatible endpoints                        |
+| A/B test third-party Anthropic-compatible gateways                                        | Contract-test signed-thinking replay before trusting the route                           |
+| Detect thinking/cache anomalies that surface in response usage                            | `cache_creation_input_tokens` / `cache_read_input_tokens` and context-management logging |
+
+Here "cache-aware" means augmentation should prefer the post-cache tail: after the final system `cache_control` marker,
+or at the end of the current user turn when the instruction does not require system-priority placement. If there is no
+safe post-cache insertion point, Forge should log the expected cache invalidation as part of the mutation audit.
+
+**What it cannot catch:** anything a runtime or model service adds after the request leaves the proxy, any behavior
+change not represented in captured request/response fields, or a provider silently ignoring a pinned parameter. The
+April 16 system-prompt regression is the important cautionary case: if the prompt text is injected downstream of Forge,
+it is invisible at the wire level. Forge can only detect the effects indirectly (output distribution changes, failed
+golden prompts, user reports) and attempt a counterweight with cache-aware `system_prompt_augment`. For example, if
+identical requests with identical token counts begin producing a more sycophantic or less decisive style, the proxy
+alone cannot identify that drift without an eval or golden-prompt layer.
+
+**Implementation path: lean on sidecar mode.** Forge already has `--sidecar` mode (see
+[design.md §7](../design.md#7-isolation-and-proxy-modes)) which bundles Claude Code + Forge proxy in a single Docker
+container, sharing networking and lifecycle. This is the cleanest implementation surface for an always-on proxy because:
+
+- The proxy is guaranteed to be running when Claude Code is running (lifecycle coupling, not advisory).
+- `ANTHROPIC_BASE_URL` resolves to the in-container proxy by construction; no accidental direct-mode escape.
+- No external port management or "did I remember to start the proxy" UX.
+- Existing sidecar lifecycle (start, stop, log isolation) covers the operational concerns.
+- The container boundary is an auditable surface in its own right.
+
+Sidecar mode becomes the recommended path for users who want always-on audit/control without operating a separate proxy
+lifecycle. Host-mode proxy remains supported for users who want the proxy running independently. Users who want pure
+direct mode keep it -- always-on is opt-in, not mandatory.
+
+**Compliance posture.** Forge's proxy is a user-controlled local observability and policy layer, not a provider-evasion
+layer. It must not resell access, bypass rate limits or safety controls, obscure the selected provider/model, harvest
+prompts for third-party training, or substitute models without explicit user-visible routing decisions. The purpose is
+to help users verify and control legitimate traffic using their own authorized credentials.
+
+**Audit privacy and retention.** `audit_full_body` is high-risk logging. Full request/response logs can contain source
+code, file contents, tool results, prompts, and accidentally surfaced secrets. Therefore:
+
+- Metadata-only audit is the default; full-body audit is explicit opt-in.
+- Full-body logs are written under `~/.forge/audit/` with owner-only file permissions.
+- A dedicated audit redaction layer runs before persistence, building on the existing proxy debug-log redaction rules.
+- Retention/rotation is configurable before the feature is recommended broadly.
+- The CLI warns clearly when full-body audit is enabled and names the log path.
+
+**Trust posture.** Any active mutation (system prompt augment, parameter pin, pattern strip) must be logged to a
+user-visible audit file. The proxy is a transparent middleman, not a hidden one. `forge proxy audit show` and
+`forge proxy audit diff` surface captured metadata and redacted bodies without requiring users to parse JSONL by hand.
+
+**Mutation safety invariant** (from wire-level properties): any proxy mutation must satisfy
+
+```text
+Allowed mutation targets:
+  - current request generation parameters
+  - current request headers / context-management controls
+  - cache-aware system prompt augmentation after the last cache_control marker when possible
+  - reject/warn decisions before forwarding
+
+When constructing request messages [0..n], where n is the index of the new user turn:
+  "historical" means every message in [0..n-1], including the most recent assistant
+  tool-use message that carries thinking + tool_use blocks.
+
+For every historical message:
+  preserve all content blocks byte-for-byte
+  especially block.type in ("thinking", "redacted_thinking")
+```
+
+This invariant protects signed reasoning blocks and prevents Forge from rewriting historical user/tool evidence just
+because such rewrites might be cryptographically allowed.
+
+### Curated Handoff as Cross-Runtime Substrate
+
+Within a runtime, native resume (`claude --resume`, `codex exec resume`) is the right primitive when topology allows --
+it preserves signed reasoning state byte-for-byte. Across runtimes, native resume is structurally impossible: Anthropic
+thinking signatures don't validate against Codex; OpenAI reasoning IDs are meaningless to Claude; each runtime has its
+own session JSONL format.
+
+This proposal commits to **curated handoff as the canonical cross-runtime substrate**, not as a lossy fallback.
+
+A curated handoff is a human-readable, AI-distilled, optionally user-edited document representing session state at the
+level of decisions, current work, and intent. It:
+
+- Carries decisions and rationale, not raw conversation.
+- Strips dead-end exploration that consumed parent tokens but produced no value for the child.
+- Is auditable, diffable, and editable by the user before launch.
+- Is runtime-neutral -- any runtime that can read markdown can consume it.
+- Mitigates the underspecification problem ([design.md §4.1.2](../design.md#412-semantic-policy-the-supervisor)) by
+  making implicit intent explicit.
+
+**Fidelity-vs-agency reframe.** The existing handoff modes in
+[design.md §3.9](../design.md#39-session-resume-context-management) (`minimal`, `structured`, `full`, `ai-curated`) are
+positioned as a fidelity spectrum where native is the lossless ideal and curated is the lossy fallback. This proposal
+reframes the trade-off:
+
+| Mode                                                           | Strength                                           | Cost                                 |
+| -------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------ |
+| Native (within runtime, within CWD)                            | Byte-faithful reasoning continuity                 | Opaque to the user; cannot be edited |
+| Native-relocate (cross-CWD, within runtime; future)            | Same byte-faithful continuity, broader topology    | Requires JSONL copy and path-rewrite |
+| Curated handoff (cross runtime, cross project, cross worktree) | **User can read, edit, and shape what propagates** | Loses signed reasoning trail         |
+
+Curated handoff is not a degradation; it offers something native structurally cannot -- user agency over what crosses
+the session boundary. The lossless modes carry everything but cannot be inspected or pruned; the curated mode requires
+distillation but is *more* useful when work is genuinely transferring (different runtime, different operator, different
+phase of the project).
+
+Existing tools such as [ctx](https://github.com/dchu917/ctx) are useful prior art: workstreams, exact transcript
+binding, branching, indexed retrieval, local SQLite storage, and curation are all aligned with this substrate. Forge
+should not depend on `ctx` as the first implementation step, because curated handoff is central to Forge's session,
+policy, and usage story. The better near-term path is a Forge-owned handoff schema with optional import/export or
+peer-tool integration once the contract is stable.
+
+**Required for cross-runtime resume:**
+
+- A curator (handoff agent) that reads the parent transcript and produces a runtime-neutral handoff document.
+- A `--target-runtime` option on the curator so handoffs can be tuned for the destination's conventions (terseness, tool
+  naming, model style). Parallel to today's per-model-family system prompt addendums
+  (`src/forge/cli/session_addendum.py`).
+- A `--review` step on resume that opens the draft handoff in `$EDITOR` for user curation before child launch.
+- A three-layer file convention under `<forge_root>/.forge/prev_sessions/<parent>/`: raw transcript (immutable),
+  AI-curated (regeneratable), user notes (authoritative).
+- Capability-registry entries: every runtime should declare curated handoff *input* (can accept a context document at
+  session start) and *output* (can generate curation of its own transcript) capabilities.
+
+This composes with the existing `intent.subprocess_proxy` and `--resume-mode` machinery; the new pieces are the
+runtime-aware curator and the explicit user-review step.
+
 ### Compliance and Auth Preflight
 
 Forge should preflight provider auth and runtime capability before launching expensive or headless work. If the selected
@@ -398,37 +621,113 @@ alternatives:
 
 This is a user-experience rule and a compliance posture: fail at the Forge boundary with a clear setup path.
 
+Preflight should also report visibility loss. If the selected route bypasses Forge's proxy -- for example native
+`codex exec` with a direct OpenAI API key, a user-managed LiteLLM gateway, or a direct provider SDK path -- Forge may
+still launch the runtime, but it cannot inspect request bodies, apply prompt guards, log full-body audit records, or
+enforce proxy-level cost caps. In that case Forge should warn explicitly and name the route change required for
+inspectable traffic.
+
 ## Runtime Capability Matrix
 
 Initial target matrix:
 
-| Capability               | Claude Code                      | Codex CLI                                       | Gemini CLI                    |
-| ------------------------ | -------------------------------- | ----------------------------------------------- | ----------------------------- |
-| Interactive frontend     | Current default                  | Target beta                                     | Not planned initially         |
-| Headless worker          | `claude -p`                      | `codex exec`                                    | `gemini -p`                   |
-| Native hooks             | Existing Forge integration       | Stable in 0.124.0+; enable `codex_hooks`        | No comparable hook target yet |
-| Pre-tool policy          | Current Claude hooks             | `PreToolUse` adapter                            | Not initially                 |
-| Usage source             | Transcript/status/proxy fallback | JSONL usage events                              | JSON stats                    |
-| Resume                   | Claude session resume            | `codex exec resume`                             | Capability-check first        |
-| Gateway route            | Anthropic-compatible base URLs   | Native CLI or first-class ChatGPT LiteLLM route | API/Vertex route only         |
-| Consumer auth as gateway | Not supported by Forge           | Supported only through documented Codex routes  | Not supported                 |
+| Capability                                                     | Claude Code                      | Codex CLI                                       | Gemini CLI                     |
+| -------------------------------------------------------------- | -------------------------------- | ----------------------------------------------- | ------------------------------ |
+| Interactive frontend                                           | Current default                  | Target beta                                     | Not planned initially          |
+| Headless worker                                                | `claude -p`                      | `codex exec`                                    | `gemini -p`                    |
+| Native hooks                                                   | Existing Forge integration       | Stable in 0.124.0+; enable `codex_hooks`        | No comparable hook target yet  |
+| Pre-tool policy                                                | Current Claude hooks             | `PreToolUse` adapter                            | Not initially                  |
+| Usage source                                                   | Transcript/status/proxy fallback | JSONL usage events                              | JSON stats                     |
+| Native resume (within runtime, within CWD)                     | `claude --resume`                | `codex exec resume`                             | Capability-check first         |
+| Curated handoff *input* (accept context doc at start)          | `--append-system-prompt-file`    | Initial user message                            | Initial message                |
+| Curated handoff *output* (generate curation of own transcript) | Yes (handoff agent)              | Yes (via headless invoker)                      | Yes (via headless invoker)     |
+| Always-on proxy compatible                                     | Yes (host or sidecar)            | Yes (host or sidecar)                           | TBD per CLI                    |
+| Request inspectable by Forge                                   | Only through Forge proxy/sidecar | Only through Forge proxy/sidecar; direct opaque | Route-dependent; direct opaque |
+| Gateway route                                                  | Anthropic-compatible base URLs   | Native CLI or first-class ChatGPT LiteLLM route | API/Vertex route only          |
+| Consumer auth as gateway                                       | Not supported by Forge           | Supported only through documented Codex routes  | Not supported                  |
 
-## Shipping Strategy
+## Shipping Strategy (Phases)
 
-The first shipping slice is PR #8: keep Claude Code as the frontend and ship native OpenRouter, capability-based
-subprocess routing, API-backed workflow model selection, and proxy-level cost visibility/caps.
+PR #8 is Phase 0 (shipping). Subsequent phases are sequenced loosely: Phase 1's reframe and Phase 2-3's audit and
+relocate work can ship independently and in either order before the bigger runtime refactor (Phase 4) lands. Phase 5 is
+the payoff that justifies Phase 4. Phase 6 is reserved for once everything else is in.
 
-After PR #8, the runtime abstraction path should be:
+### Phase 0 -- Cost-control and routing foundations (PR #8, shipping)
 
-1. Normalize the current Claude subprocess runner into `ClaudeHeadlessInvoker` without changing user-facing behavior.
-2. Move review-engine fan-out behind the invoker contract, including process-group cleanup, timeout handling, and
-   cancellation.
-3. Promote proxy request logs and verb snapshots into a durable usage ledger that can also ingest runtime-native usage
-   events.
-4. Add `CodexHeadlessInvoker` using `codex exec` and JSONL usage events.
-5. Add runtime capability checks and auth preflight for native Codex execution.
-6. Normalize hook payloads into `ActionContext` / `PolicyDecision`.
-7. Evaluate a Codex frontend runtime beta once headless invocation, usage accounting, and policy semantics are clear.
+- Native OpenRouter as a first-class gateway.
+- Capability-based subprocess routing (`derive_model_routes`, `resolve_subprocess_routing`, `WorkerRoutingPlan`).
+- API-backed workflow model selection.
+- Proxy-level cost visibility and per-proxy spend caps.
+- `--subprocess-proxy` for dual-auth on direct sessions (transitional bridge for headless work).
+
+### Phase 1 -- Conceptual reframe and curated-handoff repositioning
+
+No new architecture; mostly documentation and small CLI additions.
+
+- Reposition `ai-curated` in [design.md §3.9](../design.md#39-session-resume-context-management) as the cross-everything
+  primary substrate rather than one strategy among four.
+- Add `forge session resume --review` (opens draft handoff in `$EDITOR` before child launch).
+- Add `forge session handoff regenerate|edit|diff` commands.
+- Document the agency-at-boundaries frame and the curated-handoff-as-interchange principle in `design.md`.
+- Define the Forge-owned handoff schema and decide whether `ctx` should become an import/export peer later.
+- Initial schema sketch: lineage pointer, decisions with transcript/file citations, current state snapshot, file:line
+  evidence, open questions, runtime hints, and user notes overlay.
+
+### Phase 2 -- Audit proxy (optional always-on)
+
+- Anthropic passthrough template (no tier mapping, no provider conversion -- pure passthrough with logging).
+- Extend cost logger with `audit_full_body: true` mode writing to `~/.forge/audit/requests/*.jsonl`.
+- Implement and test the audit redaction layer before enabling `audit_full_body`; it should share the proxy debug-log
+  redaction policy, cover headers/request/response/tool payloads, and prove no plaintext test secrets persist.
+- System prompt hash log + drift detection.
+- Cache-aware `system_prompt_augment` and `system_prompt_guards` config primitives in `proxy.yaml`; augmentation should
+  default to the post-cache tail and warn when it would invalidate a cached prefix.
+- Extend reasoning-effort pinning to the Anthropic passthrough path (parallel to today's non-Anthropic path in
+  `server.py`).
+- `forge proxy audit show|diff` CLI surface.
+- Promote sidecar mode as the recommended always-on path (no new sidecar code; surface existing capability in docs).
+
+### Phase 3 -- Native-relocate spike (within-Claude resume improvement)
+
+Native-relocate is an experimental spike, not a committed UX until contract tests prove it is safe.
+
+- Copy parent JSONL into the child's CWD-encoded `~/.claude/projects/<encoded-cwd>/` directory on `fork --into` and
+  `fork --worktree` without modifying historical content.
+- Add a separately gated path-rewriting helper for absolute paths in tool_result content blocks; default off until
+  proven harmless.
+- Validate same-model replay across official Anthropic-family endpoints (Anthropic API / Bedrock / Vertex).
+- Treat cross-model replay as unsupported unless a separate contract test proves signature portability.
+- Validate any third-party Anthropic-compatible passthrough route separately before advertising compatibility.
+- Pass criterion: an integration contract test in `tests/integration/` verifies Claude Code 2.1.90+ can resume relocated
+  JSONL across a CWD boundary and complete a tool-use continuation without signature-validation failure.
+- Only after the spike passes, update the "for now, this is a no-op" guard in `src/forge/session/manager.py:570` and
+  introduce `--resume-mode native-relocate` as an opt-in value.
+- If the spike fails, keep native resume within the original runtime/CWD boundary and rely on curated handoff for
+  cross-CWD and cross-runtime movement.
+
+### Phase 4 -- Runtime abstraction core
+
+- `HeadlessInvoker` interface + `ClaudeHeadlessInvoker` (no user-visible change; pure refactor of
+  `forge.core.reactive.session_runner` and review-engine fan-out).
+- Move review-engine parallel fan-out behind the invoker contract, including process-group cleanup, timeout handling,
+  and cancellation.
+- Runtime registry exposing the capability matrix above.
+- Promote proxy request logs + verb snapshots + audit logs into a durable `~/.forge/usage/events.jsonl`.
+- `FORGE_RUN_ID` / `FORGE_PARENT_RUN_ID` attribution env injection across Forge-spawned processes.
+- Normalize Claude and Codex hook payloads into `ActionContext` / `PolicyDecision`.
+
+### Phase 5 -- Cross-runtime resume (the payoff)
+
+- `CodexHeadlessInvoker` using `codex exec` and JSONL usage events.
+- Runtime capability checks and auth preflight for native Codex execution.
+- `forge session start --runtime codex --resume-from <claude-session>` workflow.
+- Target-runtime-aware curator (`--target-runtime codex` adjusts the handoff for Codex's conventions).
+- First end-to-end "plan in Claude, implement in Codex via curated handoff" demonstration.
+
+### Phase 6 -- Codex frontend beta
+
+- Evaluate Codex as an interactive frontend runtime once headless invocation, usage accounting, policy semantics, and
+  curated handoff are clear.
 
 ## Non-Goals
 
@@ -438,6 +737,12 @@ After PR #8, the runtime abstraction path should be:
 - Do not represent subscription usage as exact API dollar spend.
 - Do not let expensive skills bypass hard caps once configured.
 - Do not make Forge proxy the only path; native runtime execution should be preferred where it is cleaner.
+- Do not treat cross-runtime resume as a lossy degradation; it is the canonical use case for curated handoff and the
+  substrate is intentional, not residual.
+- Do not make always-on proxy mandatory; users who want direct-mode minimalism keep it. Always-on is opt-in (recommended
+  via sidecar mode for users who want audit/control without separate proxy lifecycle).
+- Do not silently mutate signed thinking blocks; the mutation-safety invariant in §"Optional Always-On Proxy (Audit and
+  Control)" is load-bearing.
 
 ## Open Questions
 
@@ -446,3 +751,28 @@ After PR #8, the runtime abstraction path should be:
 - How should Forge represent runtimes that can run headless but cannot enforce pre-tool policy?
 - How should run-tree attribution (`FORGE_RUN_ID`, `FORGE_PARENT_RUN_ID`) compose with the existing `FORGE_DEPTH`
   recursion guard and `FORGE_SESSION` identifier? Should `FORGE_DEPTH` become a derived property of the run tree?
+- How should Forge interoperate with [ctx](https://github.com/dchu917/ctx)? The current posture is "Forge-owned schema,
+  ctx as prior art/peer," but useful bridges may include importing ctx packs, exporting Forge handoffs to ctx, or
+  linking a Forge session to a ctx workstream.
+- Should `forge session resume --review` be the default behavior or an explicit flag? Default is friendlier for the
+  curated workflow; flag preserves today's "just resume" UX.
+- Where do PR #8's `~/.forge/costs/requests/*.jsonl` and Phase 4's `~/.forge/usage/events.jsonl` converge? Same data
+  plane eventually merged, or parallel forever? The audit logs from Phase 2 (`~/.forge/audit/requests/*.jsonl`) raise
+  the same question.
+- Phase 2 audit proxy: enforce sidecar-only or also support host-mode always-on? Host mode is more flexible but harder
+  to guarantee "actually running" against accidental direct-mode escapes.
+- How should the intercept layer degrade when the selected runtime route uses a non-Forge gateway? Forge proxy routes
+  are inspectable; direct API, native CLI auth, and user-managed LiteLLM routes may be launchable but opaque to prompt
+  guards, full-body audit, and proxy-level cost caps.
+- For Phase 3 native-relocate: can copied Claude JSONL be replayed safely across CWD boundaries at all? If yes, should
+  path-rewriting in tool_result blocks remain opt-in (`--rewrite-paths`)? The signature-safe minimum is "copy JSONL,
+  leave content untouched" -- path rewriting is a nice-to-have that risks subtle mismatches.
+- Are Anthropic thinking signatures cross-*model* portable within the same family (e.g., sonnet-4.6 thinking validated
+  against sonnet-4.7), or strictly per-model-id? Default assumption: not portable. Empirical contract tests are
+  mandatory before Phase 3 enables any cross-model replay behavior.
+- What is the cache-vs-signature trade-off threshold for `system_prompt_augment`? Mutation is signature-safe but may
+  invalidate Anthropic's prompt cache if inserted before or inside a cached prefix; for long-lived sessions the cache
+  discount loss may exceed the augment value unless augmentation is restricted to the post-cache tail zone (after the
+  final system cache marker or at the end of the current user turn when semantically safe).
+- What retention, redaction, and file-permission defaults are sufficient before `audit_full_body` can be recommended for
+  real projects rather than debugging sessions?

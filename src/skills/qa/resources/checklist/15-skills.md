@@ -1,9 +1,12 @@
-<!-- prereq: 0.3, 2.1, 5.1 -->
+<!-- prereq: 0.3, 2.1, 4.2, 5.1 -->
 
 ## 15. Skills (`/forge:review`, `/forge:understand`, `/forge:panel`, `/forge:consensus`)
 
 Validates the user-facing skill invocation UX. Section 14 tested the underlying `forge workflow` CLI engine; this
 section tests the skills that wrap it with auto-detection and model-aware resource selection.
+
+The workflow-backed skills in this section depend on the workflow proxy aliases created in 4.2. In partial runs such as
+`--from 15`, prereq auto-resolution should create those aliases before `/forge:panel` or `/forge:consensus` is checked.
 
 ### 15.1 `forge session context` CLI
 
@@ -111,8 +114,12 @@ In the same live Claude session, invoke the panel skill for a multi-model review
 Expected:
 
 - [ ] Skill invocation accepted (runs as forked subagent)
-- [ ] Multi-model fan-out executes (or reports proxy unavailability)
+- [ ] Multi-model fan-out executes through configured workflow proxies
+- [ ] Output names the actual resolved model ref and proxy/template used for each worker
 - [ ] Synthesis includes consensus findings and unique insights
+
+Failure cue: if output says the default model set is unusable because OpenRouter proxies are missing, or falls back to a
+Claude-only panel, mark this step failed. That means 4.2 did not create the workflow proxy aliases for this run.
 
 ### 15.6 `/forge:consensus` (Live Session)
 
@@ -138,7 +145,11 @@ Expected:
 
 - [ ] Skill invocation accepted (runs as forked subagent)
 - [ ] Two-round execution visible in output (Round 1 positions + Round 2 reconciliation)
+- [ ] Output names the actual resolved model ref and proxy/template used for each worker
 - [ ] Synthesis distinguishes agreed recommendations from unresolved disagreements
 - [ ] Roles visible in output (architecture, security, correctness)
+
+Failure cue: if output says the default model set is unusable because OpenRouter proxies are missing, or falls back to
+Claude-only workers, mark this step failed. That means 4.2 did not create the workflow proxy aliases for this run.
 
 ---

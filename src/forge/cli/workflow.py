@@ -116,6 +116,60 @@ def _routing_plan_warnings(specs: list[ModelSpec], routing_plan: Any | None) -> 
     return warnings
 
 
+def _resolved_models_summary(
+    specs: list[ModelSpec],
+    routing_plan: Any | None,
+    *,
+    worker_ids: list[str] | None = None,
+    roles: dict[str, str] | None = None,
+    role_field: str = "role",
+) -> dict[str, dict[str, Any]]:
+    """Return user-facing model routing metadata for workflow output."""
+    if routing_plan is None:
+        return {}
+
+    summary: dict[str, dict[str, Any]] = {}
+    for idx, (spec, result) in enumerate(zip(specs, routing_plan.routes)):
+        route = result.route
+        worker_id = worker_ids[idx] if worker_ids and idx < len(worker_ids) else spec.effective_worker_id
+        entry: dict[str, Any] = {
+            "requested_model": spec.name,
+            "model_id": spec.model_id,
+            "resolved_model": route.model_ref if route else None,
+            "provider": route.provider if route else None,
+            "source": result.source,
+            "proxy": result.proxy_id,
+            "template": result.template or (route.template_id if route else None),
+        }
+        if roles and worker_id in roles:
+            entry[role_field] = roles[worker_id]
+        if result.warning:
+            entry["warning"] = result.warning
+        summary[worker_id] = entry
+    return summary
+
+
+def _format_resolved_models(summary: dict[str, dict[str, Any]]) -> str:
+    """Format resolved model metadata for non-JSON workflow output."""
+    if not summary:
+        return ""
+
+    lines = ["Resolved models:"]
+    for worker_id, item in summary.items():
+        resolved = item.get("resolved_model") or "(unresolved)"
+        provider = item.get("provider") or "unknown"
+        proxy = item.get("proxy") or "(direct)"
+        template = item.get("template") or "(direct)"
+        requested = item.get("requested_model") or worker_id
+        role = f", role={item['role']}" if item.get("role") else ""
+        stance = f", stance={item['stance']}" if item.get("stance") else ""
+        lines.append(
+            f"- {worker_id}: requested={requested}, resolved={resolved}, "
+            f"provider={provider}, proxy={proxy}, template={template}{role}{stance}"
+        )
+    return "\n".join(lines) + "\n\n"
+
+
 def _handle_routing_error(error: Exception, *, json_output: bool = False) -> None:
     """Handle routing resolution errors with clean CLI output. Calls sys.exit(1)."""
     msg = str(error)
@@ -416,6 +470,7 @@ def panel(
         output,
         check_mode=check_mode,
         json_output=json_output,
+        resolved_models=_resolved_models_summary(specs, routing_plan),
         routing_warnings=_routing_plan_warnings(specs, routing_plan),
     )
 
@@ -628,6 +683,7 @@ def _build_check_json(
     output: MultiReviewOutput,
     passed: bool,
     reason: str,
+    resolved_models: dict[str, dict[str, Any]] | None = None,
     routing_warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build JSON output for --check mode with gating fields."""
@@ -637,6 +693,8 @@ def _build_check_json(
     data["passed"] = passed
     data["check_mode"] = "verdict"
     data["reason"] = reason
+    if resolved_models:
+        data["resolved_models"] = resolved_models
     if routing_warnings:
         data["routing_warnings"] = routing_warnings
     return data
@@ -648,6 +706,7 @@ def _handle_review_output(
     *,
     check_mode: bool,
     json_output: bool,
+    resolved_models: dict[str, dict[str, Any]] | None = None,
     routing_warnings: list[str] | None = None,
 ) -> None:
     """Shared output handler for panel-based commands."""
@@ -655,18 +714,26 @@ def _handle_review_output(
 
     if check_mode:
         passed, reason = _evaluate_verdicts(output.results)
-        data = _build_check_json(output, passed, reason, routing_warnings)
+        data = _build_check_json(
+            output,
+            passed,
+            reason,
+            resolved_models=resolved_models,
+            routing_warnings=routing_warnings,
+        )
         click.echo(json.dumps(data, indent=2))
         ctx.exit(0 if passed else 1)
         return
 
     if json_output:
         data = build_json_dict(output)
+        if resolved_models:
+            data["resolved_models"] = resolved_models
         if routing_warnings:
             data["routing_warnings"] = routing_warnings
         click.echo(json.dumps(data, indent=2))
     else:
-        click.echo(format_synthesis_prompt(output))
+        click.echo(_format_resolved_models(resolved_models or {}) + format_synthesis_prompt(output))
 
 
 # --- Analyze subcommand ---
@@ -764,6 +831,7 @@ def analyze(
         output,
         check_mode=check_mode,
         json_output=json_output,
+        resolved_models=_resolved_models_summary(specs, routing_plan),
         routing_warnings=_routing_plan_warnings(specs, routing_plan),
     )
 
@@ -1180,21 +1248,37 @@ def debate(
             Path(tmp_file.name).unlink(missing_ok=True)
 
     debate_warnings = _routing_plan_warnings(stance_models, routing_plan)
+    debate_resolved_models = _resolved_models_summary(
+        stance_models,
+        routing_plan,
+        worker_ids=[result.model_name for result in output.results],
+        roles=output.stance_map,
+        role_field="stance",
+    )
 
     if check_mode:
         passed, reason = _evaluate_verdicts(output.results)
         data = _build_adversarial_json(
-            output, passed=passed, check_mode_str="verdict", reason=reason, routing_warnings=debate_warnings
+            output,
+            passed=passed,
+            check_mode_str="verdict",
+            reason=reason,
+            resolved_models=debate_resolved_models,
+            routing_warnings=debate_warnings,
         )
         click.echo(json.dumps(data, indent=2))
         ctx.exit(0 if passed else 1)
         return
 
     if json_output:
-        data = _build_adversarial_json(output, routing_warnings=debate_warnings)
+        data = _build_adversarial_json(
+            output,
+            resolved_models=debate_resolved_models,
+            routing_warnings=debate_warnings,
+        )
         click.echo(json.dumps(data, indent=2))
     else:
-        _print_debate_text(output)
+        _print_debate_text(output, debate_resolved_models)
 
 
 def _build_stances(specs: list[ModelSpec], *, code_mode: bool = False) -> list[StanceSpec]:
@@ -1280,6 +1364,7 @@ def _build_adversarial_json(
     passed: bool | None = None,
     check_mode_str: str | None = None,
     reason: str | None = None,
+    resolved_models: dict[str, dict[str, Any]] | None = None,
     routing_warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build JSON output for adversarial evaluation."""
@@ -1299,6 +1384,8 @@ def _build_adversarial_json(
         "successful": output.successful,
         "failed": output.failed,
     }
+    if resolved_models:
+        data["resolved_models"] = resolved_models
     if passed is not None:
         data["passed"] = passed
     if check_mode_str is not None:
@@ -1310,9 +1397,12 @@ def _build_adversarial_json(
     return data
 
 
-def _print_debate_text(output: AdversarialOutput) -> None:
+def _print_debate_text(output: AdversarialOutput, resolved_models: dict[str, dict[str, Any]] | None = None) -> None:
     """Print adversarial results as human-readable text."""
     console.print(f"\n[bold]Adversarial Evaluation[/bold] ({len(output.results)} workers)\n")
+    if resolved_models:
+        console.print(_format_resolved_models(resolved_models).rstrip())
+        console.print()
 
     for i, result in enumerate(output.results):
         stance = output.stances[i] if i < len(output.stances) else "unknown"
@@ -1596,6 +1686,7 @@ def _build_consensus_json(
     passed: bool | None = None,
     check_mode_str: str | None = None,
     reason: str | None = None,
+    resolved_models: dict[str, dict[str, Any]] | None = None,
     routing_warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build JSON output for consensus workflow."""
@@ -1627,6 +1718,8 @@ def _build_consensus_json(
         "successful": output.successful,
         "failed": output.failed,
     }
+    if resolved_models:
+        data["resolved_models"] = resolved_models
     if passed is not None:
         data["passed"] = passed
     if check_mode_str is not None:
@@ -1638,9 +1731,12 @@ def _build_consensus_json(
     return data
 
 
-def _print_consensus_text(output: ConsensusOutput) -> None:
+def _print_consensus_text(output: ConsensusOutput, resolved_models: dict[str, dict[str, Any]] | None = None) -> None:
     """Print consensus results as structured human-readable text."""
     console.print(f"\n[bold]Consensus Workflow[/bold] " f"({len(output.round2_results)} workers, 2 rounds)\n")
+    if resolved_models:
+        console.print(_format_resolved_models(resolved_models).rstrip())
+        console.print()
 
     # Round 1 positions (truncated)
     console.print("[dim]Round 1: Initial Positions[/dim]\n")
@@ -1835,18 +1931,33 @@ def consensus(
             Path(tmp_file.name).unlink(missing_ok=True)
 
     consensus_warnings = _routing_plan_warnings(role_models, routing_plan)
+    consensus_resolved_models = _resolved_models_summary(
+        role_models,
+        routing_plan,
+        worker_ids=[result.model_name for result in output.round1_results],
+        roles=output.role_map,
+    )
 
     if check_mode:
         passed, reason = _evaluate_consensus_positions(output.round2_results)
         data = _build_consensus_json(
-            output, passed=passed, check_mode_str="position", reason=reason, routing_warnings=consensus_warnings
+            output,
+            passed=passed,
+            check_mode_str="position",
+            reason=reason,
+            resolved_models=consensus_resolved_models,
+            routing_warnings=consensus_warnings,
         )
         click.echo(json.dumps(data, indent=2))
         ctx.exit(0 if passed else 1)
         return
 
     if json_output:
-        data = _build_consensus_json(output, routing_warnings=consensus_warnings)
+        data = _build_consensus_json(
+            output,
+            resolved_models=consensus_resolved_models,
+            routing_warnings=consensus_warnings,
+        )
         click.echo(json.dumps(data, indent=2))
     else:
-        _print_consensus_text(output)
+        _print_consensus_text(output, consensus_resolved_models)

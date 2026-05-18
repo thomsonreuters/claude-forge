@@ -210,6 +210,30 @@ class TestConsensusJson:
         for worker_data in data["round2"].values():
             assert "role" in worker_data
 
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
+    @patch("forge.review.consensus.run_multi_review")
+    def test_json_includes_resolved_model_routing(self, mock_run, _mock_routing):
+        from forge.review.models import MultiReviewOutput
+
+        mock_run.return_value = MultiReviewOutput(
+            prompt="",
+            results=[
+                ReviewResult("claude-opus-architecture", "pos", "", True, 1.0),
+            ],
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["workflow", "consensus", "test", "--json", "--models", "claude-opus"],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        routed = data["resolved_models"]["claude-opus-architecture"]
+        assert routed["requested_model"] == "claude-opus"
+        assert routed["resolved_model"] == "openai/gpt-5.5"
+        assert routed["proxy"] == "openrouter-openai"
+        assert routed["role"] == "architecture"
+
 
 class TestConsensusCode:
     @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)

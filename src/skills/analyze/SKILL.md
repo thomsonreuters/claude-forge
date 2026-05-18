@@ -65,6 +65,8 @@ to parse partial output or fabricate a response.
 
 Format the model's deep analysis as a structured response:
 
+0. Resolved model used: from `resolved_models`, include requested model, resolved model ref, provider, proxy, and
+   template
 1. Problem decomposition
 2. Key evidence and considerations
 3. Analysis and trade-offs

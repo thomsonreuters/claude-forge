@@ -252,6 +252,17 @@ class TestRunPanel:
         assert data["successful"] == 2
 
     @patch("forge.review.engine.run_multi_review")
+    def test_json_includes_resolved_model_routing(self, mock_run):
+        mock_run.return_value = _mock_output([ReviewResult("claude-opus", "ok", "", True, 1.0)])
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "panel", "-p", "Review", "--models", "claude-opus", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["resolved_models"]["claude-opus"]["requested_model"] == "claude-opus"
+        assert data["resolved_models"]["claude-opus"]["resolved_model"] == "openai/gpt-5.5"
+        assert data["resolved_models"]["claude-opus"]["proxy"] == "openrouter-openai"
+
+    @patch("forge.review.engine.run_multi_review")
     def test_target_loads_docreview_framework(self, mock_run):
         """Positional target without --code loads docreview.md framework."""
         mock_run.return_value = _mock_output()
@@ -1026,6 +1037,27 @@ class TestRunDebate:
 
     @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
     @patch("forge.review.adversarial.run_multi_review")
+    def test_debate_json_includes_resolved_model_routing(self, mock_run, _mock_routing):
+        mock_run.return_value = _mock_output(
+            results=[
+                ReviewResult("claude-opus-for", "analysis", "", True, 1.0),
+            ]
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["workflow", "debate", "Test proposal", "--models", "claude-opus", "--json"],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        routed = data["resolved_models"]["claude-opus-for"]
+        assert routed["requested_model"] == "claude-opus"
+        assert routed["resolved_model"] == "openai/gpt-5.5"
+        assert routed["proxy"] == "openrouter-openai"
+        assert routed["stance"] == "for"
+
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_routing_plan)
+    @patch("forge.review.adversarial.run_multi_review")
     def test_debate_json_resource_path_is_generated(self, mock_run, _mock_routing):
         """Debate JSON should emit '(generated)' not a dangling temp path."""
         mock_run.return_value = _mock_output(
@@ -1417,6 +1449,18 @@ class TestRunAnalyze:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "results" in data
+
+    @patch("forge.review.engine.run_multi_review")
+    def test_json_includes_resolved_model_routing(self, mock_run):
+        mock_run.return_value = _mock_output([ReviewResult("claude-opus", "ok", "", True, 1.0)])
+        runner = CliRunner()
+        result = runner.invoke(main, ["workflow", "analyze", "topic", "--models", "claude-opus", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        routed = data["resolved_models"]["claude-opus"]
+        assert routed["requested_model"] == "claude-opus"
+        assert routed["resolved_model"] == "openai/gpt-5.5"
+        assert routed["proxy"] == "openrouter-openai"
 
     @patch("forge.review.engine.run_multi_review")
     def test_check_mode(self, mock_run):

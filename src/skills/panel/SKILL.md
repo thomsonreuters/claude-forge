@@ -93,6 +93,16 @@ Parse the JSON output. The structure is:
     "gemini-3.1-pro-preview": {"response": "...", "error": null, "success": true, "duration_seconds": 38.1},
     "claude-opus": {"response": "...", "error": null, "success": true, "duration_seconds": 52.7}
   },
+  "resolved_models": {
+    "gpt-5.5": {
+      "requested_model": "gpt-5.5",
+      "resolved_model": "openai/gpt-5.5",
+      "provider": "openrouter",
+      "proxy": "openrouter-openai",
+      "template": "openrouter-openai",
+      "source": "preferred_proxy"
+    }
+  },
   "successful": 3,
   "failed": 0
 }
@@ -103,6 +113,8 @@ Parse the JSON output. The structure is:
 Read `${CLAUDE_SKILL_DIR}/resources/synthesis.md` for synthesis instructions. If the file is missing, report the actual
 missing-path problem and stop. Then respond with:
 
+0. Resolved models used: one line per worker from `resolved_models`, including requested model, resolved model ref,
+   provider, proxy, and template
 1. Consensus issues (found by 2+ models)
 2. Unique findings from each model
 3. Conflict resolution

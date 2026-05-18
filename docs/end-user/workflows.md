@@ -154,7 +154,7 @@ All `forge workflow` subcommands support:
 
 | Flag      | Description                                                                                           |
 | --------- | ----------------------------------------------------------------------------------------------------- |
-| `--json`  | Structured JSON output (model responses, durations, success/fail)                                     |
+| `--json`  | Structured JSON output, including worker responses, resolved model refs, routing, durations, status    |
 | `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)                                           |
 | `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-3.1-pro-preview`)                              |
 | `--proxy` | Route proxy-backed workers through this proxy; direct workers (e.g., `claude-opus`) stay on Anthropic |
@@ -243,6 +243,9 @@ forge workflow list-models --available --json
 
 Unknown model names are rejected before execution. Models without a compatible running proxy are flagged by the
 preflight check with an actionable suggestion (which proxy to create or start).
+
+For auditability, workflow JSON includes `resolved_models` for every worker. Each entry shows the requested model,
+actual routed model ref, provider, proxy, template, routing source, and role/stance when applicable.
 
 ### "--check failed but output looks fine"
 

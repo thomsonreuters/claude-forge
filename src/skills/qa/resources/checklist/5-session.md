@@ -154,7 +154,7 @@ WORKTREE_PATH=$(forge session show test-session-forked-wt --json | jq -r '.workt
 # Manifest lives inside the forked worktree's Forge root
 cat "$WORKTREE_PATH/.forge/sessions/test-session-forked-wt/forge.session.json" | \
   jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}'
-cat "$WORKTREE_PATH/.forge/prev_sessions/test-session-parent.md"
+cat "$WORKTREE_PATH/.forge/prev_sessions/test-session-parent/children/test-session-forked-wt.md"
 ```
 
 - [ ] Worktree fork created at `${FORGE_TEST_REPO}-test-session-forked-wt`
@@ -166,7 +166,7 @@ cat "$WORKTREE_PATH/.forge/prev_sessions/test-session-parent.md"
 - [ ] Manifest has `is_fork: true`, `parent_session`, `is_worktree: true`
 - [ ] `confirmed.claude_session_id` is populated
 - [ ] Parent handoff file exists at
-  `${FORGE_TEST_REPO}-test-session-forked-wt/.forge/prev_sessions/test-session-parent.md`
+  `${FORGE_TEST_REPO}-test-session-forked-wt/.forge/prev_sessions/test-session-parent/children/test-session-forked-wt.md`
 
 ### 5.8 Incognito Session
 
@@ -360,13 +360,13 @@ jq --arg tp "$PWD/$TDIR/fixture.jsonl" \
 
 # Fork with --strategy minimal
 forge session fork test-strat-parent --name test-fork-strat-min --worktree --strategy minimal --no-launch
-HANDOFF_MIN="${FORGE_TEST_REPO}-test-fork-strat-min/.forge/prev_sessions/test-strat-parent.md"
+HANDOFF_MIN="${FORGE_TEST_REPO}-test-fork-strat-min/.forge/prev_sessions/test-strat-parent/children/test-fork-strat-min.md"
 test -f "$HANDOFF_MIN" && echo "MIN_HANDOFF=true" || echo "MIN_HANDOFF=false"
 wc -l < "$HANDOFF_MIN"
 
 # Fork with --strategy structured
 forge session fork test-strat-parent --name test-fork-strat-struct --worktree --strategy structured --no-launch
-HANDOFF_STRUCT="${FORGE_TEST_REPO}-test-fork-strat-struct/.forge/prev_sessions/test-strat-parent.md"
+HANDOFF_STRUCT="${FORGE_TEST_REPO}-test-fork-strat-struct/.forge/prev_sessions/test-strat-parent/children/test-fork-strat-struct.md"
 test -f "$HANDOFF_STRUCT" && echo "STRUCT_HANDOFF=true" || echo "STRUCT_HANDOFF=false"
 wc -l < "$HANDOFF_STRUCT"
 ```
@@ -409,7 +409,7 @@ jq '.confirmed.latest_plan_path = ".claude/plans/test-plan.md" | .confirmed.clau
 # Fork with --inline-plan (plan content should appear in handoff)
 forge session fork test-plan-parent --name test-fork-plan --worktree --inline-plan --no-launch
 
-HANDOFF="${FORGE_TEST_REPO}-test-fork-plan/.forge/prev_sessions/test-plan-parent.md"
+HANDOFF="${FORGE_TEST_REPO}-test-fork-plan/.forge/prev_sessions/test-plan-parent/children/test-fork-plan.md"
 test -f "$HANDOFF" && echo "HANDOFF_EXISTS=true" || echo "HANDOFF_EXISTS=false"
 grep -c "Approved Plan" "$HANDOFF"
 grep -c "greet function" "$HANDOFF"

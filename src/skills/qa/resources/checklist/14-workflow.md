@@ -34,8 +34,6 @@ forge workflow list-models --available --json \
 - [ ] `--json` outputs a structured JSON array with `name`, `model_id`, `family`, `provider_refs`, `preferred_proxy`,
   `status`, and `reason`
 - [ ] `--available` filters to ready models only
-- [ ] `--available` with no ready models shows explanatory message (table), `[]` (JSON)
-- [ ] Proxy in registry but not running shows "unavailable" (not "ready")
 
 ### 14.2 `forge workflow panel`
 
@@ -47,19 +45,9 @@ forge workflow list-models --available --json \
 forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODELS --json
 ```
 
-Context mode examples (display-only -- resume needs a real session UUID):
-
-```
-# Fork current Claude session context into workers
-forge workflow panel -p "Continue the review" --context resume:<session-uuid> --json
-
-# Explicit blind mode (default -- no --resume passed to workers)
-forge workflow panel docs/ --context blind --json
-```
-
 - [ ] Returns structured JSON output
+- [ ] JSON includes `resolved_models` with actual model refs and proxy/template routing for each worker
 - [ ] `--context blind` is the default (no --resume passed to workers)
-- [ ] `--context resume:<uuid>` passes --resume to workers
 
 ### 14.3 `forge workflow panel --check`
 
@@ -112,6 +100,7 @@ echo "Exit code: $?"
 
 - [ ] Spawns single worker with analysis resource prompt
 - [ ] Returns structured JSON output
+- [ ] JSON includes `resolved_models` with actual model ref and proxy/template routing for the worker
 - [ ] `--check` mode returns exit code 0/1 with verdict
 
 ### 14.6 `forge workflow debate`
@@ -130,6 +119,7 @@ forge workflow debate "Should we adopt microservices?" --models $FORGE_QA_WORKFL
 
 - [ ] Spawns workers with stance injection (for/against/neutral)
 - [ ] Mandatory blinding (workers don't see each other's output)
+- [ ] JSON includes `resolved_models` with actual model refs and proxy/template routing for each worker
 - [ ] Returns structured output with agreement/disagreement areas
 
 ### 14.7 `forge workflow debate --code`
@@ -170,6 +160,7 @@ echo "Exit code: $?"
 - [ ] Two rounds: independent positions then reconciliation
 - [ ] Mandatory blinding both rounds (no --resume passed to workers)
 - [ ] JSON includes `round1`, `round2`, `roles`, `role_map`, `reconciliation_brief`
+- [ ] JSON includes `resolved_models` with actual model refs and proxy/template routing for each worker
 - [ ] `--check` mode: requires `position` field (rejects legacy `passed`/`verdict`)
 
 ### 14.9 `forge workflow consensus --code`

@@ -66,12 +66,15 @@ forge workflow debate "<subject>" [--code] [--models <models>] [--worker <spec>]
 Omit any flag the user didn't specify. Do not pass both `--models` and `--worker`.
 
 Parse the JSON output. Each model receives a different stance (for/against/neutral) and evaluates the subject from that
-perspective. If the command fails, surface the real error and stop; do not claim success.
+perspective. The `resolved_models` object records the requested model, actual routed model ref, provider, proxy,
+template, and stance for each worker. If the command fails, surface the real error and stop; do not claim success.
 
 ### Step 3: Synthesize
 
 Combine the perspectives:
 
+0. **Resolved models used**: one line per worker from `resolved_models`, including requested model, resolved model ref,
+   provider, proxy, template, and stance
 1. **Points of agreement** across all stances
 2. **Key disagreements** and which stance has stronger evidence
 3. **Risk assessment** from the critic's perspective

@@ -490,6 +490,49 @@ Here "cache-aware" means augmentation should prefer the post-cache tail: after t
 or at the end of the current user turn when the instruction does not require system-priority placement. If there is no
 safe post-cache insertion point, Forge should log the expected cache invalidation as part of the mutation audit.
 
+**Intercept modes.** The alternate design's cleanest idea is a small mode vocabulary that separates observation from
+mutation:
+
+| Mode          | Behavior                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------------- |
+| `passthrough` | Forward via Forge proxy with only routing, health, and cost metadata. No body inspection. |
+| `inspect`     | Parse and redact/hash request bodies for drift detection, alerting, and audit metadata.   |
+| `override`    | Run `inspect`, then apply explicit user-configured guards, pins, or prompt augmentation.  |
+
+The mode is route-bound: it only applies when traffic flows through Forge's proxy or sidecar. Non-Forge gateways remain
+opaque to Forge even when the runtime itself is supported.
+
+**Implementation shape.** The intercept pipeline should be staged so monitoring and mutation stay auditable:
+
+```text
+on POST /v1/messages:
+  parse request body into the provider/runtime request model
+  derive safe metadata:
+    model, route, request_id, system_prompt_hash, thinking config summary, cache markers
+  write metadata audit event before mutation
+
+  if mode == inspect:
+    run prompt/hash/drift checks and emit warnings only
+
+  if mode == override:
+    build an explicit mutation plan from user config:
+      - parameter pins/floors such as reasoning_effort or thinking budget
+      - cache-aware system_prompt_augment
+      - prompt guards that warn, block, or strip only when configured
+    validate the plan against model capabilities and mutation-safety invariants
+    apply the plan to current-request control surfaces only
+    log a before/after diff of redacted or hashed fields
+
+  forward allowed headers without logging auth-bearing values
+  forward the possibly-mutated body to the selected provider
+  stream the response back unchanged
+```
+
+This sketch is deliberately not exact field-level pseudocode. In Forge today, incoming Anthropic-shaped requests may use
+`thinking.type` / `thinking.budget_tokens`, explicit `reasoning_effort`, or tier-level overrides depending on route and
+provider translation. The interceptor should normalize those into route-aware control fields before comparing them to
+user policy.
+
 **What it cannot catch:** anything a runtime or model service adds after the request leaves the proxy, any behavior
 change not represented in captured request/response fields, or a provider silently ignoring a pinned parameter. The
 April 16 system-prompt regression is the important cautionary case: if the prompt text is injected downstream of Forge,
@@ -527,8 +570,9 @@ code, file contents, tool results, prompts, and accidentally surfaced secrets. T
 - The CLI warns clearly when full-body audit is enabled and names the log path.
 
 **Trust posture.** Any active mutation (system prompt augment, parameter pin, pattern strip) must be logged to a
-user-visible audit file. The proxy is a transparent middleman, not a hidden one. `forge proxy audit show` and
-`forge proxy audit diff` surface captured metadata and redacted bodies without requiring users to parse JSONL by hand.
+user-visible audit file with a before/after diff of the redacted or hashed fields that changed. The proxy is a
+transparent middleman, not a hidden one. `forge proxy audit show` and `forge proxy audit diff` surface captured metadata
+and redacted bodies without requiring users to parse JSONL by hand.
 
 **Mutation safety invariant** (from wire-level properties): any proxy mutation must satisfy
 
@@ -676,6 +720,8 @@ No new architecture; mostly documentation and small CLI additions.
 ### Phase 2 -- Audit proxy (optional always-on)
 
 - Anthropic passthrough template (no tier mapping, no provider conversion -- pure passthrough with logging).
+- Proxy intercept modes: `passthrough`, `inspect`, and `override`, with explicit preflight reporting of which mode is
+  active for the selected route.
 - Extend cost logger with `audit_full_body: true` mode writing to `~/.forge/audit/requests/*.jsonl`.
 - Implement and test the audit redaction layer before enabling `audit_full_body`; it should share the proxy debug-log
   redaction policy, cover headers/request/response/tool payloads, and prove no plaintext test secrets persist.
@@ -743,6 +789,8 @@ Native-relocate is an experimental spike, not a committed UX until contract test
   via sidecar mode for users who want audit/control without separate proxy lifecycle).
 - Do not silently mutate signed thinking blocks; the mutation-safety invariant in §"Optional Always-On Proxy (Audit and
   Control)" is load-bearing.
+- Do not implement transparent MITM interception, CA injection, binary modification, or credential extraction. Forge
+  proxy inspection requires explicit Forge routing.
 
 ## Open Questions
 

@@ -624,7 +624,6 @@ _INFRA_FAILURE_PREFIXES = ("Supervisor error:", "Supervisor skipped")
     help="Proxy (proxy_id or template name) for base_url resolution",
 )
 @click.option("--no-proxy", "direct", is_flag=True, default=False, help="Force direct Anthropic routing (bypass proxy)")
-@click.option("--direct", "direct_deprecated", is_flag=True, hidden=True, help="Deprecated alias for --no-proxy")
 @click.option(
     "--timeout",
     "-t",
@@ -643,7 +642,6 @@ def supervisor_cmd(
     resume_id: str,
     proxy_name: str | None,
     direct: bool,
-    direct_deprecated: bool,
     timeout: int,
     json_output: bool,
 ) -> None:
@@ -657,10 +655,9 @@ def supervisor_cmd(
     Examples:
         forge guard supervisor -f src/foo.py -r abc-123 --json
         forge guard supervisor -f src/foo.py -r planning-session --json
-        forge guard supervisor -f src/foo.py -r abc-123 --proxy litellm-openai
+        forge guard supervisor -f src/foo.py -r abc-123 --proxy openrouter-openai
         forge guard supervisor -f src/foo.py -r abc-123 --no-proxy
     """
-    direct = direct or direct_deprecated
     if direct and proxy_name:
         console.print("[red]Error:[/red] --no-proxy and --proxy are mutually exclusive")
         sys.exit(1)

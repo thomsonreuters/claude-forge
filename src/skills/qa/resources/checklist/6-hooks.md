@@ -187,34 +187,42 @@ Start a real Claude session via Forge, perform a small action, then exit. Verify
 the session manifest and artifacts — this catches "hooks wired but not firing" regressions that manual `forge hook ...`
 invocations (steps 6.3–6.9) cannot detect.
 
-In the **container shell**:
+In the **container shell**, clean up and start a session:
 
 ```
-# Clean up from previous runs
 forge session delete hook-e2e-test --force 2>/dev/null || true
+forge session start hook-e2e-test --proxy "$FORGE_QA_OPENAI_PROXY"
+```
 
-# Start a session bound to a proxy
-forge session start hook-e2e-test --proxy litellm-openai
+Inside the launched Claude session, do a small action (e.g., "write hello to /tmp/test.txt" or "read
+/workspace/README.md and tell me the title"), then exit Claude (Ctrl+C or `/exit`).
 
-# In the launched Claude session, do a small action:
-#   - Create a tiny file (e.g., "write hello to /tmp/test.txt")
-#   - Or ask Claude to read a file
-# Then exit Claude (Ctrl+C or /exit)
+After Claude exits, run these exact checks in the **container shell**:
 
-# After Claude exits, verify the Stop hook wrote artifacts:
-cat .forge/sessions/hook-e2e-test/forge.session.json | jq '.confirmed'
-# Should have: transcript_path, claude_session_id
+```bash
+MANIFEST=".forge/sessions/hook-e2e-test/forge.session.json"
 
-# Verify transcript artifact was copied
-ls .forge/artifacts/hook-e2e-test/transcripts/
-# Should contain a .jsonl file named after the session UUID
+# Confirmed fields written by Stop hook
+jq '.confirmed | {claude_session_id, transcript_path, confirmed_by, confirmed_at}' "$MANIFEST"
+
+# Programmatic manifest assertions
+jq -e '.confirmed.transcript_path | strings | length > 0' "$MANIFEST"
+jq -e '.confirmed.claude_session_id | strings | length > 0' "$MANIFEST"
+jq -e '.confirmed.confirmed_by == "hook:stop"' "$MANIFEST"
+
+# Transcript artifact copied
+test -d .forge/artifacts/hook-e2e-test/transcripts
+find .forge/artifacts/hook-e2e-test/transcripts -type f -name '*.jsonl' -print -quit | grep -q .
+
+# Stop hook log exists
+ls ~/.forge/logs/hooks/stop.*.log | tail -1
 ```
 
 - [ ] Claude session starts and runs with hooks active
 - [ ] After exit, `confirmed.transcript_path` is set in session manifest
 - [ ] After exit, `confirmed.claude_session_id` is set (reconciled from actual session)
 - [ ] Transcript artifact copied to `.forge/artifacts/hook-e2e-test/transcripts/`
-- [ ] Stop hook ran automatically (not manually invoked)
+- [ ] Stop hook ran automatically (check `confirmed_by` = "hook:stop")
 
 ### 6.11 WorktreeCreate Hook (Claude-Native Worktree)
 
@@ -227,27 +235,31 @@ ls .forge/artifacts/hook-e2e-test/transcripts/
 Verify that Claude Code's native worktree creation (via `--worktree` or the Agent tool with `isolation: "worktree"`)
 triggers Forge's WorktreeCreate hook, which creates the worktree and auto-installs extensions.
 
-In the **container shell**:
+In the **container shell**, clean up and start a worktree session:
 
 ```
-# Start a session with --worktree to trigger WorktreeCreate hook
-forge session start wt-hook-test --worktree
+forge session delete wt-hook-test --yes --force 2>/dev/null || true
+git worktree remove /workspace-wt-hook-test --force 2>/dev/null || true
+git branch -D wt-hook-test 2>/dev/null || true
+forge session start wt-hook-test --worktree --proxy "$FORGE_QA_OPENAI_PROXY"
+```
 
-# In the launched Claude session, check that Forge hooks are active:
-#   - The status line should be visible
-#   - Run: %help (should list Forge direct commands)
-#   - Then exit Claude (/exit)
+Inside the launched Claude session, verify the status line is visible and type `%help` (should list Forge direct
+commands), then exit Claude (`/exit`).
 
-# After Claude exits, verify:
-# 1. Worktree was created
-ls -d ../$(basename $(pwd))-wt-hook-test 2>/dev/null || echo "worktree not found"
+After Claude exits, verify:
 
-# 2. Forge extensions installed in the worktree
-cat ../$(basename $(pwd))-wt-hook-test/.claude/settings.local.json 2>/dev/null | jq '.hooks | keys'
-# Should list hook event types (SessionStart, Stop, etc.)
+```bash
+# Worktree was created
+ls -d /workspace-wt-hook-test 2>/dev/null || echo "worktree not found"
+git worktree list | grep wt-hook-test
+
+# Forge extensions installed in the worktree
+cat /workspace-wt-hook-test/.claude/settings.local.json 2>/dev/null | jq '.hooks | keys'
 
 # Cleanup
-forge session delete wt-hook-test --force
+forge session delete wt-hook-test --yes --force
+git worktree list | grep wt-hook-test && echo "FAIL: worktree not removed" || echo "OK: worktree cleaned up"
 ```
 
 - [ ] Worktree created by Forge's WorktreeCreate hook (not Claude Code's default)

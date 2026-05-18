@@ -24,6 +24,7 @@ _LOG_DIR_DESCRIPTIONS: dict[str, str] = {
     "backend": "Backend process logs (LiteLLM)",
     "hooks": "Hook logs",
     "cli": "CLI command logs",
+    "tool_failures": "Tool failure telemetry (proxy, opt-in)",
     "tool_events": "Tool event recordings (proxy, debug-only)",
     "requests": "Raw request/response logs (proxy, debug-only)",
 }
@@ -343,6 +344,19 @@ def _show_logs(logs_root: Path) -> None:
             console.print("[dim]  forge config set log_retention_days=30     # auto-cleanup on startup[/dim]")
         else:
             console.print("\n[dim]Tip: forge logs --clean --older-than 7      # manual one-off cleanup[/dim]")
+
+    # Tip about tool failure telemetry when it's not enabled
+    tool_failures_dir = logs_root / "tool_failures"
+    tool_failures_empty = not tool_failures_dir.is_dir() or not any(tool_failures_dir.iterdir())
+    if tool_failures_empty:
+        try:
+            from forge.runtime_config import get_runtime_config as _get_rc2
+
+            if not _get_rc2().log_tool_failures:
+                console.print("\n[dim]Tip: Log non-Claude model tool misuse (e.g., invalid Read parameters):[/dim]")
+                console.print("[dim]  forge config set log_tool_failures=true[/dim]")
+        except Exception:
+            pass
 
     # Warn about adopted proxies that won't have Forge logs.
     # Show regardless of whether proxy/ has files — old log files from a

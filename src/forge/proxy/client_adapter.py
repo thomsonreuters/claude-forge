@@ -343,48 +343,52 @@ class CoreLLMClientAdapter:
                 }
 
             elif event.type == "tool_call_delta":
-                if event.tool_call_delta:
-                    delta = event.tool_call_delta
-                    tc_idx = delta.index if delta.index is not None else 0
+                delta = event.tool_call_delta
+                if delta is None or delta.index is None:
+                    # Core clients yield index=None for ambiguous fragments they can't
+                    # route (e.g., late chunks in multi-tool streams). Mirrors
+                    # ToolCallAccumulator.add_delta -- coercing to 0 corrupts tool 0.
+                    continue
+                tc_idx = delta.index
 
-                    if tc_idx not in accumulated_tool_calls:
-                        accumulated_tool_calls[tc_idx] = {
-                            "id": "",
-                            "type": "function",
-                            "function": {"name": "", "arguments": ""},
-                        }
-                    entry = accumulated_tool_calls[tc_idx]
-                    if delta.id:
-                        entry["id"] = delta.id
-                    if delta.name:
-                        entry["function"]["name"] = delta.name
-                    entry["function"]["arguments"] += delta.arguments_json
-
-                    yield {
-                        "id": response_id,
-                        "object": "chat.completion.chunk",
-                        "created": int(time.time()),
-                        "model": self.model_name,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {
-                                    "tool_calls": [
-                                        {
-                                            "index": tc_idx,
-                                            "id": delta.id,
-                                            "type": "function" if delta.id else None,
-                                            "function": {
-                                                "name": delta.name,
-                                                "arguments": delta.arguments_json,
-                                            },
-                                        }
-                                    ],
-                                },
-                                "finish_reason": None,
-                            }
-                        ],
+                if tc_idx not in accumulated_tool_calls:
+                    accumulated_tool_calls[tc_idx] = {
+                        "id": "",
+                        "type": "function",
+                        "function": {"name": "", "arguments": ""},
                     }
+                entry = accumulated_tool_calls[tc_idx]
+                if delta.id:
+                    entry["id"] = delta.id
+                if delta.name:
+                    entry["function"]["name"] = delta.name
+                entry["function"]["arguments"] += delta.arguments_json
+
+                yield {
+                    "id": response_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": self.model_name,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": tc_idx,
+                                        "id": delta.id,
+                                        "type": "function" if delta.id else None,
+                                        "function": {
+                                            "name": delta.name,
+                                            "arguments": delta.arguments_json,
+                                        },
+                                    }
+                                ],
+                            },
+                            "finish_reason": None,
+                        }
+                    ],
+                }
 
             elif event.type == "usage":
                 if event.usage:

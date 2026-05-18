@@ -181,8 +181,148 @@ class TestLoadConfig:
         assert config.proxy.get_model_for_tier("sonnet") == "gemini/gemini-3.1-pro-preview"
         assert config.proxy.get_model_for_tier("haiku") == "gemini/gemini-3-flash-preview"
 
+    def test_template_loading_openrouter_anthropic(self):
+        """OpenRouter anthropic template loads with correct provider and tiers."""
+        config = load_config(template="openrouter-anthropic")
+
+        assert config.proxy.active_template == "openrouter-anthropic"
+        assert config.proxy.preferred_provider == "openrouter"
+        assert config.proxy.default_port == 8095
+        assert config.proxy.openrouter.tiers.haiku == "anthropic/claude-haiku-4.5"
+        assert config.proxy.openrouter.tiers.sonnet == "anthropic/claude-sonnet-4.6"
+        assert config.proxy.openrouter.tiers.opus == "anthropic/claude-opus-4.6"
+        assert config.proxy.openrouter.base_url == "https://openrouter.ai/api/v1"
+        assert config.proxy.openrouter.model_alternatives == {"opus": {"claude-opus-4-7": "anthropic/claude-opus-4.7"}}
+
+    def test_openrouter_config_placed_on_correct_field(self):
+        """OpenRouter config should land on proxy.openrouter, not proxy.litellm."""
+        config = load_config(template="openrouter-anthropic")
+
+        assert config.proxy.openrouter.tiers.sonnet != ""
+        assert config.proxy.litellm.tiers.sonnet == ""
+
     # NOTE: User config file support removed
     # Proxies own full config; no ~/.claude/forge.config.yaml
+
+
+class TestTemplateFamilyMetadata:
+    """Every shipped template must declare a model family."""
+
+    TEMPLATE_DIR = Path("src/forge/config/defaults/templates")
+
+    EXPECTED_FAMILIES = {
+        "openrouter-anthropic": "anthropic",
+        "openrouter-openai": "openai",
+        "openrouter-openai-codex": "openai",
+        "openrouter-gemini": "gemini",
+        "openrouter-gemini-flash": "gemini",
+        "openrouter-deepseek": "deepseek",
+        "openrouter-kimi": "kimi",
+        "openrouter-minimax": "minimax",
+        "openrouter-qwen": "qwen",
+        "openrouter-glm": "glm",
+        "litellm-anthropic": "anthropic",
+        "litellm-anthropic-local": "anthropic",
+        "litellm-openai": "openai",
+        "litellm-openai-local": "openai",
+        "litellm-openai-codex-local": "openai",
+        "litellm-gemini": "gemini",
+        "litellm-gemini-local": "gemini",
+        "litellm-gemini-flash-local": "gemini",
+        "litellm-gemini-test": "gemini",
+    }
+
+    def _shipped_template_names(self) -> list[str]:
+        return sorted(p.stem for p in self.TEMPLATE_DIR.glob("*.yaml"))
+
+    def test_every_shipped_template_has_family(self):
+        for name in self._shipped_template_names():
+            config = load_config(template=name)
+            assert config.proxy.family, f"Template '{name}' missing proxy.family"
+
+    def test_template_families_match_expected(self):
+        for name, expected_family in self.EXPECTED_FAMILIES.items():
+            config = load_config(template=name)
+            assert (
+                config.proxy.family == expected_family
+            ), f"Template '{name}': expected family '{expected_family}', got '{config.proxy.family}'"
+
+    def test_family_propagates_through_proxy_instance(self, tmp_path, monkeypatch):
+        """family round-trips through proxy.yaml creation and reload."""
+        from forge.config.loader import (
+            load_proxy_instance_config,
+            write_proxy_instance_config,
+        )
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        monkeypatch.setenv("FORGE_HOME", str(tmp_path))
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter-openai",
+            template_digest="sha256:test",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8096",
+            port=8096,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(haiku="openai/gpt-5.4-mini", sonnet="openai/gpt-5.5", opus="openai/gpt-5.5"),
+            family="openai",
+        )
+
+        write_proxy_instance_config("test-proxy", config)
+        loaded = load_proxy_instance_config("test-proxy")
+        assert loaded is not None
+        assert loaded.family == "openai"
+
+    def test_family_in_proxy_config_from_instance(self, tmp_path, monkeypatch):
+        """family on ProxyInstanceConfig flows into ProxyConfig via loader."""
+        from forge.config.loader import _proxy_instance_to_forge_config
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter-gemini",
+            template_digest="sha256:test",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8097",
+            port=8097,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(
+                haiku="google/gemini-3-flash", sonnet="google/gemini-3.1-pro", opus="google/gemini-3.1-pro"
+            ),
+            family="gemini",
+        )
+
+        forge_config = _proxy_instance_to_forge_config(config)
+        assert forge_config.proxy.family == "gemini"
+
+    @pytest.fixture()
+    def user_templates_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        monkeypatch.setenv("FORGE_HOME", str(tmp_path))
+        tpl_dir = tmp_path / "templates"
+        tpl_dir.mkdir()
+        return tpl_dir
+
+    def test_family_validation_rejects_numeric(self, user_templates_dir):
+        """family: 123 is rejected (must be a non-blank string)."""
+        bad = user_templates_dir / "bad-numeric.yaml"
+        bad.write_text("proxy:\n  family: 123\n  preferred_provider: openrouter\n  default_port: 9999\n")
+        with pytest.raises(ValueError, match="non-blank string"):
+            load_config(template="bad-numeric")
+
+    def test_family_validation_rejects_blank(self, user_templates_dir):
+        """family: '   ' (whitespace-only) is rejected."""
+        bad = user_templates_dir / "bad-blank.yaml"
+        bad.write_text("proxy:\n  family: '   '\n  preferred_provider: openrouter\n  default_port: 9999\n")
+        with pytest.raises(ValueError, match="non-blank string"):
+            load_config(template="bad-blank")
+
+    def test_family_validation_rejects_null_proxy(self, user_templates_dir):
+        """proxy: null produces a clear error, not AttributeError."""
+        bad = user_templates_dir / "bad-null.yaml"
+        bad.write_text("proxy: null\n")
+        with pytest.raises(ValueError, match="must have a 'proxy' mapping"):
+            load_config(template="bad-null")
 
 
 class TestProxyFileIO:
@@ -238,6 +378,41 @@ class TestProxyFileIO:
         assert loaded.port == 8085
         assert loaded.tiers.haiku == "gemini/gemini-3-flash-preview"
         assert loaded.default_tier == "opus"
+
+    def test_proxy_instance_config_round_trips_costs(self, tmp_path, monkeypatch):
+        """Cost cap config survives write/load of proxy.yaml."""
+        from forge.config.loader import (
+            load_proxy_instance_config,
+            write_proxy_instance_config,
+        )
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        monkeypatch.setenv("FORGE_HOME", str(tmp_path))
+
+        original = ProxyInstanceConfig(
+            proxy_format=1,
+            template="litellm-gemini",
+            template_digest="sha256:abc123def456",
+            provider="litellm",
+            proxy_endpoint="http://localhost:8085",
+            port=8085,
+            upstream_base_url="https://litellm.test.example.com",
+            tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+            costs={
+                "caps": {"per_day": 20.0, "per_month": 100.0},
+                "cap_mode": "strict",
+                "on_cap_hit": "warn",
+            },
+        )
+
+        write_proxy_instance_config("cost-proxy", original)
+        loaded = load_proxy_instance_config("cost-proxy")
+
+        assert loaded is not None
+        assert loaded.costs.caps.per_day == 20.0
+        assert loaded.costs.caps.per_month == 100.0
+        assert loaded.costs.cap_mode == "strict"
+        assert loaded.costs.on_cap_hit == "warn"
 
     def test_load_proxy_instance_config_not_found(self, tmp_path, monkeypatch):
         """load_proxy_instance_config returns None for missing file."""
@@ -330,6 +505,38 @@ class TestLoadConfigWithProxy:
         assert config.proxy.litellm.tiers.sonnet == "test-sonnet"
         assert config.proxy.litellm.tiers.opus == "test-opus"
 
+    def test_load_config_with_proxy_id_applies_costs(self, tmp_path, monkeypatch):
+        """Proxy-owned cost caps reach the runtime ProxyConfig."""
+        from forge.config import load_config
+        from forge.config.loader import write_proxy_instance_config
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        monkeypatch.setenv("FORGE_HOME", str(tmp_path))
+
+        proxy_config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="test-template",
+            template_digest="sha256:test123",
+            provider="litellm",
+            proxy_endpoint="http://localhost:9999",
+            port=9999,
+            upstream_base_url="https://litellm.test.example.com",
+            tiers=TierModels(haiku="test-haiku", sonnet="test-sonnet", opus="test-opus"),
+            costs={
+                "caps": {"per_day": "20.00", "per_month": "100.00"},
+                "cap_mode": "strict",
+                "on_cap_hit": "warn",
+            },
+        )
+        write_proxy_instance_config("cost-proxy", proxy_config)
+
+        config = load_config(proxy_id="cost-proxy")
+
+        assert config.proxy.costs.caps.per_day == 20.0
+        assert config.proxy.costs.caps.per_month == 100.0
+        assert config.proxy.costs.cap_mode == "strict"
+        assert config.proxy.costs.on_cap_hit == "warn"
+
     def test_load_config_with_nonexistent_lease_raises(self, tmp_path, monkeypatch):
         """Missing proxy_id raises ValueError (fail fast)."""
         from forge.config import load_config
@@ -417,7 +624,59 @@ class TestTemplateResolution:
 
     def test_shipped_template_exists(self, user_templates_dir: Path) -> None:
         assert shipped_template_exists("litellm-openai")
+        assert shipped_template_exists("openrouter-anthropic")
         assert not shipped_template_exists("nonexistent-xyz")
+
+    def test_openrouter_templates_in_template_list(self, user_templates_dir: Path) -> None:
+        """OpenRouter family templates appear in shipped template list."""
+        names = list_template_names()
+        assert "openrouter-anthropic" in names
+        assert "openrouter-openai" in names
+        assert "openrouter-gemini" in names
+        assert "openrouter-openai-codex" in names
+        assert "openrouter-gemini-flash" in names
+        assert "openrouter-deepseek" in names
+        assert "openrouter-kimi" in names
+        assert "openrouter-glm" in names
+        assert "openrouter-minimax" in names
+        assert "openrouter-qwen" in names
+
+    def test_openrouter_open_model_templates_load(self, user_templates_dir: Path) -> None:
+        """OpenRouter open-model family templates load with expected tiers."""
+        cases = {
+            "openrouter-deepseek": (
+                "deepseek/deepseek-v4-flash",
+                "deepseek/deepseek-v4-pro",
+                "deepseek/deepseek-v4-pro",
+            ),
+            "openrouter-qwen": ("qwen/qwen3.6-flash", "qwen/qwen3.6-plus", "qwen/qwen3.6-max-preview"),
+            "openrouter-kimi": ("google/gemma-4-31b-it", "moonshotai/kimi-k2.6", "moonshotai/kimi-k2.6"),
+            "openrouter-glm": ("z-ai/glm-4.7-flash", "z-ai/glm-5.1", "z-ai/glm-5.1"),
+            "openrouter-minimax": ("google/gemma-4-31b-it", "minimax/minimax-m2.7", "minimax/minimax-m2.7"),
+        }
+
+        for template, (haiku, sonnet, opus) in cases.items():
+            config = load_config(template=template)
+            assert config.proxy.preferred_provider == "openrouter"
+            assert config.proxy.openrouter.tiers.haiku == haiku
+            assert config.proxy.openrouter.tiers.sonnet == sonnet
+            assert config.proxy.openrouter.tiers.opus == opus
+
+        qwen = load_config(template="openrouter-qwen")
+        assert qwen.proxy.openrouter.model_alternatives == {
+            "sonnet": {"qwen3-coder": "qwen/qwen3-coder"},
+            "opus": {"qwen3-coder": "qwen/qwen3-coder"},
+        }
+        kimi = load_config(template="openrouter-kimi")
+        assert kimi.proxy.openrouter.model_alternatives == {
+            "sonnet": {"kimi-k2.5": "moonshotai/kimi-k2.5"},
+            "opus": {"kimi-k2.5": "moonshotai/kimi-k2.5"},
+        }
+        minimax = load_config(template="openrouter-minimax")
+        assert minimax.proxy.openrouter.model_alternatives == {
+            "sonnet": {"minimax-m2.5": "minimax/minimax-m2.5"},
+            "opus": {"minimax-m2.5": "minimax/minimax-m2.5"},
+        }
 
     def test_read_shipped_template_ignores_user(self, user_templates_dir: Path) -> None:
         """read_shipped_template always returns the built-in content."""

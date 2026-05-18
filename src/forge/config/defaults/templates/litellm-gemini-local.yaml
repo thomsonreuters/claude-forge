@@ -8,6 +8,7 @@
 # For tests: Use litellm-gemini-test template (port 4001)
 
 proxy:
+  family: gemini
   preferred_provider: litellm
   default_port: 8086
 

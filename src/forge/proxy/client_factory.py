@@ -12,6 +12,7 @@ import time
 from enum import Enum
 from threading import Lock
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from forge.config import config
 from forge.core.llm.types import ModelHyperparameters
@@ -24,7 +25,21 @@ from forge.core.models import (
 logger = logging.getLogger(__name__)
 
 
-def _enforce_max_output_tokens_cap(model_name: str, requested: int | None) -> int:
+DEFAULT_MAX_OUTPUT_TOKENS = 16384
+
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+
+
+def _is_local_url(url: str) -> bool:
+    """Check if a URL points to a local host."""
+    try:
+        parsed = urlparse(url)
+        return (parsed.hostname or "") in _LOCAL_HOSTS
+    except Exception:
+        return False
+
+
+def _enforce_max_output_tokens_cap(model_name: str, requested: int | None, *, strict: bool = True) -> int:
     """Enforce the catalog's max_output_tokens as a hard cap.
 
     The model catalog defines the maximum output tokens each model can produce.
@@ -33,15 +48,21 @@ def _enforce_max_output_tokens_cap(model_name: str, requested: int | None) -> in
     Args:
         model_name: Model ID (canonical or alias).
         requested: Requested max_tokens from config/env/request (or None for default).
+        strict: If True (default), raise on unknown models. If False, return
+                requested or a safe default for models not in the catalog
+                (used by OpenRouter where the model space is open).
 
     Returns:
         Effective max_tokens, capped to catalog limit.
 
     Raises:
-        ModelCatalogError: If model is unknown or requested exceeds catalog cap.
+        ModelCatalogError: If model is unknown (strict mode) or requested exceeds catalog cap.
     """
     if not model_exists(model_name):
-        raise ModelCatalogError(f"Model {model_name!r} not in catalog. Add it to core/data/model_catalog.yaml.")
+        if strict:
+            raise ModelCatalogError(f"Model {model_name!r} not in catalog. Add it to core/data/model_catalog.yaml.")
+        logger.debug(f"Model {model_name!r} not in catalog, using default max_output_tokens")
+        return requested if requested is not None else DEFAULT_MAX_OUTPUT_TOKENS
 
     catalog_cap = get_max_output_tokens(model_name)
 
@@ -61,6 +82,7 @@ class ModelProvider(Enum):
     """Supported model providers."""
 
     LITELLM = "litellm"
+    OPENROUTER = "openrouter"
     UNKNOWN = "unknown"
 
 
@@ -101,6 +123,7 @@ class TierClientFactory:
 
         self._default_ttl = float(os.getenv("CREDENTIAL_CACHE_TTL", str(default_ttl)))  # 1 hour default
         self._litellm_ttl = float(os.getenv("LITELLM_CACHE_TTL", str(self._default_ttl)))
+        self._upstream_base_url_cache: tuple[str, str | None] | None = None
 
         self._refresh_lock = asyncio.Lock()
         self._initialized = True
@@ -119,10 +142,12 @@ class TierClientFactory:
         logger.info(f"TierClientFactory initialized - TTL configuration: {', '.join(ttl_config)}")
 
     def _detect_provider(self, model_name: str) -> ModelProvider:
-        """Detect the model provider from the model name.
+        """Detect the model provider from the model name or PREFERRED_PROVIDER.
 
-        All models route through LiteLLM. Detection validates known prefixes
-        and falls back to LiteLLM for unknown models.
+        PREFERRED_PROVIDER (set by the proxy server from the template) takes
+        precedence over model-name prefix detection. This prevents OpenRouter
+        model IDs like ``anthropic/claude-sonnet-4.6`` from being misrouted
+        to LiteLLM via the ``anthropic/`` prefix match.
 
         Args:
             model_name: The model identifier
@@ -130,6 +155,14 @@ class TierClientFactory:
         Returns:
             ModelProvider enum indicating the provider
         """
+        preferred = os.getenv("PREFERRED_PROVIDER", "")
+        if preferred == "openrouter":
+            return ModelProvider.OPENROUTER
+
+        model_family = os.getenv("MODEL_FAMILY", "").upper()
+        if model_family == "OPENROUTER":
+            return ModelProvider.OPENROUTER
+
         clean_name = model_name.lower()
 
         if "/" in clean_name and any(
@@ -141,17 +174,39 @@ class TierClientFactory:
                 "bedrock/",
                 "replicate/",
                 "together_ai/",
-                "gemini/",  # Google AI Studio (not Vertex AI)
+                "gemini/",
             ]
         ):
             return ModelProvider.LITELLM
 
-        model_family = os.getenv("MODEL_FAMILY", "").upper()
         if model_family == "LITELLM":
             return ModelProvider.LITELLM
 
         logger.warning(f"Unknown model provider for model: {model_name}, defaulting to LiteLLM")
         return ModelProvider.LITELLM
+
+    def _get_upstream_base_url(self) -> str | None:
+        """Get the proxy's upstream base URL from the instance config.
+
+        Reads the proxy.yaml for the current proxy instance to determine
+        whether the upstream is local or remote.
+        """
+        proxy_id = os.getenv("FORGE_PROXY_ID")
+        if not proxy_id:
+            return None
+        if self._upstream_base_url_cache and self._upstream_base_url_cache[0] == proxy_id:
+            return self._upstream_base_url_cache[1]
+        try:
+            from forge.config.loader import load_proxy_instance_config
+
+            instance = load_proxy_instance_config(proxy_id)
+            upstream = instance.upstream_base_url if instance else None
+            if upstream:
+                self._upstream_base_url_cache = (proxy_id, upstream)
+            return upstream
+        except Exception:
+            logger.debug("Failed to resolve upstream base URL for proxy %s", proxy_id, exc_info=True)
+            return None
 
     def _get_ttl_for_provider(self, provider: ModelProvider) -> float:
         """Get the TTL for a specific provider."""
@@ -171,6 +226,7 @@ class TierClientFactory:
         """
         prefix_map = {
             ModelProvider.LITELLM: "LITELLM",
+            ModelProvider.OPENROUTER: "OPENROUTER",
         }
         prefix = prefix_map.get(provider)
         if not prefix:
@@ -186,7 +242,7 @@ class TierClientFactory:
     def _import_client_class(self, provider: ModelProvider):
         """Lazy import client classes to avoid circular dependencies."""
         if provider not in self._client_classes:
-            if provider == ModelProvider.LITELLM:
+            if provider in (ModelProvider.LITELLM, ModelProvider.OPENROUTER):
                 from forge.proxy.client_adapter import CoreLLMClientAdapter
 
                 self._client_classes[provider] = CoreLLMClientAdapter
@@ -255,7 +311,7 @@ class TierClientFactory:
                 if time.monotonic() - fetch_time < ttl and cached_provider == provider:
                     return cached_data
 
-            if provider != ModelProvider.LITELLM:
+            if provider not in (ModelProvider.LITELLM, ModelProvider.OPENROUTER):
                 raise ValueError(f"Unsupported provider: {provider}")
 
             self._import_client_class(provider)
@@ -263,9 +319,24 @@ class TierClientFactory:
             # Resolve hyperparameters via the single source of truth
             default_hyperparams = self._resolve_tier_hyperparams(provider, tier, model_name)
 
-            from forge.core.llm.detection import detect_provider as core_detect_provider
+            if provider == ModelProvider.OPENROUTER:
+                core_provider = "openrouter"
+            else:
+                from forge.core.llm.detection import (
+                    detect_provider as core_detect_provider,
+                )
 
-            core_provider = core_detect_provider(model_name)
+                core_provider = core_detect_provider(model_name)
+
+                # Override to litellm_local when upstream is localhost.
+                # detect_provider uses model prefix (openai/ -> litellm_remote),
+                # but local templates route through a local LiteLLM that needs
+                # no API key. The proxy instance config's upstream_base_url is
+                # the authoritative source for local vs remote.
+                if core_provider == "litellm_remote":
+                    upstream = self._get_upstream_base_url()
+                    if upstream and _is_local_url(upstream):
+                        core_provider = "litellm_local"
 
             client = self._client_classes[provider](
                 model=model_name,
@@ -334,16 +405,20 @@ class TierClientFactory:
         if provider == ModelProvider.LITELLM:
             provider_cfg = config.proxy.litellm
             env_prefix = "LITELLM"
+        elif provider == ModelProvider.OPENROUTER:
+            provider_cfg = config.proxy.openrouter
+            env_prefix = "OPENROUTER"
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
         tier_upper = tier.upper()
         tier_override = provider_cfg.tier_overrides.get(tier)
 
-        # max_tokens: env > catalog cap
+        # max_tokens: env > catalog cap (lenient for OpenRouter's open model space)
         tier_max_tokens = os.getenv(f"{env_prefix}_{tier_upper}_MAX_TOKENS")
         requested_max_tokens = int(tier_max_tokens) if tier_max_tokens else None
-        max_tokens_override = _enforce_max_output_tokens_cap(model_name, requested_max_tokens)
+        catalog_strict = provider != ModelProvider.OPENROUTER
+        max_tokens_override = _enforce_max_output_tokens_cap(model_name, requested_max_tokens, strict=catalog_strict)
 
         # reasoning_effort: env > tier_override
         tier_reasoning: str | None
@@ -412,6 +487,8 @@ class TierClientFactory:
         """
         if provider.lower() == "litellm":
             provider_enum = ModelProvider.LITELLM
+        elif provider.lower() == "openrouter":
+            provider_enum = ModelProvider.OPENROUTER
         else:
             raise ValueError(f"Unsupported provider for default hyperparams: {provider}")
 

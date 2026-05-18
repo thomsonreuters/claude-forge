@@ -441,11 +441,14 @@ def load_proxy_instance_config_from_dict(data: dict) -> "ProxyInstanceConfig":
         port=data.get("port", 0),
         upstream_base_url=data.get("upstream_base_url", ""),
         tiers=tiers,
+        family=data.get("family", ""),
         tier_overrides=tier_overrides,
+        model_alternatives=data.get("model_alternatives", {}),
         default_tier=data.get("default_tier", "sonnet"),
         provider_settings=data.get("provider_settings", {}),
         prompt_caching=data.get("prompt_caching", "passthrough"),
         auto_cache_min_tokens=data.get("auto_cache_min_tokens", 1024),
+        costs=data.get("costs", {}),
         created_at=data.get("created_at"),
         updated_at=data.get("updated_at"),
     )
@@ -539,6 +542,7 @@ def _proxy_instance_to_forge_config(
     provider_config = ProviderConfig(
         tiers=proxy_config.tiers,
         tier_overrides=proxy_config.tier_overrides,
+        model_alternatives=proxy_config.model_alternatives,
         base_url=proxy_config.upstream_base_url,
         auth_url=auth_url or "",  # Empty string if no secret set
         openai_api_mode=proxy_config.provider_settings.get("openai_api_mode", "auto"),
@@ -548,16 +552,20 @@ def _proxy_instance_to_forge_config(
     )
 
     proxy_server_config = ProxyConfig(
+        family=proxy_config.family,
         preferred_provider=proxy_config.provider,
         active_template=proxy_config.template,
         default_tier=proxy_config.default_tier,
         default_port=proxy_config.port,
+        costs=proxy_config.costs,
     )
 
     if proxy_config.provider == "gemini":
         proxy_server_config.gemini = provider_config
     elif proxy_config.provider == "openai":
         proxy_server_config.openai = provider_config
+    elif proxy_config.provider == "openrouter":
+        proxy_server_config.openrouter = provider_config
     else:  # litellm is default
         proxy_server_config.litellm = provider_config
 
@@ -593,6 +601,15 @@ def _load_template_config(template: str) -> "ForgeConfig":
     template_data = yaml.safe_load(content)
     if not isinstance(template_data, dict):
         raise ValueError(f"Template '{template}' must be a mapping (dict)")
+    template_data.pop("internal", None)
+
+    proxy_block = template_data.get("proxy")
+    if not isinstance(proxy_block, dict):
+        raise ValueError(f"Template '{template}' must have a 'proxy' mapping")
+    family = proxy_block.get("family", "")
+    if not isinstance(family, str) or not family.strip():
+        raise ValueError(f"Template '{template}' missing required 'proxy.family' field (must be a non-blank string)")
+
     secrets = env_to_dict()
     config_dict = deep_merge(template_data, secrets)
 

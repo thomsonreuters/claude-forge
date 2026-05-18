@@ -61,6 +61,14 @@ class TestRuntimeConfigDefaults:
         rc = RuntimeConfig()
         assert rc.user_agent_claude_code_version == ""
 
+    def test_tool_failure_logging_is_opt_in(self):
+        rc = RuntimeConfig()
+        assert rc.log_tool_failures is False
+
+    def test_auth_ignore_env_defaults_false(self):
+        rc = RuntimeConfig()
+        assert rc.auth_ignore_env is False
+
 
 class TestRuntimeConfigValidation:
     def test_invalid_proxy_mode_rejected(self):
@@ -166,6 +174,12 @@ class TestLoadRuntimeConfig:
         assert rc.proxy_mode == "sidecar"
         assert rc.status_timeout == 0.5
 
+    def test_log_tool_failures_yaml_parsed(self, tmp_path: Path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("log_tool_failures: true\n")
+        rc = load_runtime_config(config_file)
+        assert rc.log_tool_failures is True
+
     def test_partial_yaml_uses_defaults_for_missing(self, tmp_path: Path):
         config_file = tmp_path / "config.yaml"
         config_file.write_text("proxy_mode: sidecar\n")
@@ -219,7 +233,7 @@ class TestLoadRuntimeConfig:
 
     def test_integer_and_float_types_preserved(self, tmp_path: Path):
         config_file = tmp_path / "config.yaml"
-        config_file.write_text("context_limit: 1000000\n" "status_timeout: 0.25\n" "handoff_timeout: 60\n")
+        config_file.write_text("context_limit: 1000000\nstatus_timeout: 0.25\nhandoff_timeout: 60\n")
         rc = load_runtime_config(config_file)
         assert rc.context_limit == 1000000
         assert rc.status_timeout == 0.25
@@ -365,6 +379,8 @@ class TestGetDefaultConfigContent:
             "context_limit",
             "status_timeout",
             "handoff_timeout",
+            "log_tool_failures",
+            "auth_ignore_env",
         ]:
             assert key in content, f"Missing key in default content: {key}"
 

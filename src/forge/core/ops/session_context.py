@@ -72,6 +72,7 @@ class SessionContext:
     parent_session: str | None = None
     proxy: ProxyContext = field(default_factory=ProxyContext)
     model_family: str = "anthropic"
+    main_model: str | None = None
     models: dict[str, str] = field(default_factory=dict)
     policy: PolicyContext = field(default_factory=PolicyContext)
     overrides: dict[str, Any] = field(default_factory=dict)
@@ -94,6 +95,8 @@ class SessionContext:
                 "is_direct": self.proxy.is_direct,
             },
             "model_family": self.model_family,
+            "main_model": self.main_model,
+            "model_profile": self.main_model,
             "models": dict(self.models),
             "policy": {
                 "enabled": self.policy.enabled,
@@ -284,7 +287,7 @@ def get_session_context(session: str | None = None) -> SessionContext:
         raise SessionContextError(str(e)) from e
 
     proxy_ctx = _build_proxy_context(state)
-    family, models = _build_model_context(proxy_ctx)
+    family, models, main_model = _build_model_context(proxy_ctx, state)
     policy_ctx = _build_policy_context(state)
 
     return SessionContext(
@@ -298,6 +301,7 @@ def get_session_context(session: str | None = None) -> SessionContext:
         parent_session=state.parent_session,
         proxy=proxy_ctx,
         model_family=family,
+        main_model=main_model,
         models=models,
         policy=policy_ctx,
         overrides=dict(state.overrides),
@@ -322,12 +326,13 @@ def _build_env_context() -> SessionContext:
     else:
         proxy_ctx = ProxyContext(is_direct=True)
 
-    family, models = _build_model_context(proxy_ctx)
+    family, models, main_model = _build_model_context(proxy_ctx, None)
 
     return SessionContext(
         session_name=os.environ.get("FORGE_SESSION", "(unknown)"),
         claude_session_id=None,
         model_family=family,
+        main_model=main_model,
         models=models,
         proxy=proxy_ctx,
     )
@@ -414,18 +419,42 @@ def _scan_manifests_for_uuid(session_uuid: str) -> tuple[str, str] | None:
     return None
 
 
-def _build_model_context(proxy_ctx: ProxyContext) -> tuple[str, dict[str, str]]:
+def _build_model_context(proxy_ctx: ProxyContext, state: SessionState | None) -> tuple[str, dict[str, str], str | None]:
     """Return model family plus tier mappings using the best available proxy truth."""
+    if proxy_ctx.is_direct:
+        main_model = None
+        if state is not None and state.intent.launch is not None:
+            main_model = state.intent.launch.direct_model
+        if main_model is None:
+            main_model = _direct_main_model_from_env()
+        return "anthropic", {}, main_model
+
     proxy_config = _load_proxy_instance_for_context(proxy_ctx)
     if proxy_config is not None:
         models = _proxy_instance_tier_models(proxy_config)
         family = _family_from_models(models)
-        return family, models
+        main_model = models.get(getattr(proxy_config, "default_tier", None) or "sonnet")
+        return family, models, main_model
 
     template = proxy_ctx.template
     family = detect_model_family(template)
     models = _get_tier_models(template)
-    return family, models
+    main_model = models.get("sonnet") or models.get("opus") or models.get("haiku")
+    return family, models, main_model
+
+
+def _direct_main_model_from_env() -> str | None:
+    """Infer the pinned direct Claude model from Claude Code env vars."""
+    tier = (os.environ.get("ANTHROPIC_MODEL") or "").lower()
+    env_by_tier = {
+        "opus": "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "sonnet": "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "haiku": "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    }
+    if tier in env_by_tier:
+        return os.environ.get(env_by_tier[tier])
+
+    return None
 
 
 def _load_proxy_instance_for_context(proxy_ctx: ProxyContext) -> Any | None:

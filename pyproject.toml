@@ -1,6 +1,6 @@
 [project]
 name = "tr-claude-forge"
-version = "0.1.1"
+version = "0.2.0"
 description = "Developer toolkit for Claude Code: multi-model proxy routing, session management, policy engine, and skills architecture"
 readme = "README.md"
 license = "Apache-2.0"
@@ -28,7 +28,7 @@ classifiers = [
 dependencies = [
     "dacite>=1.8.0",
     "click>=8.3.1",
-    "coolname>=2.2.0,<3",
+    "coolname>=5.0.0,<6",
     "rich>=13.0.0",
     "pydantic>=2.0.0",
     "openai>=1.0.0",
@@ -45,7 +45,7 @@ dependencies = [
     "fastapi>=0.115.11",
     "uvicorn>=0.31.1",
     "watchfiles>=0.20",
-    "litellm[proxy]>=1.83.0",
+    "litellm[proxy]>=1.84.0",
 ]
 
 [project.scripts]
@@ -95,6 +95,7 @@ testpaths = ["tests"]
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "slow: marks tests as slow (require network/API access, deselect with '-m \"not slow\"')",
+    "remote_litellm: marks tests that require remote/shared LiteLLM infrastructure",
     "regression: marks tests as regression/bug-fix tests (run with '-m regression')",
     "docker_in: tests that exec commands inside a container (use '-m \"not docker_in\"' to skip)",
     "docker_host: tests that spawn containers from host - sandbox tests (use '-m \"not docker_host\"' to skip)",
@@ -145,4 +146,10 @@ dev = [
     "types-PyYAML>=6.0.0",
     "types-requests>=2.31.0",
     "python-dotenv>=1.2.1",
+]
+provider-check = [
+    "anthropic>=0.52.0",
+    "google-genai>=2.3.0",
+    "openai>=1.0.0",
+    "tiktoken>=0.12.0",
 ]

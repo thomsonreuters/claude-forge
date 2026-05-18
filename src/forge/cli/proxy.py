@@ -37,6 +37,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
+from forge.cli.proxy_costs import costs_cmd
 from forge.config.loader import (
     get_proxy_file_path,
     get_template_path,
@@ -86,10 +87,23 @@ def proxy() -> None:
 
     \b
     Examples:
-        forge proxy create litellm-gemini      # Create proxy from template
+        forge proxy create openrouter-gemini   # Create proxy from template
         forge proxy list                       # List all proxies
         forge proxy show my-proxy              # Show proxy details
     """
+
+
+proxy.add_command(costs_cmd)
+
+
+def _clear_workflow_template_cache() -> None:
+    """Invalidate workflow routing template metadata after template edits."""
+    try:
+        from forge.review.routing import clear_template_cache
+
+        clear_template_cache()
+    except Exception:
+        pass
 
 
 # --- List ---
@@ -310,12 +324,12 @@ def create_cmd(
 
     \b
     Examples:
-        forge proxy create litellm-gemini              # Create and start server
-        forge proxy create litellm-gemini --no-start   # Create config only
-        forge proxy create litellm-gemini -n my-proxy  # Custom name
-        forge proxy create litellm-gemini --opus-reasoning=high  # With overrides
+        forge proxy create openrouter-gemini              # Create and start server
+        forge proxy create openrouter-gemini --no-start   # Create config only
+        forge proxy create openrouter-gemini -n my-proxy  # Custom name
+        forge proxy create openrouter-gemini --opus-reasoning=high  # With overrides
         forge proxy create litellm-openai --base-url https://litellm.corp.com  # Explicit upstream
-        forge proxy create litellm-openai --smoke-test # Verify upstream after start
+        forge proxy create openrouter-openai --smoke-test # Verify upstream after start
     """
     console = Console(width=200)
 
@@ -799,10 +813,9 @@ def edit_cmd(proxy_id: str) -> None:
             console.print(f"Your changes are saved at: {display_path(tmp_path)}")
             sys.exit(1)
 
-        write_tmp = proxy_path.with_suffix(".yaml.tmp")
-        shutil.copy(tmp_path, write_tmp)
-        write_tmp.chmod(0o600)
-        write_tmp.rename(proxy_path)
+        from forge.core.state import atomic_write_text
+
+        atomic_write_text(proxy_path, tmp_path.read_text(), create_parents=False)
 
         success = True
         console.print(f"[green]Updated[/green] proxy '{proxy_id}'")
@@ -862,16 +875,16 @@ def set_cmd(proxy_id: str, key_value: str) -> None:
     final_key = keys[-1]
     coerced_value: Any
     try:
-        if final_key in ("port", "proxy_format", "thinking_budget_tokens"):
+        if value.lower() in ("none", "null"):
+            coerced_value = None
+        elif final_key in ("port", "proxy_format", "thinking_budget_tokens"):
             coerced_value = int(value)
-        elif final_key in ("temperature",):
+        elif final_key in ("temperature",) or key in ("costs.caps.per_day", "costs.caps.per_month"):
             coerced_value = float(value)
         elif value.lower() == "true":
             coerced_value = True
         elif value.lower() == "false":
             coerced_value = False
-        elif value.lower() in ("none", "null"):
-            coerced_value = None
         else:
             coerced_value = value
     except ValueError as e:
@@ -889,13 +902,19 @@ def set_cmd(proxy_id: str, key_value: str) -> None:
         console.print(f"[red]Error:[/red] Invalid value — {e}")
         sys.exit(1)
 
-    tmp_path = proxy_path.with_suffix(".yaml.tmp")
-    with open(tmp_path, "w") as f:
-        yaml.dump(data, f)
-    tmp_path.chmod(0o600)
-    tmp_path.rename(proxy_path)
+    import io
+
+    from forge.core.state import atomic_write_text
+
+    buf = io.StringIO()
+    yaml.dump(data, buf)
+    atomic_write_text(proxy_path, buf.getvalue(), create_parents=False)
 
     console.print(f"[green]Set[/green] {key}={coerced_value} in proxy '{proxy_id}'")
+    if key.startswith("costs."):
+        console.print(
+            "[dim]Tip: Cost config is read at proxy startup. Restart the proxy for this change to take effect.[/dim]"
+        )
 
 
 # --- Delete ---
@@ -1622,8 +1641,8 @@ def template_show_cmd(name: str, raw: bool) -> None:
 
     \b
     Examples:
-        forge proxy template show litellm-gemini
-        forge proxy template show litellm-gemini --raw
+        forge proxy template show openrouter-gemini
+        forge proxy template show openrouter-gemini --raw
     """
     console = Console(width=200)
 
@@ -1671,7 +1690,7 @@ def template_edit_cmd(name: str) -> None:
 
     \b
     Examples:
-        forge proxy template edit litellm-gemini
+        forge proxy template edit openrouter-gemini
     """
     console = Console(width=200)
 
@@ -1748,6 +1767,7 @@ def template_edit_cmd(name: str) -> None:
         if first_edit:
             console.print(f"[dim]Created user copy at {display_path(user_path)}[/dim]")
         console.print(f"[green]Updated[/green] template '{name}'")
+        _clear_workflow_template_cache()
 
     finally:
         if success and tmp_path.exists():
@@ -1768,8 +1788,8 @@ def template_reset_cmd(name: str, yes: bool, force: bool) -> None:
 
     \b
     Examples:
-        forge proxy template reset litellm-gemini
-        forge proxy template reset litellm-gemini --yes
+        forge proxy template reset openrouter-gemini
+        forge proxy template reset openrouter-gemini --yes
     """
     yes = yes or force
     console = Console(width=200)
@@ -1798,3 +1818,4 @@ def template_reset_cmd(name: str, yes: bool, force: bool) -> None:
 
     user_path.unlink()
     console.print(f"[green]Reset[/green] template '{name}' to built-in defaults")
+    _clear_workflow_template_cache()

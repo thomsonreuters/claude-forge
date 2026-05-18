@@ -20,6 +20,7 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -28,25 +29,86 @@ from forge.config.schema import ForgeConfig
 from forge.core.auth.protocols import SecretsProvider
 from forge.core.llm.errors import NoApiKeyError
 
+logger = logging.getLogger(__name__)
+
+
+def _format_missing_credential_detail(
+    key: str,
+    *,
+    profile: str | None = None,
+    env_ignored: bool = False,
+) -> str | None:
+    """Best-effort actionable message for known credential env vars."""
+    try:
+        from forge.core.auth.capabilities import (
+            credential_for_env_var,
+            format_missing_credential_error,
+        )
+
+        credential = credential_for_env_var(key)
+        if credential is None:
+            return None
+        return format_missing_credential_error(
+            credential,
+            missing_vars=[key],
+            profile=profile,
+            env_ignored=env_ignored,
+        )
+    except Exception as e:
+        logger.debug("Could not format missing credential detail for %s: %s", key, e)
+        return None
+
 
 class EnvSecretsProvider:
     """Reads secrets from os.environ.
 
     Expects dotenv to already be loaded (by CLI main or config loader).
     Does NOT call load_dotenv() itself to avoid import-time side effects.
+
+    Args:
+        ignore_env: When True, all lookups return the default value.
+            Used by ``auth_ignore_env`` to bypass shell env vars.
+            When None (default), reads from runtime config on each call
+            so config changes take effect without restarting.
     """
+
+    def __init__(self, *, ignore_env: bool | None = None) -> None:
+        self._ignore_env = ignore_env
+
+    def _should_ignore(self) -> bool:
+        if self._ignore_env is not None:
+            return self._ignore_env
+        try:
+            from forge.runtime_config import get_runtime_config
+
+            return get_runtime_config().auth_ignore_env
+        except Exception as e:
+            logger.debug("Could not read auth_ignore_env; using environment credentials: %s", e)
+            return False
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get secret from environment, returning default if not found or empty."""
+        if self._should_ignore():
+            return default
         value = os.environ.get(key)
         # Treat empty string as not-set (consistent with config schema defaults)
         return value if value else default
 
     def require(self, key: str) -> str:
         """Get required secret from environment, raising if not found or empty."""
+        if self._should_ignore():
+            raise NoApiKeyError(
+                provider="env",
+                env_var=key,
+                detail=_format_missing_credential_detail(key, env_ignored=True),
+            )
         value = os.environ.get(key)
         if not value:
-            raise NoApiKeyError(provider="env", env_var=key)
+            raise NoApiKeyError(
+                provider="env",
+                env_var=key,
+                detail=_format_missing_credential_detail(key),
+            )
         return value
 
 
@@ -89,7 +151,11 @@ class ConfigSecretsProvider:
         """Get required secret from config, raising if not found or empty."""
         value = self.get(key)
         if not value:
-            raise NoApiKeyError(provider="config", env_var=key)
+            raise NoApiKeyError(
+                provider="config",
+                env_var=key,
+                detail=_format_missing_credential_detail(key),
+            )
         return value
 
     def _get_nested_attr(self, path: str) -> Any:
@@ -128,7 +194,11 @@ class FileSecretsProvider:
         """Get required secret from credential file, raising if not found or empty."""
         value = self.get(key)
         if not value:
-            raise NoApiKeyError(provider=f"file:{self._profile}", env_var=key)
+            raise NoApiKeyError(
+                provider=f"file:{self._profile}",
+                env_var=key,
+                detail=_format_missing_credential_detail(key, profile=self._profile),
+            )
         return value
 
 
@@ -165,5 +235,9 @@ class ChainSecretsProvider:
         """Get required secret, raising if no provider has a truthy value."""
         value = self.get(key)
         if not value:
-            raise NoApiKeyError(provider="chain", env_var=key)
+            raise NoApiKeyError(
+                provider="chain",
+                env_var=key,
+                detail=_format_missing_credential_detail(key),
+            )
         return value

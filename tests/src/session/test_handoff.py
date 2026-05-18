@@ -10,6 +10,8 @@ import pytest
 
 from forge.core.transcript import parse_jsonl_transcript, truncate
 from forge.session.handoff import (
+    AI_CURATION_MODEL,
+    AI_CURATION_PROVIDER,
     MAX_TRANSCRIPT_CHARS,
     ResumeStrategy,
     _format_transcript_for_llm,
@@ -170,6 +172,12 @@ class TestEstimateTranscriptTokens:
         file_size = sample_transcript.stat().st_size
         expected = file_size // 4
         assert estimate_transcript_tokens(sample_transcript) == expected
+
+    def test_estimate_multiplier(self, sample_transcript: Path) -> None:
+        """Model-specific tokenizer multipliers adjust the heuristic estimate."""
+        file_size = sample_transcript.stat().st_size
+        expected = int((file_size // 4) * 1.35)
+        assert estimate_transcript_tokens(sample_transcript, multiplier=1.35) == expected
 
     def test_empty_file(self, empty_transcript: Path) -> None:
         """Empty file should return 0 tokens."""
@@ -633,7 +641,7 @@ class TestAICuratedStrategy:
         # Patch at source module since lazy import is used
         with (
             patch("forge.core.llm.SyncAdapter", return_value=mock_adapter),
-            patch("forge.core.llm.get_client"),
+            patch("forge.core.llm.get_client") as mock_get_client,
         ):
             content, warnings = _generate_ai_curated_context(
                 parent_name="test-parent",
@@ -645,9 +653,11 @@ class TestAICuratedStrategy:
             )
 
         # Assert LLM was called
+        mock_get_client.assert_called_once_with(AI_CURATION_MODEL, provider=AI_CURATION_PROVIDER)
         mock_adapter.ask.assert_called_once()
         # Assert output contains strategy marker
         assert "ai-curated" in content
+        assert f"{AI_CURATION_MODEL} via {AI_CURATION_PROVIDER}" in content
         # Assert LLM output is included
         assert "Key decision made" in content
         # Assert security warning is present

@@ -64,7 +64,7 @@ Always launch Claude through Forge to get session tracking:
 ```bash
 forge session start                                            # Auto-named, direct to Anthropic
 forge session start my-feature                                 # Named, direct to Anthropic
-forge session start my-feature --proxy litellm-gemini-local    # Named + proxy routing
+forge session start my-feature --proxy openrouter-anthropic    # Named + proxy routing
 ```
 
 This gives you: named session with manifest, hook-driven plan snapshots, transcript capture, status line, session
@@ -73,7 +73,7 @@ resume, search, and handoff agent. Requires `forge extension enable` first (crea
 **Bare launch** (`forge claude start`) — proxy routing only, no session state:
 
 ```bash
-forge claude start --proxy litellm-gemini-local
+forge claude start --proxy openrouter-anthropic
 forge claude start --no-proxy
 ```
 
@@ -179,7 +179,7 @@ Sessions require a **Forge project** — a directory with `.forge/` (and `.claud
 
 ```bash
 cd my-repo
-forge extension enable --local    # Creates .claude/ and .forge/ if needed
+forge extension enable --scope local    # Creates .claude/ and .forge/ if needed
 forge session start my-feature    # Now works
 ```
 
@@ -381,6 +381,9 @@ Key differences from `--worktree`:
 These flags apply to `--worktree` and `--into` forks (file-based handoff). Same-directory forks use native
 `--resume --fork-session` and ignore these flags.
 
+`ai-curated` uses OpenRouter directly and requires `OPENROUTER_API_KEY`. If OpenRouter auth is unavailable, Forge warns
+and falls back to the deterministic `structured` strategy.
+
 **Use case: Plan -> Execute -> Review workflow:**
 
 ```bash
@@ -406,16 +409,16 @@ existing sessions with `forge guard supervise <session>` or `%guard supervise <s
 
 ```bash
 # Fork with supervisor on a different model (e.g., Gemini for checking, Opus for coding)
-forge session fork planner --worktree --supervise --supervisor-proxy litellm-gemini --no-proxy
+forge session fork planner --worktree --supervise --supervisor-proxy openrouter-gemini --no-proxy
 
 # Fork with supervisor going direct to Anthropic
 forge session fork planner --worktree --supervise --no-supervisor-proxy
 
 # Same flags work on session start
-forge session start executor --supervise planner --supervisor-proxy litellm-gemini
+forge session start executor --supervise planner --supervisor-proxy openrouter-gemini
 
 # Or change supervisor routing on an existing session
-forge guard supervise planner --supervisor-proxy litellm-gemini
+forge guard supervise planner --supervisor-proxy openrouter-gemini
 ```
 
 **Supervisor lifecycle controls:**
@@ -464,7 +467,7 @@ Claude.
 ### Start a session with a proxy
 
 ```bash
-forge session start my-session --proxy litellm-openai
+forge session start my-session --proxy openrouter-anthropic
 ```
 
 `--proxy` sets the session's initial proxy intent. It accepts a proxy ID or template name. Without `--proxy`, sessions
@@ -472,16 +475,53 @@ default to direct mode (Anthropic API).
 
 The invariant: choosing a proxy chooses routing defaults (model family, context limit).
 
+### Pin a Claude model (`--model`)
+
+```bash
+forge session start review-pass --model claude-opus-4-7
+forge session start long-sonnet --model claude-sonnet-4-6[1m]
+forge session start review-pass --proxy openrouter-anthropic --model claude-opus-4-7
+```
+
+`--model` behavior depends on the session routing mode:
+
+| Mode                                    | What `--model` does                                                 | `[1m]` support                 |
+| --------------------------------------- | ------------------------------------------------------------------- | ------------------------------ |
+| Direct (no `--proxy`)                   | Pins Claude Code's `ANTHROPIC_MODEL` directly                       | Yes                            |
+| Proxy + alternative configured          | Selects a `model_alternatives` entry; proxy routes to backend model | Yes (stripped at proxy lookup) |
+| Proxy + no alternative                  | Errors: "does not configure model alternative for ..."              | N/A                            |
+| Subprocess proxy (`--subprocess-proxy`) | Pins Claude Code env vars (main is direct; subprocesses inherit)    | Yes                            |
+
+Rejected with `--sidecar` or `--host-proxy`.
+
+Forge stores the normalized model pin in the session intent and relaunches resume/fork children with the same
+`ANTHROPIC_MODEL` and `ANTHROPIC_DEFAULT_*_MODEL` environment variables. The stable `claude-opus`/`opus` aliases point
+at Claude Opus 4.6; use `claude-opus-4-7` explicitly for Opus 4.7.
+
+For proxy-mode `model_alternatives` configuration, see [proxies.md](proxies.md#model-alternatives).
+
 ### Resume with a routing override
 
 ```bash
-forge session resume parent-session --fresh --proxy litellm-gemini-local
+forge session resume parent-session --fresh --proxy openrouter-gemini
 ```
 
 `--proxy` performs full proxy resolution (exact proxy_id match or active template lookup) with a healthcheck, then
 routes the child session through the resolved proxy. It accepts both proxy IDs and template names.
 
 `--no-proxy` forces direct Anthropic routing, bypassing any inherited proxy.
+
+### Route only subprocesses through a proxy
+
+Use `--subprocess-proxy` when the main session should use Claude Code's direct Anthropic auth, but Forge-spawned
+subprocesses such as supervisor, panel, or handoff jobs should use a proxy:
+
+```bash
+forge session start my-session --subprocess-proxy openrouter
+```
+
+This records `intent.subprocess_proxy` and sets `FORGE_SUBPROCESS_PROXY` for child jobs. It is mutually exclusive with
+`--proxy`: use `--proxy` when the main session itself should route through the proxy.
 
 ---
 

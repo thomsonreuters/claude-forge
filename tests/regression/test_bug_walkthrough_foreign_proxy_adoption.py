@@ -41,6 +41,7 @@ def test_create_skips_foreign_registered_proxy_and_spawns_next_port(
     """A foreign registered proxy on the default port must not be adopted."""
     monkeypatch.setenv("FORGE_HOME", str(tmp_path / "forge"))
     monkeypatch.setenv("LITELLM_BASE_URL", "https://litellm.test.example.com")
+    monkeypatch.setenv("LITELLM_API_KEY", "test-key")
 
     import forge.proxy.proxy_orchestrator as orchestrator
 

@@ -28,7 +28,7 @@ make test                   # Full suite
 # uv run pytest tests/src -m "not integration" -v
 # uv run pytest tests/integration -v
 
-# Code quality
+# Code quality (run `make pre-commit` before every commit)
 make lint                  # Run ruff linter
 make format                # Run ruff formatter
 make type-check            # Run mypy

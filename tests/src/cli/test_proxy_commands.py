@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -394,6 +395,83 @@ tier_overrides:
         assert result.exit_code == 0
         content = proxy_file.read_text()
         assert "reasoning_effort: high" in content
+
+    def test_set_rejects_claude_47_unsupported_static_temperature(self, runner: CliRunner, temp_env: Path) -> None:
+        """Set command validates unsupported 4.7 tier overrides before writing."""
+        proxy_yaml = """\
+template: litellm-anthropic
+provider: litellm
+proxy_endpoint: http://localhost:8085
+port: 8085
+upstream_base_url: https://litellm.test.example.com
+tiers:
+  haiku: claude-haiku-4-5-20251001
+  sonnet: claude-sonnet-4-6
+  opus: claude-opus-4-7
+"""
+        proxy_file = _create_proxy_file(temp_env, "opus-47-test", proxy_yaml)
+
+        result = runner.invoke(
+            main,
+            ["proxy", "set", "opus-47-test", "tier_overrides.opus.temperature=0.7"],
+        )
+
+        assert result.exit_code != 0
+        assert "not supported" in result.output
+        assert "temperature: 0.7" not in proxy_file.read_text()
+
+    def test_set_cost_cap_coerces_to_float(self, runner: CliRunner, temp_env: Path) -> None:
+        """Set command writes cost caps as numeric YAML values."""
+        from ruamel.yaml import YAML
+
+        proxy_yaml = """\
+template: litellm-openai
+provider: litellm
+proxy_endpoint: http://localhost:8085
+port: 8085
+upstream_base_url: https://litellm.test.example.com
+tiers:
+  haiku: gpt-4o-mini
+  sonnet: gpt-4o
+  opus: gpt-5
+"""
+        proxy_file = _create_proxy_file(temp_env, "cost-cap-test", proxy_yaml)
+
+        result = runner.invoke(main, ["proxy", "set", "cost-cap-test", "costs.caps.per_day=20.00"])
+
+        assert result.exit_code == 0
+        yaml = YAML()
+        with open(proxy_file) as f:
+            data = yaml.load(f)
+        assert data["costs"]["caps"]["per_day"] == 20.0
+
+    def test_set_cost_cap_can_reset_to_none(self, runner: CliRunner, temp_env: Path) -> None:
+        """Set command accepts none/null for optional cost caps."""
+        from ruamel.yaml import YAML
+
+        proxy_yaml = """\
+template: litellm-openai
+provider: litellm
+proxy_endpoint: http://localhost:8085
+port: 8085
+upstream_base_url: https://litellm.test.example.com
+tiers:
+  haiku: gpt-4o-mini
+  sonnet: gpt-4o
+  opus: gpt-5
+costs:
+  caps:
+    per_day: 20.0
+"""
+        proxy_file = _create_proxy_file(temp_env, "cost-cap-reset-test", proxy_yaml)
+
+        result = runner.invoke(main, ["proxy", "set", "cost-cap-reset-test", "costs.caps.per_day=none"])
+
+        assert result.exit_code == 0
+        yaml = YAML()
+        with open(proxy_file) as f:
+            data = yaml.load(f)
+        assert data["costs"]["caps"]["per_day"] is None
 
     def test_set_invalid_format_error(self, runner: CliRunner, temp_env: Path) -> None:
         """Set command errors on invalid format."""
@@ -2125,8 +2203,10 @@ class TestProxyTemplate:
         """Edit creates user copy from shipped template."""
         monkeypatch.setenv("EDITOR", "true")
 
-        result = runner.invoke(main, ["proxy", "template", "edit", "litellm-openai"])
+        with patch("forge.review.routing.clear_template_cache") as mock_clear:
+            result = runner.invoke(main, ["proxy", "template", "edit", "litellm-openai"])
         assert result.exit_code == 0
+        mock_clear.assert_called_once()
 
         forge_home = Path(os.environ["FORGE_HOME"])
         user_path = forge_home / "templates" / "litellm-openai.yaml"
@@ -2185,8 +2265,10 @@ class TestProxyTemplate:
         user_path = tpl_dir / "litellm-openai.yaml"
         user_path.write_text("# user override\n")
 
-        result = runner.invoke(main, ["proxy", "template", "reset", "litellm-openai", "--force"])
+        with patch("forge.review.routing.clear_template_cache") as mock_clear:
+            result = runner.invoke(main, ["proxy", "template", "reset", "litellm-openai", "--force"])
         assert result.exit_code == 0
+        mock_clear.assert_called_once()
         assert "Reset" in result.output
         assert not user_path.is_file()
 

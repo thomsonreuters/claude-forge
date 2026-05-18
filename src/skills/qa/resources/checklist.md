@@ -2,17 +2,17 @@
 
 <!-- checklist: index -->
 
-<!-- version: 1.0.8 -->
+<!-- version: 1.0.16 -->
 
-<!-- test-count: ~400 -->
+<!-- test-count: 479 -->
 
-<!-- last-updated: 2026-03-30 -->
+<!-- last-updated: 2026-05-15 -->
 
 <!-- aligned-with: v0.1.0 -->
 
 **Test Repo**: `$FORGE_TEST_REPO`
 
-**Last updated**: 2026-03-26 (added fork --strategy, --inline-plan, --into, --extensions, ref-count delete guard)
+**Last updated**: 2026-05-15 (updated workflow routing and preflight QA coverage)
 
 ---
 
@@ -45,6 +45,10 @@
 - [6. Hooks Testing](checklist/6-hooks.md)
 
 <!-- section: 6 checklist/6-hooks.md -->
+
+- [7. Cost Tracking & Spend Caps](checklist/7-costs.md)
+
+<!-- section: 7 checklist/7-costs.md -->
 
 - [8. Status Line](checklist/8-status-line.md)
 

@@ -72,6 +72,7 @@ class LaunchIntent:
 
     mode: str = LAUNCH_MODE_HOST  # "host" or "sidecar"
     sidecar: SidecarLaunchIntent | None = None
+    direct_model: str | None = None  # Claude Code env-ready direct model pin (e.g. claude-opus-4-7[1m])
 
 
 @dataclass
@@ -219,6 +220,7 @@ class SessionIntent:
 
     agent: str = "claude-code"
     proxy: ProxyIntent | None = None
+    subprocess_proxy: str | None = None  # proxy_id for routing subprocesses (supervisor, panel, etc.)
     launch: LaunchIntent | None = None
     system_prompt: SystemPromptIntent | None = None
     memory: MemoryIntent | None = None
@@ -498,6 +500,7 @@ def create_session_state(
     launch_mode: str = LAUNCH_MODE_HOST,
     sidecar_mounts: list[str] | None = None,
     sidecar_image: str | None = None,
+    direct_model: str | None = None,
 ) -> SessionState:
     """Create a new session state with defaults.
 
@@ -513,6 +516,7 @@ def create_session_state(
         launch_mode: How Forge should relaunch this session ("host" or "sidecar").
         sidecar_mounts: Raw sidecar mount specs to persist for relaunch.
         sidecar_image: Optional sidecar image override to persist for relaunch.
+        direct_model: Optional Claude Code env-ready direct model pin.
 
     Returns:
         A new SessionState with timestamps set to now.
@@ -526,7 +530,7 @@ def create_session_state(
     if proxy_template is not None and proxy_base_url is not None:
         proxy = ProxyIntent(template=proxy_template, base_url=proxy_base_url)
 
-    launch = LaunchIntent(mode=launch_mode)
+    launch = LaunchIntent(mode=launch_mode, direct_model=direct_model)
     if launch_mode == LAUNCH_MODE_SIDECAR or sidecar_mounts or sidecar_image is not None:
         launch.sidecar = SidecarLaunchIntent(
             mounts=list(sidecar_mounts or []),

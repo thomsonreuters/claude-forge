@@ -266,6 +266,23 @@ def map_model_name(anthropic_model_name: str) -> str:
     name = _normalize(original)
     flavor = _anthropic_flavor(name)
 
+    # OpenRouter: pass-through model IDs as-is (OpenRouter handles routing)
+    if preferred == "openrouter":
+        if "/" in original:
+            logger.info(f"Using OpenRouter model: '{original}' (pass-through)")
+            return original
+
+        # Map Anthropic flavors to OpenRouter tier models
+        provider_models = _get_provider_models("openrouter")
+        if flavor:
+            mapped = provider_models[flavor]
+            logger.info(f"Mapping '{original}' ({flavor.title()}) -> OpenRouter '{mapped}'")
+            return mapped
+
+        mapped = provider_models["default"]
+        logger.warning(f"Unknown model '{original}' with provider preference 'openrouter', defaulting to '{mapped}'")
+        return mapped
+
     # Forced provider: symmetric handling for OpenAI, Gemini, and LiteLLM
     if preferred in ("openai", "gemini", "litellm"):
         target = preferred

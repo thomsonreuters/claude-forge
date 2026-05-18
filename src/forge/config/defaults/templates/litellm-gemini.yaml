@@ -5,14 +5,15 @@
 # Requires LITELLM_API_KEY and LITELLM_BASE_URL in .env (or environment).
 
 proxy:
+  family: gemini
   preferred_provider: litellm
   default_port: 8084
 
   litellm:
     tiers:
       haiku: vertex_ai/gemini-2.5-flash
-      sonnet: vertex_ai/gemini-2.5-pro
-      opus: vertex_ai/gemini-2.5-pro
+      sonnet: vertex_ai/gemini-3.1-pro-preview
+      opus: vertex_ai/gemini-3.1-pro-preview
     tier_overrides:
       sonnet:
         reasoning_effort: medium

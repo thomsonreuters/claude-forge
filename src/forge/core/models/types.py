@@ -50,6 +50,9 @@ class ModelSpec:
     supports_thinking: bool = False
     supports_images: bool = False
     supports_verbosity: bool = False
+    supports_top_p: bool = True
+    supports_sampling_overrides: bool = True
+    supports_1m_context: bool = False
 
     # Temperature configuration
     temperature_constraint: Literal["fixed", "range"] = "range"
@@ -73,12 +76,15 @@ class ModelSpec:
     # These are the values LiteLLM accepts and maps to native params
     litellm_reasoning_efforts: tuple[str, ...] | None = None
     default_reasoning_effort: str | None = None
+    thinking_modes: tuple[str, ...] | None = None
 
     # Gemini 3 specific - thinking levels (different from reasoning_effort)
     thinking_levels: tuple[str, ...] | None = None
     default_thinking_level: str | None = None
 
     # Metadata
+    token_estimate_multiplier: float = 1.0
+    system_prompt_addendum: str | None = None
     tags: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
@@ -90,6 +96,8 @@ class ModelSpec:
             raise ValueError(f"max_thinking_tokens must be > 0 or null, got {self.max_thinking_tokens}")
         if not (0 <= self.intelligence_score <= 100):
             raise ValueError(f"intelligence_score must be 0-100, got {self.intelligence_score}")
+        if self.token_estimate_multiplier <= 0:
+            raise ValueError(f"token_estimate_multiplier must be > 0, got {self.token_estimate_multiplier}")
         if self.temperature_constraint == "fixed":
             if self.temperature.min != self.temperature.max:
                 raise ValueError(

@@ -31,7 +31,7 @@ def _write_proxy_registry(workspace: ContainerLike, *, proxy_id: str, base_url: 
             "proxies": {
                 proxy_id: {
                     "proxy_id": proxy_id,
-                    "template": "litellm-openai",
+                    "template": proxy_id,
                     "base_url": base_url,
                     "port": port,
                     "pid": None,
@@ -58,7 +58,7 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({{"is_proxy": True, "template": "litellm-openai", "proxy": {{"proxy_id": "{proxy_id}"}}}}).encode())
+        self.wfile.write(json.dumps({{"is_proxy": True, "template": "{proxy_id}", "proxy": {{"proxy_id": "{proxy_id}"}}}}).encode())
     def log_message(self, *a):
         pass
 http.server.HTTPServer(("127.0.0.1", {port}), H).serve_forever()
@@ -80,6 +80,14 @@ def _assert_invocation_count(workspace: ContainerLike, expected: int) -> None:
     assert actual == expected, f"Expected {expected} claude invocation(s), got {actual}:\n{log}"
 
 
+def _read_capture_files(workspace: ContainerLike, glob_expr: str) -> list[str]:
+    """Read all captured Claude files matching a glob expression."""
+    result = workspace.exec(f"ls -1 {glob_expr} 2>/dev/null | sort")
+    paths = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    assert paths, f"No files matched: {glob_expr}"
+    return [workspace.read_file(path) for path in paths]
+
+
 class TestRunMultiReviewE2E:
     def test_sets_anthropic_base_url_from_registry(
         self,
@@ -88,7 +96,7 @@ class TestRunMultiReviewE2E:
     ) -> None:
         _write_proxy_registry(
             mock_claude_workspace,
-            proxy_id="litellm-openai",
+            proxy_id="openrouter-openai",
             base_url="http://127.0.0.1:4001",
             port=4001,
         )
@@ -111,7 +119,7 @@ class TestRunMultiReviewE2E:
     def test_context_resume_adds_resume_flag(self, mock_claude_workspace: ContainerLike) -> None:
         _write_proxy_registry(
             mock_claude_workspace,
-            proxy_id="litellm-openai",
+            proxy_id="openrouter-openai",
             base_url="http://127.0.0.1:4001",
             port=4001,
         )
@@ -153,6 +161,44 @@ class TestRunMultiReviewE2E:
 
         invocations = mock_claude_workspace.read_file("/tmp/claude_invocations.log")
         assert "claude -p --bare" in invocations
+
+    def test_direct_claude_version_workers_pin_env_without_proxy_leak(
+        self,
+        mock_claude_workspace: ContainerLike,
+    ) -> None:
+        result = mock_claude_workspace.exec(
+            "cd /workspace && FORGE_SUBPROCESS_PROXY=openrouter ANTHROPIC_BASE_URL=http://stale "
+            "forge workflow panel --models claude-opus-4.6,claude-opus-4.7 -p 'ping' --timeout 5 --json",
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+
+        data = json.loads(result.stdout)
+        assert set(data["results"]) == {"claude-opus-4.6", "claude-opus-4.7"}
+        assert data["successful"] == 2
+
+        _assert_invocation_count(mock_claude_workspace, 2)
+
+        invocations = mock_claude_workspace.read_file("/tmp/claude_invocations.log")
+        assert "--model" not in invocations
+
+        env_texts = _read_capture_files(mock_claude_workspace, "/tmp/claude_env_*.log")
+        assert len(env_texts) == 2
+        assert sum("ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-6" in text for text in env_texts) == 1
+        assert sum("ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-7" in text for text in env_texts) == 1
+        for env_text in env_texts:
+            assert "ANTHROPIC_MODEL=opus" in env_text
+            assert "ANTHROPIC_BASE_URL=" not in env_text
+            assert "FORGE_SUBPROCESS_PROXY=" not in env_text
+
+        stdin_texts = _read_capture_files(mock_claude_workspace, "/tmp/claude_stdin_*.log")
+        assert len(stdin_texts) == 2
+        hinted = [text for text in stdin_texts if "Claude Opus 4.7 bounded-review worker" in text]
+        assert len(hinted) == 1
+        assert "file:line" in hinted[0]
+        plain = [text for text in stdin_texts if "Claude Opus 4.7 bounded-review worker" not in text]
+        assert len(plain) == 1
+        assert all("ping" in text for text in stdin_texts)
 
     def test_check_mode_fails_on_nonzero_exit(self, mock_claude_workspace: ContainerLike) -> None:
         result = mock_claude_workspace.exec(
@@ -241,7 +287,7 @@ class TestRunPanelCodeE2E:
     ) -> None:
         _write_proxy_registry(
             mock_claude_workspace,
-            proxy_id="litellm-openai",
+            proxy_id="openrouter-openai",
             base_url="http://127.0.0.1:4001",
             port=4001,
         )

@@ -16,6 +16,15 @@ Usage:
     api_key = secrets.require("ANTHROPIC_API_KEY")
 """
 
+from forge.core.auth.capabilities import (
+    CREDENTIALS,
+    RETIRED_NAMES,
+    Credential,
+    EnvVar,
+    credential_for_env_var,
+    credentials_for_template,
+    format_missing_credential_error,
+)
 from forge.core.auth.credentials_file import CredentialVersionError
 from forge.core.auth.protocols import SecretsProvider
 from forge.core.auth.secrets import (
@@ -33,6 +42,14 @@ from forge.core.auth.template_secrets import (
 from forge.core.llm.errors import AuthenticationError, NoApiKeyError
 
 __all__ = [
+    # Credential registry (capabilities.py)
+    "CREDENTIALS",
+    "RETIRED_NAMES",
+    "Credential",
+    "EnvVar",
+    "credential_for_env_var",
+    "credentials_for_template",
+    "format_missing_credential_error",
     # SecretsProvider protocol and implementations
     "SecretsProvider",
     "EnvSecretsProvider",

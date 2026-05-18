@@ -15,7 +15,7 @@ parallel `claude -p` subprocesses and collect results for synthesis.
 # Deep analysis on a topic (single model, default: claude-opus)
 forge workflow analyze "Should we use event sourcing for the audit log?"
 
-# Multi-model code review (default worker set: gpt-5.5, gemini-2.5-pro, claude-opus)
+# Multi-model code review (default worker set: gpt-5.5, gemini-3.1-pro-preview, claude-opus)
 forge workflow panel src/forge/session/store.py --code
 
 # Multi-model document review
@@ -36,14 +36,29 @@ forge workflow consensus "Should we adopt gRPC for internal services?"
 
 Unless you pass `-m`, the multi-model workflows use this built-in worker set:
 
-- `gpt-5.5` -> proxy id `litellm-openai`
-- `gemini-2.5-pro` -> proxy id `litellm-gemini`
-- `claude-opus` -> direct Anthropic
+- `gpt-5.5` -- OpenRouter (preferred proxy: `openrouter-openai`)
+- `gemini-3.1-pro-preview` -- OpenRouter (preferred proxy: `openrouter-gemini`)
+- `claude-opus` -- direct Anthropic, pinned to stable Claude Opus 4.6
 
-Check which models are locally routable with `forge workflow list-models`. Models whose proxy isn't running or whose
-direct Anthropic API key isn't configured show as **unavailable**. This checks local proxy reachability, not upstream
-provider auth -- use `forge proxy create <template> --smoke-test` to verify end-to-end connectivity. Use `--available`
-to see only ready models, or `--json` for structured output.
+Routing is **capability-based**: models declare what they are (family, provider refs), and Forge derives routes at
+runtime from proxy templates and credentials. The preferred proxy is a catalog hint, not a hard requirement -- any
+compatible proxy found in the registry will work.
+
+Selectable direct Claude workers include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Additional OSS
+models include `deepseek-v4-pro`, `minimax-m2.7`, `qwen3.6-max-preview`, `kimi-k2.6`, and `glm-5.1`. Use `--proxy` to
+route all workers through a specific proxy:
+
+```bash
+# Route all workers through one proxy (single OPENROUTER_API_KEY setup)
+forge workflow panel src/ --code -m gpt-5.5,deepseek-v4-pro --proxy openrouter-openai
+
+# Explicit direct Claude workers
+forge workflow panel src/ --code -m claude-opus-4.6,claude-opus-4.7
+```
+
+Check which models are locally routable with `forge workflow list-models`. Models are grouped by primary credential and
+show `[configured]` / `[not configured]` status. Models whose proxy isn't running or whose API key isn't configured show
+as **unavailable**. Use `--available` to see only ready models, or `--json` for structured output.
 
 ---
 
@@ -80,7 +95,7 @@ forge workflow panel src/ --code --review-type security --severity high
 - `--code` -- use code review framework (default: document review)
 - `-p` -- custom review prompt (overrides target+framework and --review-type)
 - `--context` -- `blind` (default: fresh subprocess) or `resume:<uuid>` (fork session context)
-- `-m` -- models to use (default: `gpt-5.5,gemini-2.5-pro,claude-opus`)
+- `-m` -- models to use (default: `gpt-5.5,gemini-3.1-pro-preview,claude-opus`)
 - `--roles` -- comma-separated reviewer roles (security, performance, architecture, maintainability, correctness)
 - `--review-type` -- review focus: `full` (default), `security`, `performance`, `quick` (security/performance need
   --code)
@@ -137,13 +152,14 @@ forge workflow consensus --worker gpt-5.5:architect --worker claude-opus:securit
 
 All `forge workflow` subcommands support:
 
-| Flag      | Description                                                       |
-| --------- | ----------------------------------------------------------------- |
-| `--json`  | Structured JSON output (model responses, durations, success/fail) |
-| `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)       |
-| `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-2.5-pro`)  |
-| `-t`      | Per-model timeout in seconds (default: 600)                       |
-| `--cwd`   | Working directory for subprocesses                                |
+| Flag      | Description                                                                                           |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| `--json`  | Structured JSON output (model responses, durations, success/fail)                                     |
+| `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)                                           |
+| `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-3.1-pro-preview`)                              |
+| `--proxy` | Route proxy-backed workers through this proxy; direct workers (e.g., `claude-opus`) stay on Anthropic |
+| `-t`      | Per-model timeout in seconds (default: 600)                                                           |
+| `--cwd`   | Working directory for subprocesses                                                                    |
 
 ---
 
@@ -206,24 +222,27 @@ your decision rather than the executor freelancing.
 
 ### "No active proxy found" or a worker fails immediately
 
-The built-in `gpt-5.5` and `gemini-2.5-pro` workers expect active proxies with ids `litellm-openai` and
-`litellm-gemini`. Check availability and create missing proxies:
+Workflow routing is capability-based: Forge looks for a running proxy whose template matches the model's provider. The
+default models prefer `openrouter-openai` and `openrouter-gemini`, but any compatible proxy will work.
 
 ```bash
-# See which models are ready vs unavailable
+# See which models are ready vs unavailable (grouped by credential)
 forge workflow list-models
 
-# Create missing proxies
-forge proxy create litellm-openai
-forge proxy create litellm-gemini
+# Create the default proxies
+forge proxy create openrouter-openai
+forge proxy create openrouter-gemini
+
+# Or route everything through one proxy
+forge workflow panel src/ --code --proxy openrouter-openai
 
 # Filter to only ready models (useful for scripting)
 forge workflow list-models --available
 forge workflow list-models --available --json
 ```
 
-Unknown model names such as `gemini-pro` are rejected before execution. Models with unavailable proxies are flagged by
-the preflight check with an actionable suggestion.
+Unknown model names are rejected before execution. Models without a compatible running proxy are flagged by the
+preflight check with an actionable suggestion (which proxy to create or start).
 
 ### "--check failed but output looks fine"
 
@@ -237,6 +256,11 @@ Default timeout is 600 seconds (10 minutes). Increase with `-t`:
 ```bash
 forge workflow analyze "Deep analysis" -t 900
 ```
+
+### "Worker fails with `--bare: unknown option`"
+
+Workflow subprocesses use `claude -p --bare` for faster startup when `ANTHROPIC_API_KEY` is available. `--bare` requires
+Claude Code >= 2.1.81. Upgrade Claude Code to resolve this.
 
 ### "debate rejects my proposal"
 

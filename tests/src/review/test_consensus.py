@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from forge.core.reactive.routing import ModelRoute, RoutingResult
 from forge.review.consensus import (
     CONSENSUS_GUARDRAIL,
     ROLE_MARKER,
@@ -14,10 +15,47 @@ from forge.review.consensus import (
     validate_resource,
 )
 from forge.review.models import ModelSpec, ReviewResult, RoleSpec
+from forge.review.routing import WorkerRoutingPlan
+
+
+def _auto_plan(specs, **_kw):
+    """Create a routing plan that matches any spec list."""
+    route = ModelRoute(
+        provider="openrouter",
+        credential="openrouter",
+        family="openai",
+        template_id="openrouter-openai",
+        template_family="openai",
+        model_ref="openai/gpt-5.5",
+    )
+    results = tuple(
+        RoutingResult(
+            base_url="http://localhost:8096",
+            proxy_id="openrouter-openai",
+            template="openrouter-openai",
+            source="preferred_proxy",
+            route=route,
+            credential="openrouter",
+        )
+        for _ in specs
+    )
+    return WorkerRoutingPlan(routes=results, resolved_at="2026-05-14T12:00:00Z", via_override=None)
 
 
 def _spec(name: str = "test-model", proxy: str | None = "test-proxy") -> ModelSpec:
-    return ModelSpec(name=name, proxy=proxy, model_flag=None, description="Test")
+    provider_refs: tuple[tuple[str, str], ...]
+    if proxy:
+        provider_refs = (("openrouter", f"openai/{name}"),)
+    else:
+        provider_refs = (("direct", name),)
+    return ModelSpec(
+        name=name,
+        model_id=name,
+        family="openai",
+        provider_refs=provider_refs,
+        description="Test",
+        preferred_proxy=proxy,
+    )
 
 
 def _mock_popen(stdout: str = "output", returncode: int = 0):
@@ -138,12 +176,9 @@ class TestBuildReconciliationBrief:
 
 
 class TestRunConsensus:
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_replaces_role_marker(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_replaces_role_marker(self, mock_popen_cls, mock_routing, tmp_path):
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}\nEnd.")
         mock_popen_cls.return_value = _mock_popen()
@@ -159,12 +194,9 @@ class TestRunConsensus:
         assert "Focus on security" in r1_prompt
         assert ROLE_MARKER not in r1_prompt
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_consensus_guardrail_present(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_consensus_guardrail_present(self, mock_popen_cls, mock_routing, tmp_path):
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}")
         mock_popen_cls.return_value = _mock_popen()
@@ -177,12 +209,9 @@ class TestRunConsensus:
         r1_prompt = mock_popen_cls.return_value.communicate.call_args_list[0][1]["input"]
         assert CONSENSUS_GUARDRAIL in r1_prompt
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_mandatory_blinding_both_rounds(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_mandatory_blinding_both_rounds(self, mock_popen_cls, mock_routing, tmp_path):
         """resume_id=None for both rounds (mandatory blinding)."""
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}")
@@ -198,12 +227,9 @@ class TestRunConsensus:
             cmd = call[0][0]
             assert "--resume" not in cmd
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_worker_names_include_role(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_worker_names_include_role(self, mock_popen_cls, mock_routing, tmp_path):
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}")
         mock_popen_cls.return_value = _mock_popen()
@@ -218,12 +244,9 @@ class TestRunConsensus:
         assert "gpt-architecture" in r1_names
         assert "gem-security" in r1_names
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_round2_receives_reconciliation_brief(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_round2_receives_reconciliation_brief(self, mock_popen_cls, mock_routing, tmp_path):
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}")
         mock_popen_cls.return_value = _mock_popen(stdout="Round 1 position")
@@ -239,12 +262,9 @@ class TestRunConsensus:
         assert "[ROLE: architecture]" in r2_prompt
         assert output.reconciliation_brief != ""
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_output_structure(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_output_structure(self, mock_popen_cls, mock_routing, tmp_path):
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}")
         mock_popen_cls.return_value = _mock_popen()
@@ -263,12 +283,9 @@ class TestRunConsensus:
         assert "m2-security" in output.role_map
         assert output.role_map["m1-architecture"] == "architecture"
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_one_worker_fails_round1(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_one_worker_fails_round1(self, mock_popen_cls, mock_routing, tmp_path):
         """One worker fails in Round 1; others succeed. Round 2 still runs."""
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}")
@@ -295,12 +312,9 @@ class TestRunConsensus:
         # Brief contains failure note
         assert "failed" in output.reconciliation_brief
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_duplicate_model_role_gets_suffixed_id(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_duplicate_model_role_gets_suffixed_id(self, mock_popen_cls, mock_routing, tmp_path):
         """Same model+role combo gets suffixed worker_id."""
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}")
@@ -316,12 +330,9 @@ class TestRunConsensus:
         assert "gpt-security" in r1_names
         assert "gpt-security-1" in r1_names
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_custom_role_uses_effective_label_in_roles(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_custom_role_uses_effective_label_in_roles(self, mock_popen_cls, mock_routing, tmp_path):
         """Custom roles should use display_label, not 'custom', in output.roles."""
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}")
@@ -334,12 +345,9 @@ class TestRunConsensus:
         assert output.roles == ["compliance"]
         assert output.role_map["m1-compliance"] == "compliance"
 
-    @patch(
-        "forge.review.engine.lookup_proxy_base_url",
-        return_value="http://localhost:8085",
-    )
+    @patch("forge.review.routing.resolve_invocation_routing", side_effect=_auto_plan)
     @patch("forge.review.engine.subprocess.Popen")
-    def test_subject_falls_back_to_resource_path(self, mock_popen_cls, mock_lookup, tmp_path):
+    def test_subject_falls_back_to_resource_path(self, mock_popen_cls, mock_routing, tmp_path):
         """When no original_subject, subject should be resource path."""
         resource = tmp_path / "eval.md"
         resource.write_text(f"Evaluate: {ROLE_MARKER}")

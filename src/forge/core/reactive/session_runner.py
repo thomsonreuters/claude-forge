@@ -14,7 +14,11 @@ import logging
 import subprocess
 from dataclasses import dataclass
 
-from forge.core.reactive.env import build_claude_env, can_use_bare
+from forge.core.reactive.env import (
+    FORGE_SUBPROCESS_PROXY_VAR,
+    build_claude_env,
+    can_use_bare,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -75,7 +79,9 @@ def run_claude_session(
     Returns:
         SessionResult with stdout/stderr/returncode or error details.
     """
-    use_bare = bare if bare is not None else can_use_bare()
+    env = build_claude_env(base_url=base_url, extra_vars=extra_env, direct=direct)
+
+    use_bare = bare if bare is not None else can_use_bare(env)
     cmd = ["claude", "-p"]
     if use_bare:
         cmd.append("--bare")
@@ -84,7 +90,44 @@ def run_claude_session(
         if fork_session:
             cmd.append("--fork-session")
 
-    env = build_claude_env(base_url=base_url, extra_vars=extra_env, direct=direct)
+    # Guard: fail if subprocess proxy was configured but didn't resolve.
+    # Prevents silent fallback to direct mode (which would burn subscription quota).
+    subprocess_proxy = env.get(FORGE_SUBPROCESS_PROXY_VAR)
+    if subprocess_proxy and not base_url and not direct and not env.get("ANTHROPIC_BASE_URL"):
+        msg = (
+            f"Subprocess proxy '{subprocess_proxy}' not available. "
+            f"Start it with: forge proxy start {subprocess_proxy}"
+        )
+        _log.warning(msg)
+        return SessionResult(stdout="", stderr="", returncode=-1, error=msg)
+
+    # Guard: fail with actionable error if --bare was requested but no API key.
+    # Without this, the subprocess would fail with a cryptic Claude CLI error.
+    # Only fires when bare mode was explicitly requested (bare=True) — when
+    # bare=None and no key exists, can_use_bare() returns False and Claude
+    # falls through to OAuth (which may be intentional).
+    if bare and not env.get("ANTHROPIC_BASE_URL") and not env.get("ANTHROPIC_API_KEY"):
+        try:
+            from forge.core.auth.capabilities import (
+                CREDENTIALS,
+                format_missing_credential_error,
+            )
+            from forge.runtime_config import get_runtime_config
+
+            env_ignored = get_runtime_config().auth_ignore_env
+            cred = CREDENTIALS.get("anthropic-api")
+            if cred:
+                msg = format_missing_credential_error(
+                    cred,
+                    missing_vars=["ANTHROPIC_API_KEY"],
+                    context="Forge subprocess (claude -p)",
+                    extra_hint="Or use --subprocess-proxy to route through an existing proxy.",
+                    env_ignored=env_ignored,
+                )
+                _log.warning(msg)
+                return SessionResult(stdout="", stderr="", returncode=-1, error=msg)
+        except Exception as e:
+            _log.debug("Could not format missing Anthropic subprocess credential error: %s", e)
 
     try:
         _log.debug(

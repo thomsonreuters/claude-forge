@@ -49,6 +49,43 @@ class TestProxyIdentityFromRegistry:
         # base_url should be derived from request, not registry
         assert result.base_url == "http://localhost:8085"
 
+    def test_process_proxy_id_wins_when_aliases_share_template_and_port(self, mock_registry_path: Path) -> None:
+        """A running proxy should report its own id even when configured aliases share its port."""
+        mock_registry_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "proxies": {
+                        "openrouter-openai": {
+                            "proxy_id": "openrouter-openai",
+                            "template": "openrouter-openai",
+                            "base_url": "http://localhost:8096",
+                            "port": 8096,
+                            "status": "configured",
+                        },
+                        "qa-openai": {
+                            "proxy_id": "qa-openai",
+                            "template": "openrouter-openai",
+                            "base_url": "http://localhost:8096",
+                            "port": 8096,
+                            "status": "healthy",
+                        },
+                    },
+                }
+            )
+        )
+
+        result = get_proxy_identity(
+            active_template="openrouter-openai",
+            request_host="localhost",
+            request_port=8096,
+            process_proxy_id="qa-openai",
+        )
+
+        assert result.proxy_id == "qa-openai"
+        assert result.source == "registry"
+        assert result.status == "registered"
+
     def test_registry_no_match_different_family(self, mock_registry_path: Path) -> None:
         """Registry lookup should not match if family differs."""
         mock_registry_path.write_text(

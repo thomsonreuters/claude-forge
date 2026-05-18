@@ -17,7 +17,7 @@ Affected files:
 
 import pytest
 
-from forge.core.llm.clients.litellm import ToolCallAccumulator
+from forge.core.llm.clients.openai_compat import ToolCallAccumulator
 from forge.core.llm.types import ToolCallDelta
 
 pytestmark = pytest.mark.regression

@@ -15,6 +15,8 @@ import os
 import socket
 import subprocess
 import tempfile
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generator
 
@@ -31,6 +33,17 @@ load_dotenv(_repo_root / ".env", override=False)
 
 # File-level mark for ALL tests in integration/proxy/
 pytestmark = pytest.mark.integration
+
+
+@dataclass(frozen=True)
+class RegisteredProxyServer:
+    """A started proxy with a registry-backed proxy identity."""
+
+    proxy_id: str
+    template: str
+    base_url: str
+    port: int
+    forge_home: Path
 
 
 def _check_port(port: int) -> bool:
@@ -56,19 +69,24 @@ def _start_proxy_subprocess(
     forge_home: Path,
     env: dict[str, str],
     cwd: Path,
+    proxy_id: str | None = None,
 ) -> subprocess.Popen:  # noqa: ARG001
+    cmd = [
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "forge.proxy.server",
+        "--template",
+        template,
+        "--port",
+        str(port),
+    ]
+    if proxy_id:
+        cmd.extend(["--proxy-id", proxy_id])
+
     proc = subprocess.Popen(
-        [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "forge.proxy.server",
-            "--template",
-            template,
-            "--port",
-            str(port),
-        ],
+        cmd,
         # Use DEVNULL for stdout to avoid pipe buffer deadlock
         # Keep stderr PIPE only for error capture on startup failure
         stdout=subprocess.DEVNULL,
@@ -83,6 +101,116 @@ def _start_proxy_subprocess(
         pytest.fail(f"Proxy failed to start on port {port}. Stderr: {stderr}")
 
     return proc
+
+
+@contextmanager
+def _with_forge_home(forge_home: Path) -> Generator[None, None, None]:
+    """Temporarily point Forge helpers at a test FORGE_HOME."""
+    old_forge_home = os.environ.get("FORGE_HOME")
+    os.environ["FORGE_HOME"] = str(forge_home)
+    try:
+        yield
+    finally:
+        if old_forge_home is not None:
+            os.environ["FORGE_HOME"] = old_forge_home
+        else:
+            os.environ.pop("FORGE_HOME", None)
+
+
+def _register_proxy_for_test(
+    *,
+    proxy_id: str,
+    template: str,
+    port: int,
+    forge_home: Path,
+) -> None:
+    """Create proxy.yaml and registry entries for strict proxy startup."""
+    from forge.proxy.proxies import ProxyEntry, ProxyRegistryStore
+    from forge.proxy.proxy_orchestrator import create_proxy_file
+
+    base_url = f"http://localhost:{port}"
+    with _with_forge_home(forge_home):
+        create_proxy_file(
+            proxy_id=proxy_id,
+            template=template,
+            base_url=base_url,
+            port=port,
+        )
+        store = ProxyRegistryStore(registry_path=forge_home / "proxies" / "index.json")
+        registry = store.read()
+        registry.proxies[proxy_id] = ProxyEntry(
+            proxy_id=proxy_id,
+            template=template,
+            base_url=base_url,
+            port=port,
+            pid=None,
+            status="starting",
+        )
+        store.write(registry)
+
+
+def _start_registered_proxy(
+    *,
+    proxy_id: str,
+    template: str,
+    module_forge_home: Path,
+    tmp_path_factory,
+    required_env_var: str,
+    unreachable_fail_reason: str,
+) -> Generator[RegisteredProxyServer, None, None]:
+    if not os.environ.get(required_env_var):
+        pytest.fail(f"{required_env_var} not set (required for {template} proxy tests)")
+
+    port = allocate_ephemeral_port()
+    base_url = f"http://localhost:{port}"
+    _register_proxy_for_test(
+        proxy_id=proxy_id,
+        template=template,
+        port=port,
+        forge_home=module_forge_home,
+    )
+
+    env = os.environ.copy()
+    env["FORGE_HOME"] = str(module_forge_home)
+
+    cwd = tmp_path_factory.mktemp("forge_proxy_cwd_")
+    proc = _start_proxy_subprocess(
+        template=template,
+        port=port,
+        forge_home=module_forge_home,
+        env=env,
+        cwd=cwd,
+        proxy_id=proxy_id,
+    )
+
+    _preflight_proxy(
+        proxy_base_url=base_url,
+        request_model="claude-3-5-haiku-20241022",
+        max_tokens=8,
+        unreachable_fail_reason=unreachable_fail_reason,
+        template=template,
+    )
+
+    try:
+        with _with_forge_home(module_forge_home):
+            from forge.proxy.proxies import ProxyRegistryStore
+
+            store = ProxyRegistryStore(registry_path=module_forge_home / "proxies" / "index.json")
+            registry = store.read()
+            entry = registry.proxies[proxy_id]
+            entry.pid = proc.pid
+            entry.status = "healthy"
+            store.write(registry)
+
+        yield RegisteredProxyServer(
+            proxy_id=proxy_id,
+            template=template,
+            base_url=base_url,
+            port=port,
+            forge_home=module_forge_home,
+        )
+    finally:
+        kill_process(proc.pid)
 
 
 def _preflight_proxy(
@@ -301,10 +429,15 @@ def no_active_session() -> Generator[None, None, None]:
     yield
 
 
+def _require_remote_litellm_env() -> None:
+    missing = [name for name in ("LITELLM_API_KEY", "LITELLM_BASE_URL") if not os.environ.get(name)]
+    if missing:
+        pytest.fail(f"{', '.join(missing)} not set (required for remote LiteLLM tests)")
+
+
 @pytest.fixture(scope="module")
 def proxy_server_remote_openai(module_forge_home: Path, tmp_path_factory) -> Generator[str, None, None]:
-    if not os.environ.get("LITELLM_API_KEY"):
-        pytest.fail("LITELLM_API_KEY not set (required for remote LiteLLM tests)")
+    _require_remote_litellm_env()
 
     port = allocate_ephemeral_port()
     env = os.environ.copy()
@@ -335,8 +468,7 @@ def proxy_server_remote_openai(module_forge_home: Path, tmp_path_factory) -> Gen
 
 @pytest.fixture(scope="module")
 def proxy_server_remote_gemini(module_forge_home: Path, tmp_path_factory) -> Generator[str, None, None]:
-    if not os.environ.get("LITELLM_API_KEY"):
-        pytest.fail("LITELLM_API_KEY not set (required for remote LiteLLM tests)")
+    _require_remote_litellm_env()
 
     port = allocate_ephemeral_port()
     env = os.environ.copy()
@@ -363,3 +495,65 @@ def proxy_server_remote_gemini(module_forge_home: Path, tmp_path_factory) -> Gen
 
     yield proxy_base_url
     kill_process(proc.pid)
+
+
+@pytest.fixture(scope="module")
+def proxy_server_openrouter(module_forge_home: Path, tmp_path_factory) -> Generator[str, None, None]:
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        pytest.fail("OPENROUTER_API_KEY not set (required for OpenRouter proxy tests)")
+
+    port = allocate_ephemeral_port()
+    env = os.environ.copy()
+    env["FORGE_HOME"] = str(module_forge_home)
+
+    cwd = tmp_path_factory.mktemp("forge_proxy_cwd_")
+
+    proc = _start_proxy_subprocess(
+        template="openrouter-anthropic",
+        port=port,
+        forge_home=module_forge_home,
+        env=env,
+        cwd=cwd,
+    )
+    proxy_base_url = f"http://localhost:{port}"
+
+    _preflight_proxy(
+        proxy_base_url=proxy_base_url,
+        request_model="claude-3-5-haiku-20241022",
+        max_tokens=8,
+        unreachable_fail_reason="OpenRouter proxy unreachable",
+        template="openrouter-anthropic",
+    )
+
+    yield proxy_base_url
+    kill_process(proc.pid)
+
+
+@pytest.fixture(scope="module")
+def registered_proxy_server_openrouter(
+    module_forge_home: Path, tmp_path_factory
+) -> Generator[RegisteredProxyServer, None, None]:
+    yield from _start_registered_proxy(
+        proxy_id="openrouter-paid-e2e",
+        template="openrouter-anthropic",
+        module_forge_home=module_forge_home,
+        tmp_path_factory=tmp_path_factory,
+        required_env_var="OPENROUTER_API_KEY",
+        unreachable_fail_reason="OpenRouter proxy unreachable",
+    )
+
+
+@pytest.fixture(scope="module")
+def registered_proxy_server_local_gemini(
+    local_litellm: str,  # noqa: ARG001 — ensures LiteLLM is running on test port
+    module_forge_home: Path,
+    tmp_path_factory,
+) -> Generator[RegisteredProxyServer, None, None]:
+    yield from _start_registered_proxy(
+        proxy_id="litellm-gemini-local-e2e",
+        template="litellm-gemini-test",
+        module_forge_home=module_forge_home,
+        tmp_path_factory=tmp_path_factory,
+        required_env_var="GEMINI_API_KEY",
+        unreachable_fail_reason="Local LiteLLM (Gemini) unreachable",
+    )

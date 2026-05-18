@@ -52,7 +52,7 @@ cd /forge && /forge/scripts/setup.sh --local
 
 > Note: `setup.sh` installs Forge but does not automatically install Claude extensions. After install, run:
 >
-> - `forge extension enable --user` (installs commands/agents/skills/hooks)
+> - `forge extension enable --scope user` (installs commands/agents/skills/hooks)
 
 ### 0.4 Verify Installation
 

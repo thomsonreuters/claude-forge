@@ -10,6 +10,7 @@
 # restart with: forge backend stop litellm-4000
 
 proxy:
+  family: openai
   preferred_provider: litellm
   default_port: 8090
 

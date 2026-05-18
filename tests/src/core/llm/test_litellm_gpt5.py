@@ -2,11 +2,8 @@
 
 import pytest
 
-from forge.core.llm.clients.litellm import (
-    GPT5_MODELS,
-    LiteLLMClient,
-    _extract_cached_tokens,
-)
+from forge.core.llm.clients.litellm import LiteLLMClient
+from forge.core.llm.clients.openai_compat import extract_cached_tokens
 from forge.core.llm.types import Message, ModelHyperparameters, ToolCall
 
 
@@ -33,6 +30,7 @@ class TestGPT5ModelDetection:
             "openai/gpt-5.1-codex",
             "openai/gpt-5.4-mini",
             "openai/gpt-5.4-nano",
+            "openai/gpt-5.5-pro",
         ]
         for model in gpt5_model_specs:
             client = make_client(model)
@@ -43,7 +41,7 @@ class TestGPT5ModelDetection:
         non_gpt5_specs = [
             "openai/gpt-4o",
             "openai/gpt-4o-mini",
-            "vertex_ai/gemini-2.5-pro",
+            "vertex_ai/gemini-3.1-pro-preview",
             "anthropic/claude-sonnet-4",
         ]
         for model in non_gpt5_specs:
@@ -56,8 +54,8 @@ class TestResponsesApiSelection:
 
     @pytest.fixture
     def gpt5_client(self):
-        """GPT-5 client for testing."""
-        return LiteLLMClient(model="openai/gpt-5.2", provider="litellm_remote")
+        """GPT-5 client (catalog: use_responses_api=true) for routing tests."""
+        return LiteLLMClient(model="openai/gpt-5.5", provider="litellm_remote")
 
     @pytest.fixture
     def non_gpt5_client(self):
@@ -544,31 +542,8 @@ class TestRetryExclusion:
         assert LiteLLMClient._is_retryable_error(error)
 
 
-class TestGPT5Constants:
-    """Tests for GPT5_MODELS constant."""
-
-    def test_expected_models_in_set(self):
-        """Expected GPT-5 models are in the constant."""
-        expected = [
-            "gpt-5",
-            "gpt-5.1",
-            "gpt-5.2",
-            "gpt-5-mini",
-            "gpt-5-codex",
-            "gpt-5.4-mini",
-            "gpt-5.4-nano",
-            "gpt-5.5",
-        ]
-        for model in expected:
-            assert model in GPT5_MODELS, f"Expected {model} in GPT5_MODELS"
-
-    def test_is_frozenset(self):
-        """GPT5_MODELS is immutable."""
-        assert isinstance(GPT5_MODELS, frozenset)
-
-
 class TestExtractCachedTokens:
-    """Tests for _extract_cached_tokens helper."""
+    """Tests for extract_cached_tokens helper."""
 
     def test_object_with_prompt_tokens_details(self) -> None:
         """Extract cached_tokens from SDK response usage object."""
@@ -579,12 +554,12 @@ class TestExtractCachedTokens:
         class FakeUsage:
             prompt_tokens_details = FakeDetails()
 
-        assert _extract_cached_tokens(FakeUsage()) == 500
+        assert extract_cached_tokens(FakeUsage()) == 500
 
     def test_dict_with_prompt_tokens_details(self) -> None:
         """Extract cached_tokens from dict-style usage."""
         usage = {"prompt_tokens_details": {"cached_tokens": 300}}
-        assert _extract_cached_tokens(usage) == 300
+        assert extract_cached_tokens(usage) == 300
 
     def test_no_prompt_tokens_details(self) -> None:
         """Return 0 when prompt_tokens_details is absent."""
@@ -592,19 +567,19 @@ class TestExtractCachedTokens:
         class FakeUsage:
             pass
 
-        assert _extract_cached_tokens(FakeUsage()) == 0
+        assert extract_cached_tokens(FakeUsage()) == 0
 
     def test_none_cached_tokens(self) -> None:
         """Return 0 when cached_tokens is None."""
         usage = {"prompt_tokens_details": {"cached_tokens": None}}
-        assert _extract_cached_tokens(usage) == 0
+        assert extract_cached_tokens(usage) == 0
 
     def test_zero_cached_tokens(self) -> None:
         """Return 0 when cached_tokens is 0."""
         usage = {"prompt_tokens_details": {"cached_tokens": 0}}
-        assert _extract_cached_tokens(usage) == 0
+        assert extract_cached_tokens(usage) == 0
 
     def test_empty_prompt_details(self) -> None:
         """Return 0 when prompt_tokens_details is empty dict."""
         usage: dict[str, object] = {"prompt_tokens_details": {}}
-        assert _extract_cached_tokens(usage) == 0
+        assert extract_cached_tokens(usage) == 0

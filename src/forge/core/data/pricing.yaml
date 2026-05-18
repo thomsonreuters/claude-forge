@@ -1,0 +1,140 @@
+# Model pricing: USD per million tokens.
+#
+# Forge uses this for cost estimates. Prices change — update with releases.
+#
+# cached_input = price for prompt-cache HIT tokens (a subset of input_tokens).
+# Cost formula: (input - cached) * input + cached * cached_input + output * output
+schema_version: 1
+updated_at: "2026-05-12"
+
+models:
+  # --- Anthropic ---
+  claude-opus-4-7:
+    input: 5.00
+    output: 25.00
+    cached_input: 0.50
+  claude-opus-4-6:
+    input: 5.00
+    output: 25.00
+    cached_input: 0.50
+  claude-sonnet-4-6:
+    input: 3.00
+    output: 15.00
+    cached_input: 0.30
+  claude-haiku-4-5-20251001:
+    input: 1.00
+    output: 5.00
+    cached_input: 0.10
+
+  # --- OpenAI ---
+  gpt-5.5:
+    input: 5.00
+    output: 30.00
+    cached_input: 0.50
+  gpt-5:
+    input: 1.25
+    output: 10.00
+    cached_input: 0.625
+  gpt-5-mini:
+    input: 0.25
+    output: 2.00
+    cached_input: 0.125
+  gpt-5.4:
+    input: 2.50
+    output: 15.00
+    cached_input: 0.25
+  gpt-5.4-mini:
+    input: 0.75
+    output: 4.50
+    cached_input: 0.075
+  gpt-4o:
+    input: 2.50
+    output: 10.00
+    cached_input: 1.25
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.60
+    cached_input: 0.075
+  o3:
+    input: 2.00
+    output: 8.00
+    cached_input: 0.50
+  o4-mini:
+    input: 1.10
+    output: 4.40
+    cached_input: 0.275
+
+  # --- Google Gemini ---
+  gemini-2.5-pro:
+    input: 1.25
+    output: 10.00
+    cached_input: 0.125
+  gemini-2.5-flash:
+    input: 0.30
+    output: 2.50
+    cached_input: 0.03
+  gemini-3.1-pro-preview:
+    input: 2.00
+    output: 12.00
+    cached_input: 0.20
+
+  # --- Open-source via OpenRouter ---
+  # Source: https://openrouter.ai/api/v1/models (fetched 2026-05-12).
+  deepseek-v4-flash:
+    input: 0.14
+    output: 0.28
+    cached_input: 0.0028
+  deepseek-v4-pro:
+    input: 0.435
+    output: 0.87
+    cached_input: 0.003625
+  kimi-k2.5:
+    input: 0.40
+    output: 1.98
+    cached_input: 0.05
+  kimi-k2.6:
+    input: 0.74
+    output: 3.50
+    cached_input: 0.25
+  qwen3.6-flash:
+    input: 0.25
+    output: 1.50
+    cached_input: 0.25
+  qwen3.6-plus:
+    input: 0.325
+    output: 1.95
+    cached_input: 0.325
+  qwen3.6-max-preview:
+    input: 1.04
+    output: 6.24
+    cached_input: 1.04
+  qwen3-coder:
+    input: 0.22
+    output: 1.80
+    cached_input: 0.22
+  minimax-m2.5:
+    input: 0.15
+    output: 1.15
+    cached_input: 0.15
+  minimax-m2.7:
+    input: 0.299
+    output: 1.20
+    cached_input: 0.299
+  glm-4.7-flash:
+    input: 0.06
+    output: 0.40
+    cached_input: 0.01
+  glm-5.1:
+    input: 0.98
+    output: 3.08
+    cached_input: 0.182
+  gemma-4-31b-it:
+    input: 0.12
+    output: 0.37
+    cached_input: 0.12
+
+# Fallback for unknown models (OpenRouter's open model space, etc.)
+default:
+  input: 3.00
+  output: 15.00
+  cached_input: 0.30

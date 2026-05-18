@@ -73,10 +73,19 @@ class TestCredentialManagerFileResolution:
     ) -> None:
         """LiteLLM remote credentials resolve from file."""
         test_key = "sk-litellm-integration-test"
-        _write_creds(isolated_creds, "default", {"LITELLM_API_KEY": test_key})
+        test_url = "http://localhost:4000"
+        _write_creds(
+            isolated_creds,
+            "default",
+            {
+                "LITELLM_API_KEY": test_key,
+                "LITELLM_BASE_URL": test_url,
+            },
+        )
         # Set empty instead of delenv — load_dotenv(override=False) won't
         # override existing keys, but would re-insert deleted ones from .env
         monkeypatch.setenv("LITELLM_API_KEY", "")
+        monkeypatch.setenv("LITELLM_BASE_URL", "")
 
         secrets = ChainSecretsProvider(
             EnvSecretsProvider(),
@@ -166,7 +175,7 @@ class TestRealAuthWithFileCredentials:
         except Exception as e:
             pytest.fail(
                 f"Could not resolve Anthropic credentials (env or file): {e}\n"
-                "Set ANTHROPIC_API_KEY in env or run 'forge auth login -p anthropic'."
+                "Set ANTHROPIC_API_KEY in env or run 'forge auth login -c anthropic-api'."
             )
 
         api_key = creds["api_key"]

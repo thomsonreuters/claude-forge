@@ -25,6 +25,16 @@ TEMPLATE_SECRETS: dict[str, list[str]] = {
     "litellm-openai-local": ["OPENAI_API_KEY"],
     "litellm-openai-codex-local": ["OPENAI_API_KEY"],
     "litellm-anthropic-local": ["ANTHROPIC_API_KEY"],
+    "openrouter-anthropic": ["OPENROUTER_API_KEY"],
+    "openrouter-openai": ["OPENROUTER_API_KEY"],
+    "openrouter-gemini": ["OPENROUTER_API_KEY"],
+    "openrouter-openai-codex": ["OPENROUTER_API_KEY"],
+    "openrouter-gemini-flash": ["OPENROUTER_API_KEY"],
+    "openrouter-deepseek": ["OPENROUTER_API_KEY"],
+    "openrouter-kimi": ["OPENROUTER_API_KEY"],
+    "openrouter-glm": ["OPENROUTER_API_KEY"],
+    "openrouter-minimax": ["OPENROUTER_API_KEY"],
+    "openrouter-qwen": ["OPENROUTER_API_KEY"],
 }
 
 
@@ -44,14 +54,29 @@ def _get_file_secrets() -> dict[str, str]:
         return {}
 
 
+def _auth_ignore_env() -> bool:
+    """Check if auth_ignore_env is active (lazy import to avoid cycles)."""
+    try:
+        from forge.runtime_config import get_runtime_config
+
+        return get_runtime_config().auth_ignore_env
+    except Exception as e:
+        logger.debug("Could not read auth_ignore_env; using environment credentials: %s", e)
+        return False
+
+
 def resolve_env_or_credential(var_name: str) -> str | None:
     """Resolve a single value from environment, then credential file.
 
+    When ``auth_ignore_env`` is active, skips os.environ and reads from
+    the credential file only.
+
     Returns the first truthy (non-empty) value found, or None.
     """
-    value = os.environ.get(var_name)
-    if value:
-        return value
+    if not _auth_ignore_env():
+        value = os.environ.get(var_name)
+        if value:
+            return value
     return _get_file_secrets().get(var_name) or None
 
 
@@ -59,20 +84,23 @@ def get_secrets_for_template(template: str) -> dict[str, str]:
     """Get credentials required by a template.
 
     Resolves each key from environment first, then falls back to the
-    credential file. Only includes values that resolve to non-empty strings.
+    credential file. When ``auth_ignore_env`` is active, skips environment.
+    Only includes values that resolve to non-empty strings.
     """
     required = TEMPLATE_SECRETS.get(template, [])
     if not required:
         return {}
 
+    ignore_env = _auth_ignore_env()
     secrets: dict[str, str] = {}
     file_secrets: dict[str, str] | None = None
 
     for key in required:
-        value = os.environ.get(key)
-        if value:
-            secrets[key] = value
-            continue
+        if not ignore_env:
+            value = os.environ.get(key)
+            if value:
+                secrets[key] = value
+                continue
 
         if file_secrets is None:
             file_secrets = _get_file_secrets()

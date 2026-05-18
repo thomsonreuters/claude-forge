@@ -97,7 +97,7 @@ forge session delete test-session-forked --force 2>/dev/null || true
 
 # Start the parent session through the proxy provisioned in 4.2.
 # Interact briefly ("hello"), then exit (/exit).
-forge session start test-session-parent --proxy litellm-openai
+forge session start test-session-parent --proxy "$FORGE_QA_OPENAI_PROXY"
 
 # Fork the parent session (default: same directory, no worktree).
 # Claude should resume the conversation via --fork-session.
@@ -107,8 +107,8 @@ CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name 
 
 # Verify fork lives in the same directory as parent
 forge session show test-session-forked
-jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}' \
-  /workspace/.forge/sessions/test-session-forked/forge.session.json
+cat /workspace/.forge/sessions/test-session-forked/forge.session.json | \
+  jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}'
 ```
 
 - [ ] Forked session created in same directory (`/workspace`)
@@ -146,8 +146,8 @@ CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name 
 
 # Verify fork
 forge session show test-session-forked-wt
-jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}' \
-  /workspace-test-session-forked-wt/.forge/sessions/test-session-forked-wt/forge.session.json
+cat /workspace-test-session-forked-wt/.forge/sessions/test-session-forked-wt/forge.session.json | \
+  jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}'
 cat /workspace-test-session-forked-wt/.forge/prev_sessions/test-session-parent.md
 ```
 
@@ -175,7 +175,7 @@ forge session delete test-incognito --force 2>/dev/null || true
 
 # Launch an incognito session (auto-deletes on exit).
 # Say "hello", then exit with /exit.
-forge session incognito test-incognito
+forge session incognito test-incognito --proxy "$FORGE_QA_OPENAI_PROXY"
 
 # After exiting Claude, verify auto-cleanup removed the session
 forge session list
@@ -217,7 +217,7 @@ git worktree remove /workspace-test-refcount-owner --force 2>/dev/null || true
 git branch -D test-refcount-owner 2>/dev/null || true
 
 forge session start test-refcount-owner --worktree --no-launch
-WORKTREE_PATH=$(jq -r '.sessions["test-refcount-owner"].worktree_path' ~/.forge/sessions/index.json)
+WORKTREE_PATH=$(forge session show test-refcount-owner --json | jq -r '.worktree.path')
 
 # Seed a fake UUID so fork's confirmed.claude_session_id guard passes
 OWNER_JSON="$WORKTREE_PATH/.forge/sessions/test-refcount-owner/forge.session.json"
@@ -250,8 +250,8 @@ forge session delete test-session-worktree --force 2>/dev/null || true
 forge session start test-session-worktree --worktree --no-launch
 
 # Worktree sessions store manifests in the worktree dir, not the main workspace.
-# Read the worktree path from the global index.
-WORKTREE_PATH=$(jq -r '.sessions["test-session-worktree"].worktree_path' ~/.forge/sessions/index.json)
+# Read the worktree path from session show.
+WORKTREE_PATH=$(forge session show test-session-worktree --json | jq -r '.worktree.path')
 MANIFEST="$WORKTREE_PATH/.forge/sessions/test-session-worktree/forge.session.json"
 
 # Verify worktree recorded in manifest
@@ -284,7 +284,7 @@ forge session delete test-session-system-prompt --force 2>/dev/null || true
 
 # Launch a session with an inline system prompt.
 # Say "hello", then exit with /exit.
-forge session start test-session-system-prompt --system-prompt "FORGE_MANUAL_TEST_SYSTEM_PROMPT"
+forge session start test-session-system-prompt --proxy "$FORGE_QA_OPENAI_PROXY" --system-prompt "FORGE_MANUAL_TEST_SYSTEM_PROMPT"
 
 # After exiting Claude, verify the generated file
 test -f .claude/forge.system-prompt.generated.md && echo "FILE_EXISTS=true" || echo "FILE_EXISTS=false"
@@ -428,6 +428,10 @@ git branch -D test-into-target 2>/dev/null || true
 # Create a target worktree (simulating an existing feature branch)
 git worktree add /workspace-test-into-target -b test-into-target
 
+# Install Forge extensions in the target worktree (required for --into)
+cd /workspace-test-into-target && forge extension enable --scope local
+cd /workspace
+
 # Fork the parent session into the existing worktree.
 # Claude will launch with parent handoff context.
 # Disable auto-memory so "where were we?" tests Forge handoff, not CC memory.
@@ -436,8 +440,8 @@ CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name 
 
 # Verify fork
 forge session show test-fork-into
-jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree, owns_worktree})}' \
-  /workspace-test-into-target/.forge/sessions/test-fork-into/forge.session.json
+cat /workspace-test-into-target/.forge/sessions/test-fork-into/forge.session.json | \
+  jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree, owns_worktree})}'
 ```
 
 - [ ] Fork created in existing worktree at `/workspace-test-into-target`
@@ -445,5 +449,73 @@ jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree, owns_wo
 - [ ] Manifest has `is_fork: true`, `is_worktree: true`, `owns_worktree: false`
 - [ ] Parent handoff context file present in target worktree
 - [ ] Asking "where were we?" reflects parent context from 5.6
+
+### 5.16 Subprocess Proxy (Direct + Proxied Subprocesses)
+
+<!-- prereq: 2.4, 4.2 -->
+
+<!-- auto -->
+
+```bash
+# Clean up from previous runs
+forge session delete test-subprocess-proxy --force 2>/dev/null || true
+
+# Create a session with --subprocess-proxy (direct main, proxied subprocesses)
+forge session start test-subprocess-proxy --subprocess-proxy "$FORGE_QA_GEMINI_PROXY" --no-launch
+
+# Verify intent recorded in session manifest
+jq '.intent.subprocess_proxy' .forge/sessions/test-subprocess-proxy/forge.session.json
+
+# Verify session is direct mode (no proxy routing for main session)
+jq '{proxy: .intent.proxy, started_with_proxy: .confirmed.started_with_proxy}' \
+  .forge/sessions/test-subprocess-proxy/forge.session.json
+```
+
+- [ ] Session created with `--subprocess-proxy` flag (exit 0)
+- [ ] `intent.subprocess_proxy` matches `$FORGE_QA_GEMINI_PROXY` in session manifest
+- [ ] `intent.proxy` is null (main session is direct mode)
+- [ ] `confirmed.started_with_proxy` is null (no proxy for main session)
+
+### 5.17 Subprocess Proxy Mutual Exclusivity
+
+<!-- auto -->
+
+```bash
+# Try combining --subprocess-proxy with --proxy (should error)
+forge session start test-invalid-subproxy \
+  --subprocess-proxy "$FORGE_QA_GEMINI_PROXY" --proxy "$FORGE_QA_OPENAI_PROXY" --no-launch 2>&1
+echo "EXIT=$?"
+```
+
+- [ ] Error message about mutual exclusivity of `--subprocess-proxy` and `--proxy`
+- [ ] Exit code is non-zero
+
+### 5.18 Subprocess Proxy Inheritance (Fork)
+
+<!-- prereq: 5.16 -->
+
+<!-- auto -->
+
+```bash
+# Seed confirmed.claude_session_id so fork guard passes
+PARENT_JSON=".forge/sessions/test-subprocess-proxy/forge.session.json"
+jq '.confirmed.claude_session_id = "fixture-subproxy"' "$PARENT_JSON" > /tmp/sp.json \
+  && mv /tmp/sp.json "$PARENT_JSON"
+
+# Fork the session
+forge session delete test-fork-subproxy --force 2>/dev/null || true
+forge session fork test-subprocess-proxy --name test-fork-subproxy --no-launch
+
+# Verify forked session inherits subprocess_proxy
+jq '.intent.subprocess_proxy' .forge/sessions/test-fork-subproxy/forge.session.json
+
+# Clean up
+forge session delete test-subprocess-proxy --force 2>/dev/null || true
+forge session delete test-fork-subproxy --force 2>/dev/null || true
+```
+
+- [ ] Forked session inherits `subprocess_proxy` from parent
+- [ ] Child `intent.subprocess_proxy` matches `$FORGE_QA_GEMINI_PROXY`
+- [ ] Both test sessions cleaned up
 
 ---

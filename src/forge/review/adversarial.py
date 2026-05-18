@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .engine import run_multi_review
 from .models import AdversarialOutput, ModelSpec, StanceSpec
+from .routing import WorkerRoutingPlan
 
 STANCE_MARKER = "{stance_prompt}"
 
@@ -42,14 +43,24 @@ def run_adversarial(
     *,
     timeout_seconds: int = 600,
     cwd: str | None = None,
+    via: str | None = None,
+    routing_plan: WorkerRoutingPlan | None = None,
 ) -> AdversarialOutput:
     """Run adversarial evaluation with stance-injected workers.
 
     Each stance's prompt replaces ``{stance_prompt}`` in the resource.
     All workers run blind (no conversation context).
 
+    Args:
+        via: Route all workers through this proxy (passed to routing).
+            Ignored when routing_plan is provided.
+        routing_plan: Pre-resolved routing plan. When provided, skips
+            internal routing resolution.
+
     Raises ValueError if the resource lacks the stance marker.
     """
+    from forge.review.routing import resolve_invocation_routing
+
     template = validate_resource(resource_path)
 
     specs: list[ModelSpec] = []
@@ -67,18 +78,24 @@ def run_adversarial(
         specs.append(
             ModelSpec(
                 name=stance.model.name,
-                proxy=stance.model.proxy,
-                model_flag=stance.model.model_flag,
+                model_id=stance.model.model_id,
+                family=stance.model.family,
+                provider_refs=stance.model.provider_refs,
                 description=f"{label} stance via {stance.model.name}",
+                preferred_proxy=stance.model.preferred_proxy,
                 prompt=filled,
                 worker_id=worker_id,
             )
         )
 
+    if routing_plan is None:
+        routing_plan = resolve_invocation_routing(specs, via=via)
+
     # Mandatory blinding: resume_id is always None
     output = run_multi_review(
         prompt="",
         models=specs,
+        routing_plan=routing_plan,
         timeout_seconds=timeout_seconds,
         cwd=cwd,
         resume_id=None,

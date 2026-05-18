@@ -7,7 +7,8 @@ Validates workflow runners + skill architecture.
 - `forge workflow panel` is the fan-out runner CLI (supports `--code`, `--context`, and `--check`).
 - `/forge:analyze` is a skill that calls `forge workflow analyze` (N=1 model).
 - `/forge:debate` is a skill that calls `forge workflow debate` (supports `--code` for code evaluation).
-- This section uses the named proxies created in 4.2: `litellm-openai` and `litellm-gemini`.
+- This section uses `$FORGE_QA_WORKFLOW_MODELS` (set by `start-container.sh` per provider profile). Workflow proxy
+  aliases are created in 4.2.
 - Omitting `--models` uses all configured defaults (from `forge workflow list-models`).
 
 ### 14.1 List Available Workflow Models
@@ -18,21 +19,32 @@ Validates workflow runners + skill architecture.
 forge workflow list-models
 forge workflow list-models --json
 forge workflow list-models --available
+
+# Verify structured model metadata used by routing/preflight.
+forge workflow list-models --json \
+  | jq -e 'map(has("name") and has("model_id") and has("family") and has("provider_refs") and has("preferred_proxy") and has("status") and has("reason")) | all'
+
+# `--available` JSON should include only ready models.
+forge workflow list-models --available --json \
+  | jq -e 'all(.status == "ready")'
 ```
 
-- [ ] Shows configured models with proxy and description
-- [ ] Shows status column (ready/unavailable/error)
-- [ ] `--json` outputs structured JSON array with status field
+- [ ] Groups models by primary credential and shows `[configured]` / `[not configured]`
+- [ ] Shows model name, description, and status (`ready`/`unavailable`/`error`)
+- [ ] `--json` outputs a structured JSON array with `name`, `model_id`, `family`, `provider_refs`, `preferred_proxy`,
+  `status`, and `reason`
 - [ ] `--available` filters to ready models only
 - [ ] `--available` with no ready models shows explanatory message (table), `[]` (JSON)
 - [ ] Proxy in registry but not running shows "unavailable" (not "ready")
 
 ### 14.2 `forge workflow panel`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
-forge workflow panel docs/ --models gpt-5.5,gemini-2.5-pro --json
+forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODELS --json
 ```
 
 Context mode examples (display-only -- resume needs a real session UUID):
@@ -51,11 +63,13 @@ forge workflow panel docs/ --context blind --json
 
 ### 14.3 `forge workflow panel --check`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
 # Policy gate mode (structured verdict + exit code)
-forge workflow panel -p "Check for security issues" --models gpt-5.5,gemini-2.5-pro --check
+forge workflow panel -p "Check for security issues" --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -64,14 +78,16 @@ echo "Exit code: $?"
 
 ### 14.4 `forge workflow panel --code`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
 # Multi-model code review (uses bundled codereview resource)
-forge workflow panel src/ --code --models gpt-5.5,gemini-2.5-pro --json
+forge workflow panel src/ --code --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # With --check mode
-forge workflow panel src/ --code --models gpt-5.5,gemini-2.5-pro --check
+forge workflow panel src/ --code --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -81,14 +97,16 @@ echo "Exit code: $?"
 
 ### 14.5 `forge workflow analyze`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
 # Single-model deep analysis (N=1 fan-out with bundled thinkdeep resource)
-forge workflow analyze -p "Analyze the architecture of this project" --models gpt-5.5 --json
+forge workflow analyze -p "Analyze the architecture of this project" --models $FORGE_QA_WORKFLOW_MODEL_A --json
 
 # With --check mode (exit 0=pass, 1=findings)
-forge workflow analyze -p "Check for security issues" --models gpt-5.5 --check
+forge workflow analyze -p "Check for security issues" --models $FORGE_QA_WORKFLOW_MODEL_A --check
 echo "Exit code: $?"
 ```
 
@@ -98,14 +116,16 @@ echo "Exit code: $?"
 
 ### 14.6 `forge workflow debate`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
 # Adversarial debate with positional proposal
-forge workflow debate "Should we rewrite the core in Rust?" --models gpt-5.5,gemini-2.5-pro --json
+forge workflow debate "Should we rewrite the core in Rust?" --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # Gate mode (exit 0=pass, 1=fail). Debate is fail-closed: success without a parseable verdict = failure.
-forge workflow debate "Should we adopt microservices?" --models gpt-5.5,gemini-2.5-pro --check
+forge workflow debate "Should we adopt microservices?" --models $FORGE_QA_WORKFLOW_MODELS --check
 ```
 
 - [ ] Spawns workers with stance injection (for/against/neutral)
@@ -114,14 +134,16 @@ forge workflow debate "Should we adopt microservices?" --models gpt-5.5,gemini-2
 
 ### 14.7 `forge workflow debate --code`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
 # Adversarial code evaluation (uses bundled code evaluation resource)
-forge workflow debate src/ --code --models gpt-5.5,gemini-2.5-pro --json
+forge workflow debate src/ --code --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # With --check mode
-forge workflow debate src/ --code --models gpt-5.5,gemini-2.5-pro --check
+forge workflow debate src/ --code --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -131,14 +153,16 @@ echo "Exit code: $?"
 
 ### 14.8 `forge workflow consensus`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
 # Two-round consensus with role-assigned workers (proposal mode)
-forge workflow consensus "Should we adopt a microservices architecture?" --models gpt-5.5,gemini-2.5-pro --json
+forge workflow consensus "Should we adopt a microservices architecture?" --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # Gate mode (requires 'position' field, not 'verdict')
-forge workflow consensus "Should we adopt event sourcing?" --models gpt-5.5,gemini-2.5-pro --check
+forge workflow consensus "Should we adopt event sourcing?" --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -150,14 +174,16 @@ echo "Exit code: $?"
 
 ### 14.9 `forge workflow consensus --code`
 
+<!-- prereq: 14.1 -->
+
 <!-- auto -->
 
 ```bash
 # Two-round code consensus (code mode uses architecture/security/maintainability)
-forge workflow consensus src/ --code --models gpt-5.5,gemini-2.5-pro --json
+forge workflow consensus src/ --code --models $FORGE_QA_WORKFLOW_MODELS --json
 
 # With --check mode
-forge workflow consensus src/ --code --models gpt-5.5,gemini-2.5-pro --check
+forge workflow consensus src/ --code --models $FORGE_QA_WORKFLOW_MODELS --check
 echo "Exit code: $?"
 ```
 
@@ -166,6 +192,8 @@ echo "Exit code: $?"
 - [ ] `--check` mode: schema-strict -- only SUPPORT/SUPPORT_WITH_CONDITIONS pass
 
 ### 14.10 `/forge:debate` (Live Session)
+
+<!-- prereq: 14.1 -->
 
 <!-- human:guided -->
 
@@ -181,10 +209,11 @@ cd /workspace
 claude
 ```
 
-Then, at the Claude prompt in Session B, type exactly:
+Read `$FORGE_QA_WORKFLOW_MODELS` from the container environment and construct the fully expanded command for the user to
+type in Session B:
 
 ```
-/forge:debate A startup with 5 developers has a working Python monolith serving 10k req/sec. They're hitting scaling issues. Should they rewrite the core in Rust?
+/forge:debate --models <expanded FORGE_QA_WORKFLOW_MODELS> A startup with 5 developers has a working Python monolith serving 10k req/sec. They're hitting scaling issues. Should they rewrite the core in Rust?
 ```
 
 Wait for Claude to finish. Do not replace this with `forge workflow debate` in the shell; that CLI surface is already
@@ -196,5 +225,86 @@ commands manually, treat this step as a failure.
 - [ ] Workers spawned with different stances (for/against/neutral)
 - [ ] Synthesis produced with points of agreement AND disagreement
 - [ ] Different perspectives visible in the final response
+
+### 14.11 Workflow `--models` Filter
+
+<!-- prereq: 14.1 -->
+
+<!-- requires: api_key -->
+
+<!-- auto -->
+
+```bash
+# Single model filter -- should limit to that model only
+forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODEL_B --json 2>&1 | jq '.results | keys | length'
+
+echo "---"
+
+# Multiple model filter (comma-separated)
+forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODELS --json 2>&1 | jq '{results: (.results | keys), successful: .successful, failed: .failed}'
+
+echo "---"
+
+# Verify result keys match the requested models
+forge workflow panel docs/ --models $FORGE_QA_WORKFLOW_MODEL_B --json 2>&1 | jq '.results | keys'
+```
+
+- [ ] Single `--models` value produces 1 result key in `.results`
+- [ ] Comma-separated `--models` produces one result per specified model (`.successful` count matches)
+- [ ] Result keys in `.results` correspond to the requested model names
+
+### 14.12 Workflow Routing, `--proxy`, and Preflight
+
+<!-- prereq: 4.2, 14.1 -->
+
+<!-- requires: api_key -->
+
+<!-- auto -->
+
+```bash
+# Explicit proxy routing: one selected proxy handles this worker.
+FORGE_DEBUG=1 forge workflow panel docs/ \
+  --models "$FORGE_QA_WORKFLOW_MODEL_A" \
+  --proxy "$FORGE_QA_OPENAI_PROXY" \
+  --json > /tmp/forge-workflow-via.json
+
+jq '{results: (.results | keys), successful, failed}' /tmp/forge-workflow-via.json
+
+echo "---"
+
+# Human output should surface non-blocking routing advisories when they apply.
+forge workflow analyze -p "Reply with READY only." \
+  --models "$FORGE_QA_WORKFLOW_MODEL_A" \
+  --proxy "$FORGE_QA_OPENAI_PROXY" 2>&1 | tee /tmp/forge-workflow-via-warning.txt
+
+grep -E "Routing warning|tier overrides|Proxy tier mappings" /tmp/forge-workflow-via-warning.txt || true
+
+echo "---"
+
+# Routing decisions are logged for observability when logging is enabled.
+latest_log="$(ls -t "$FORGE_HOME"/logs/cli/workflow.*.log 2>/dev/null | head -n 1)"
+test -n "$latest_log" && grep "Routing decision: model=$FORGE_QA_WORKFLOW_MODEL_A" "$latest_log"
+
+echo "---"
+
+# Direct Anthropic workers fail fast when no Anthropic credential is available.
+tmp_home="$(mktemp -d)"
+env -u ANTHROPIC_API_KEY FORGE_HOME="$tmp_home" \
+  forge workflow analyze -p "This should not call the model." \
+    --models claude-opus-4.6 \
+    --json 2>&1 | tee /tmp/forge-workflow-direct-preflight.json
+rm -rf "$tmp_home"
+
+jq -e '.preflight_errors[0] | test("ANTHROPIC_API_KEY|anthropic"; "i")' \
+  /tmp/forge-workflow-direct-preflight.json
+```
+
+- [ ] `--proxy` resolves a compatible selected proxy and the JSON output remains parseable
+- [ ] Non-JSON workflow output prints a `Routing warning:` when `--proxy` selects a cross-family or live-advisory route
+  (same-family routes may have no warning)
+- [ ] The latest CLI workflow log contains a consolidated `Routing decision:` line with model, source, proxy/template,
+  and model ref
+- [ ] Direct Anthropic workflow workers fail during preflight with an actionable credential error when
+  `ANTHROPIC_API_KEY` is absent
 
 ---

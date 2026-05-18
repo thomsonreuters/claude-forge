@@ -141,6 +141,7 @@ class ProviderConfig:
 
     tiers: TierModels = field(default_factory=TierModels)
     tier_overrides: TierOverrides = field(default_factory=TierOverrides)
+    model_alternatives: dict[str, dict[str, str]] = field(default_factory=dict)
     auth_url: str = ""
     base_url: str = ""
     cache_ttl: float = 3600.0
@@ -159,6 +160,83 @@ class ProviderConfig:
     # Error hint enrichment: append corrective hints to tool_result errors
     # before forwarding to the LLM, helping non-Claude models recover faster.
     error_hints: bool = False
+
+
+def _coerce_optional_usd_cap(name: str, value: Any) -> float | None:
+    """Coerce an optional USD cap to a positive float."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid {name}: must be a positive number of USD")
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid {name}: must be a positive number of USD") from None
+    if amount <= 0:
+        raise ValueError(f"Invalid {name}: must be greater than 0")
+    return amount
+
+
+@dataclass
+class CostCaps:
+    """Spend cap configuration for a proxy."""
+
+    per_day: float | None = None  # USD, rolling 24h window
+    per_month: float | None = None  # USD, calendar month
+
+    def __post_init__(self) -> None:
+        self.per_day = _coerce_optional_usd_cap("costs.caps.per_day", self.per_day)
+        self.per_month = _coerce_optional_usd_cap("costs.caps.per_month", self.per_month)
+
+
+def _coerce_cost_caps(value: Any) -> CostCaps:
+    """Normalize raw cost cap mappings into ``CostCaps``."""
+    if value is None:
+        return CostCaps()
+    if isinstance(value, CostCaps):
+        return value
+    if not isinstance(value, dict):
+        raise ValueError("Invalid costs.caps: must be a mapping")
+    return CostCaps(
+        per_day=value.get("per_day"),
+        per_month=value.get("per_month"),
+    )
+
+
+@dataclass
+class CostConfig:
+    """Cost tracking and cap configuration for a proxy."""
+
+    caps: CostCaps = field(default_factory=CostCaps)
+    cap_mode: str = "post"  # "post" (block after exceeded) or "strict" (pre-flight estimate)
+    on_cap_hit: str = "reject"  # "reject" (HTTP 429) or "warn" (header only)
+
+    def __post_init__(self) -> None:
+        self.caps = _coerce_cost_caps(self.caps)
+
+        valid_modes = {"post", "strict"}
+        if self.cap_mode not in valid_modes:
+            raise ValueError(f"Invalid cap_mode: '{self.cap_mode}' (must be one of: {', '.join(sorted(valid_modes))})")
+        valid_actions = {"reject", "warn"}
+        if self.on_cap_hit not in valid_actions:
+            raise ValueError(
+                f"Invalid on_cap_hit: '{self.on_cap_hit}' (must be one of: {', '.join(sorted(valid_actions))})"
+            )
+
+
+def _coerce_cost_config(value: Any) -> CostConfig:
+    """Normalize raw proxy.yaml cost config into ``CostConfig``."""
+    if value is None:
+        return CostConfig()
+    if isinstance(value, CostConfig):
+        return value
+    if not isinstance(value, dict):
+        raise ValueError("Invalid costs: must be a mapping")
+    return CostConfig(
+        caps=_coerce_cost_caps(value.get("caps", {}) or {}),
+        cap_mode=value.get("cap_mode", "post"),
+        on_cap_hit=value.get("on_cap_hit", "reject"),
+    )
 
 
 @dataclass
@@ -181,14 +259,17 @@ class ProxyConfig:
     gemini: ProviderConfig = field(default_factory=ProviderConfig)
     openai: ProviderConfig = field(default_factory=ProviderConfig)
     litellm: ProviderConfig = field(default_factory=ProviderConfig)
+    openrouter: ProviderConfig = field(default_factory=ProviderConfig)
 
+    family: str = ""  # model family (e.g., "openai", "anthropic", "gemini")
     preferred_provider: str = ""  # set by --template flag
     active_template: str = ""
     default_tier: str = "sonnet"
     backend_dependency: BackendDependency | None = None
     default_port: int = 8082
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     tool_prefixes_to_ignore: list[str] = field(default_factory=list)
+    costs: CostConfig = field(default_factory=CostConfig)
 
     def get_provider(self, name: str | None = None) -> ProviderConfig:
         """Get provider config by name, defaulting to preferred_provider."""
@@ -239,7 +320,9 @@ class ProxyInstanceConfig:
     upstream_base_url: str  # e.g., https://litellm.corp.com
 
     tiers: TierModels
+    family: str = ""  # model family (e.g., "openai", "anthropic", "gemini")
     tier_overrides: TierOverrides = field(default_factory=TierOverrides)
+    model_alternatives: dict[str, dict[str, str]] = field(default_factory=dict)
     default_tier: str = "sonnet"
 
     provider_settings: dict[str, Any] = field(default_factory=dict)
@@ -247,6 +330,8 @@ class ProxyInstanceConfig:
     # Copied from template into proxy.yaml; controls Anthropic/Bedrock prompt caching via LiteLLM.
     prompt_caching: str = "passthrough"
     auto_cache_min_tokens: int = 1024
+
+    costs: CostConfig = field(default_factory=CostConfig)
 
     created_at: str | None = None
     updated_at: str | None = None
@@ -256,7 +341,7 @@ class ProxyInstanceConfig:
         if self.proxy_format != 1:
             raise ValueError(f"Unsupported proxy_format: {self.proxy_format} (expected 1)")
 
-        valid_providers = {"litellm", "openai", "gemini"}
+        valid_providers = {"litellm", "openai", "gemini", "openrouter"}
         if self.provider not in valid_providers:
             raise ValueError(
                 f"Invalid provider: '{self.provider}' (must be one of: {', '.join(sorted(valid_providers))})"
@@ -277,6 +362,62 @@ class ProxyInstanceConfig:
         if self.default_tier not in valid_tiers:
             raise ValueError(
                 f"Invalid default_tier: '{self.default_tier}' (must be one of: {', '.join(sorted(valid_tiers))})"
+            )
+
+        self.costs = _coerce_cost_config(self.costs)
+        _validate_static_tier_override_constraints(self.tiers, self.tier_overrides)
+
+
+def _validate_static_tier_override_constraints(tiers: TierModels, overrides: TierOverrides) -> None:
+    """Reject Forge-owned config overrides that known models do not support."""
+    try:
+        from forge.core.models.catalog import (
+            ModelCatalogError,
+            get_model_spec,
+            resolve_model_id,
+        )
+    except Exception:
+        # Catalog import can fail during early bootstrap; provider APIs still
+        # reject unsupported overrides at request time as a safety net.
+        return
+
+    for tier in ("haiku", "sonnet", "opus"):
+        override = overrides.get(tier)
+        if override is None:
+            continue
+
+        model_name = tiers.get(tier)
+        if not model_name:
+            continue
+
+        lookup_name = model_name.removesuffix("[1m]")
+        try:
+            canonical_model = resolve_model_id(lookup_name)
+            spec = get_model_spec(canonical_model)
+        except ModelCatalogError:
+            continue
+
+        if spec.supports_sampling_overrides is False and override.temperature is not None:
+            raise ValueError(
+                f"tier_overrides.{tier}.temperature is not supported by {canonical_model}; "
+                "remove the override or choose a model that supports sampling overrides"
+            )
+
+        if spec.thinking_modes == ("adaptive",) and override.thinking_budget_tokens is not None:
+            raise ValueError(
+                f"tier_overrides.{tier}.thinking_budget_tokens is not supported by {canonical_model}; "
+                "this model only supports adaptive thinking"
+            )
+
+        if (
+            override.reasoning_effort is not None
+            and spec.litellm_reasoning_efforts is not None
+            and override.reasoning_effort not in spec.litellm_reasoning_efforts
+        ):
+            supported = ", ".join(spec.litellm_reasoning_efforts)
+            raise ValueError(
+                f"tier_overrides.{tier}.reasoning_effort={override.reasoning_effort!r} is not supported by "
+                f"{canonical_model}; supported values: {supported}"
             )
 
 

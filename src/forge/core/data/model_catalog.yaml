@@ -38,12 +38,36 @@ defaults:
     opus: gpt-5.5
   gemini:
     haiku: gemini-3-flash-preview
-    sonnet: gemini-2.5-pro
-    opus: gemini-2.5-pro
+    sonnet: gemini-3.1-pro-preview
+    opus: gemini-3.1-pro-preview
   anthropic:
     haiku: claude-haiku-4-5-20251001
     sonnet: claude-sonnet-4-6
     opus: claude-opus-4-6
+  openrouter:
+    haiku: claude-haiku-4-5-20251001
+    sonnet: claude-sonnet-4-6
+    opus: claude-opus-4-6
+  deepseek:
+    haiku: deepseek-v4-flash
+    sonnet: deepseek-v4-pro
+    opus: deepseek-v4-pro
+  minimax:
+    haiku: gemma-4-31b-it
+    sonnet: minimax-m2.7
+    opus: minimax-m2.7
+  qwen:
+    haiku: qwen3.6-flash
+    sonnet: qwen3.6-plus
+    opus: qwen3.6-max-preview
+  glm:
+    haiku: glm-4.7-flash
+    sonnet: glm-5.1
+    opus: glm-5.1
+  kimi:
+    haiku: gemma-4-31b-it
+    sonnet: kimi-k2.6
+    opus: kimi-k2.6
 
 # =============================================================================
 # MODELS - Canonical IDs are provider-agnostic
@@ -54,7 +78,7 @@ models:
   # ---------------------------------------------------------------------------
   gpt-5.4:
     friendly_name: GPT-5.4
-    context_window_tokens: 400000
+    context_window_tokens: 1050000
     max_output_tokens: 128000
     max_thinking_tokens: null
     supports_thinking: true
@@ -74,11 +98,12 @@ models:
     default_reasoning_effort: medium
     use_responses_api: true
     intelligence_score: 99
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.5:
     friendly_name: GPT-5.5
-    context_window_tokens: 400000
+    context_window_tokens: 1050000
     max_output_tokens: 128000
     max_thinking_tokens: null
     supports_thinking: true
@@ -98,12 +123,36 @@ models:
     default_reasoning_effort: medium
     use_responses_api: true
     intelligence_score: 99
+    system_prompt_addendum: system_prompt_addendums/openai.md
+    tags: []
+
+  gpt-5.5-pro:
+    friendly_name: GPT-5.5 Pro
+    context_window_tokens: 1050000
+    max_output_tokens: 128000
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    supports_verbosity: true
+    verbosity_levels: [low, medium, high]
+    temperature_constraint: fixed
+    temperature: 1.0
+    supports_top_p: false
+    default_timeout_seconds: 300
+    prompt_caching:
+      supports: false
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [low, medium, high, xhigh]
+    default_reasoning_effort: medium
+    use_responses_api: true
+    intelligence_score: 100
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.4-pro:
     friendly_name: GPT-5.4 Pro
-    context_window_tokens: 400000
-    max_output_tokens: 272000
+    context_window_tokens: 1050000
+    max_output_tokens: 128000
     max_thinking_tokens: null
     supports_thinking: true
     supports_images: true
@@ -118,10 +167,11 @@ models:
       mechanism: auto
       min_tokens: 1024
     native_thinking_param: reasoning_effort
-    litellm_reasoning_efforts: [none, low, medium, high, xhigh]
+    litellm_reasoning_efforts: [medium, high, xhigh]
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 100
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.4-mini:
@@ -146,6 +196,7 @@ models:
     default_reasoning_effort: medium
     use_responses_api: true
     intelligence_score: 85
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.4-nano:
@@ -170,6 +221,7 @@ models:
     default_reasoning_effort: minimal
     use_responses_api: true
     intelligence_score: 76
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.2:
@@ -194,6 +246,7 @@ models:
     litellm_reasoning_efforts: [none, low, medium, high, xhigh]
     default_reasoning_effort: medium
     intelligence_score: 98
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.2-pro:
@@ -219,6 +272,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 99
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5.3-codex:
@@ -242,6 +296,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 95
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.2-codex:
@@ -266,6 +321,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 90
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.1-codex:
@@ -290,6 +346,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 82
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.1-codex-mini:
@@ -314,6 +371,7 @@ models:
     litellm_reasoning_efforts: [low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 77
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.1-codex-max:
@@ -338,6 +396,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 85
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5.1-mini:
@@ -362,6 +421,7 @@ models:
     litellm_reasoning_efforts: [none, low, medium, high]
     default_reasoning_effort: none
     intelligence_score: 76
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5-mini:
@@ -386,6 +446,7 @@ models:
     litellm_reasoning_efforts: [minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 79
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5:
@@ -410,6 +471,7 @@ models:
     litellm_reasoning_efforts: [minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 88
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5-pro:
@@ -435,6 +497,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 91
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-5-codex:
@@ -459,6 +522,7 @@ models:
     default_reasoning_effort: medium
     use_responses_api: true
     intelligence_score: 80
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: [code-gen]
 
   gpt-5-nano:
@@ -483,6 +547,7 @@ models:
     litellm_reasoning_efforts: [minimal, low, medium, high]
     default_reasoning_effort: minimal
     intelligence_score: 70
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-4o:
@@ -508,6 +573,7 @@ models:
     litellm_reasoning_efforts: null
     default_reasoning_effort: null
     intelligence_score: 76
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-4o-mini:
@@ -532,6 +598,7 @@ models:
     litellm_reasoning_efforts: null
     default_reasoning_effort: null
     intelligence_score: 65
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   gpt-4.1:
@@ -556,6 +623,7 @@ models:
     litellm_reasoning_efforts: null
     default_reasoning_effort: null
     intelligence_score: 72
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o4-mini:
@@ -577,6 +645,7 @@ models:
     litellm_reasoning_efforts: [none, minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 60
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o3:
@@ -598,6 +667,7 @@ models:
     litellm_reasoning_efforts: [none, minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 85
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o3-pro:
@@ -620,6 +690,7 @@ models:
     default_reasoning_effort: high
     use_responses_api: true
     intelligence_score: 87
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o3-mini:
@@ -641,6 +712,7 @@ models:
     litellm_reasoning_efforts: [none, minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 67
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   o1:
@@ -662,6 +734,7 @@ models:
     litellm_reasoning_efforts: [none, minimal, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 84
+    system_prompt_addendum: system_prompt_addendums/openai.md
     tags: []
 
   # ---------------------------------------------------------------------------
@@ -689,6 +762,7 @@ models:
     litellm_reasoning_efforts: [none, disable, minimal, low, medium, high]
     default_reasoning_effort: high
     intelligence_score: 94
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: []
 
   gemini-3.1-pro-preview-customtools:
@@ -712,6 +786,7 @@ models:
     litellm_reasoning_efforts: [none, disable, minimal, low, medium, high]
     default_reasoning_effort: high
     intelligence_score: 94
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: [agentic, custom-tools]
 
   gemini-3-flash-preview:
@@ -735,6 +810,7 @@ models:
     litellm_reasoning_efforts: [none, disable, minimal, low, medium, high]
     default_reasoning_effort: high
     intelligence_score: 80
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: []
 
   gemini-2.5-pro:
@@ -761,6 +837,7 @@ models:
     litellm_reasoning_efforts: [none, disable, low, medium, high]
     default_reasoning_effort: high
     intelligence_score: 89
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: []
 
   gemini-2.5-flash:
@@ -787,10 +864,11 @@ models:
     litellm_reasoning_efforts: [none, disable, low, medium, high]
     default_reasoning_effort: medium
     intelligence_score: 73
+    system_prompt_addendum: system_prompt_addendums/gemini.md
     tags: []
 
   # ---------------------------------------------------------------------------
-  # Claude Models (4.6 + 4.5 series)
+  # Claude Models (4.7 + 4.6 + 4.5 series)
   # ---------------------------------------------------------------------------
 
   # --- Claude 4.6 Series ---
@@ -818,6 +896,35 @@ models:
     default_reasoning_effort: high
     intelligence_score: 98
     tags: []
+
+  # --- Claude 4.7 Series ---
+  # Opus 4.7 is intentionally opt-in. Keep opus/claude-opus defaults on 4.6
+  # until this profile is proven safe for resume-heavy and referent-heavy flows.
+  claude-opus-4-7:
+    friendly_name: Claude Opus 4.7
+    context_window_tokens: 1000000
+    max_output_tokens: 128000
+    max_thinking_tokens: 128000
+    supports_thinking: true
+    supports_images: true
+    supports_1m_context: true
+    temperature_constraint: fixed
+    temperature: 1.0
+    supports_top_p: false
+    supports_sampling_overrides: false
+    default_timeout_seconds: 240
+    prompt_caching:
+      supports: true
+      mechanism: cache_control
+      min_tokens: 1024
+      max_cache_blocks: 4
+    native_thinking_param: output_config.effort
+    thinking_modes: [adaptive]
+    litellm_reasoning_efforts: [low, medium, high, xhigh]
+    default_reasoning_effort: high
+    token_estimate_multiplier: 1.35
+    intelligence_score: 99
+    tags: [bounded-review, opt-in]
 
   claude-sonnet-4-6:
     friendly_name: Claude Sonnet 4.6
@@ -975,6 +1082,308 @@ models:
     intelligence_score: 81
     tags: []
 
+  # ---------------------------------------------------------------------------
+  # Open-source models via OpenRouter
+  # ---------------------------------------------------------------------------
+  deepseek-v4-flash:
+    friendly_name: DeepSeek V4 Flash
+    context_window_tokens: 1048576
+    max_output_tokens: 384000
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 120
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [high, xhigh]
+    default_reasoning_effort: high
+    intelligence_score: 82
+    tags: [code-gen]
+
+  deepseek-v4-pro:
+    friendly_name: DeepSeek V4 Pro
+    context_window_tokens: 1048576
+    max_output_tokens: 384000
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: reasoning_effort
+    # OpenRouter exposes only the upper effort tiers for V4 Pro
+    litellm_reasoning_efforts: [high, xhigh]
+    default_reasoning_effort: high
+    intelligence_score: 88
+    tags: [code-gen]
+
+  kimi-k2.5:
+    friendly_name: Kimi K2.5
+    context_window_tokens: 262144
+    max_output_tokens: 262144
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 86
+    tags: [agentic, code-gen, vision]
+
+  kimi-k2.6:
+    friendly_name: Kimi K2.6
+    context_window_tokens: 32768
+    max_output_tokens: 32768
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [low, medium, high]
+    default_reasoning_effort: high
+    intelligence_score: 89
+    tags: [agentic, code-gen, vision]
+
+  qwen3.6-plus:
+    friendly_name: Qwen3.6 Plus
+    context_window_tokens: 1000000
+    max_output_tokens: 65536
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 88
+    tags: [agentic, code-gen, vision]
+
+  qwen3.6-flash:
+    friendly_name: Qwen3.6 Flash
+    context_window_tokens: 1000000
+    max_output_tokens: 65536
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 120
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 82
+    tags: [agentic, code-gen, vision]
+
+  qwen3.6-max-preview:
+    friendly_name: Qwen3.6 Max Preview
+    context_window_tokens: 262144
+    max_output_tokens: 65536
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 90
+    tags: [agentic, code-gen]
+
+  qwen3-coder:
+    friendly_name: Qwen3 Coder 480B A35B
+    context_window_tokens: 262144
+    max_output_tokens: 65536
+    max_thinking_tokens: null
+    supports_thinking: false
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 84
+    tags: [code-gen]
+
+  minimax-m2.5:
+    friendly_name: MiniMax M2.5
+    context_window_tokens: 196608
+    max_output_tokens: 196608
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [low, medium, high]
+    default_reasoning_effort: medium
+    intelligence_score: 84
+    tags: [agentic]
+
+  minimax-m2.7:
+    friendly_name: MiniMax M2.7
+    context_window_tokens: 196608
+    max_output_tokens: 131072
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 86
+    tags: [agentic]
+
+  glm-4.7-flash:
+    friendly_name: GLM 4.7 Flash
+    context_window_tokens: 202752
+    max_output_tokens: 16384
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 90
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 78
+    tags: [agentic]
+
+  glm-5.1:
+    friendly_name: GLM 5.1
+    context_window_tokens: 202752
+    max_output_tokens: 202752
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: false
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 180
+    prompt_caching:
+      supports: true
+      mechanism: auto
+      min_tokens: 1024
+    native_thinking_param: reasoning_effort
+    litellm_reasoning_efforts: [low, medium, high]
+    default_reasoning_effort: high
+    intelligence_score: 87
+    tags: [agentic, code-gen]
+
+  gemma-4-31b-it:
+    friendly_name: Gemma 4 31B
+    context_window_tokens: 262144
+    max_output_tokens: 16384
+    max_thinking_tokens: null
+    supports_thinking: true
+    supports_images: true
+    temperature_constraint: range
+    temperature:
+      min: 0.0
+      default: 1.0
+      max: 2.0
+    supports_top_p: true
+    default_timeout_seconds: 120
+    prompt_caching:
+      supports: false
+    native_thinking_param: null
+    litellm_reasoning_efforts: null
+    default_reasoning_effort: null
+    intelligence_score: 78
+    tags: [open-weights, vision]
+
 
 # =============================================================================
 # ALIASES - Provider-prefixed IDs map to canonical models
@@ -982,6 +1391,7 @@ models:
 aliases:
   # OpenAI provider prefix (LiteLLM style)
   openai/gpt-5.5: gpt-5.5
+  openai/gpt-5.5-pro: gpt-5.5-pro
   openai/gpt-5.4: gpt-5.4
   openai/gpt-5.4-pro: gpt-5.4-pro
   openai/gpt-5.4-mini: gpt-5.4-mini
@@ -1022,13 +1432,27 @@ aliases:
   gemini/gemini-2.5-pro: gemini-2.5-pro
   gemini/gemini-2.5-flash: gemini-2.5-flash
 
+  # Google provider prefix (OpenRouter style)
+  google/gemini-3.1-pro-preview: gemini-3.1-pro-preview
+  google/gemini-3-flash-preview: gemini-3-flash-preview
+  google/gemini-2.5-pro: gemini-2.5-pro
+  google/gemini-2.5-flash: gemini-2.5-flash
+
   # Anthropic provider prefix + friendly aliases
   # Opus 4.6
   anthropic/claude-opus-4-6: claude-opus-4-6
   anthropic/claude-opus-4-6-1m: claude-opus-4-6-1m
+  claude-opus: claude-opus-4-6
   opus-4-6: claude-opus-4-6
   opus-4-6-1m: claude-opus-4-6-1m
   opus: claude-opus-4-6
+
+  # Opus 4.7 (explicit opt-in only)
+  anthropic/claude-opus-4-7: claude-opus-4-7
+  anthropic/claude-opus-4.7: claude-opus-4-7
+  claude-opus-4.7: claude-opus-4-7
+  opus-4-7: claude-opus-4-7
+  opus-4.7: claude-opus-4-7
 
   # Sonnet 4.6
   anthropic/claude-sonnet-4-6: claude-sonnet-4-6
@@ -1055,3 +1479,44 @@ aliases:
   claude-haiku-4-5: claude-haiku-4-5-20251001
   haiku-4-5: claude-haiku-4-5-20251001
   haiku: claude-haiku-4-5-20251001
+
+  # OpenRouter dot-form aliases (OpenRouter uses dots, Forge uses hyphens)
+  anthropic/claude-opus-4.6: claude-opus-4-6
+  anthropic/claude-sonnet-4.6: claude-sonnet-4-6
+  anthropic/claude-haiku-4.5: claude-haiku-4-5-20251001
+
+  # DeepSeek (via OpenRouter)
+  deepseek/deepseek-v4-pro: deepseek-v4-pro
+  deepseek/deepseek-v4-flash: deepseek-v4-flash
+  deepseek-v4: deepseek-v4-pro
+  v4-pro: deepseek-v4-pro
+  v4-flash: deepseek-v4-flash
+
+  # Kimi / MoonshotAI (via OpenRouter)
+  moonshotai/kimi-k2.5: kimi-k2.5
+  moonshotai/kimi-k2.6: kimi-k2.6
+  kimi-k2-5: kimi-k2.5
+  kimi-k2-6: kimi-k2.6
+
+  # Qwen (via OpenRouter)
+  qwen/qwen3.6-flash: qwen3.6-flash
+  qwen/qwen3.6-plus: qwen3.6-plus
+  qwen/qwen3.6-max-preview: qwen3.6-max-preview
+  qwen/qwen3-coder: qwen3-coder
+  qwen3-6-flash: qwen3.6-flash
+  qwen3-6-plus: qwen3.6-plus
+  qwen3-6-max-preview: qwen3.6-max-preview
+  qwen3-6-max: qwen3.6-max-preview
+  qwen-coder: qwen3-coder
+
+  # MiniMax / Z.ai / Google / Mistral (via OpenRouter)
+  minimax/minimax-m2.5: minimax-m2.5
+  minimax/minimax-m2.7: minimax-m2.7
+  minimax-m2-5: minimax-m2.5
+  minimax-m2-7: minimax-m2.7
+  z-ai/glm-4.7-flash: glm-4.7-flash
+  z-ai/glm-5.1: glm-5.1
+  glm-4-7-flash: glm-4.7-flash
+  glm-5-1: glm-5.1
+  google/gemma-4-31b-it: gemma-4-31b-it
+  gemma-4-31b: gemma-4-31b-it

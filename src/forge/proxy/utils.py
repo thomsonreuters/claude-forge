@@ -207,8 +207,10 @@ async def log_tool_event(
         if details:
             event["details"] = details
 
+        from forge.core.state import open_secure_append
+
         async with _tool_events_lock:
-            with open(jsonl_path, "a") as f:
+            with open_secure_append(jsonl_path) as f:
                 f.write(json.dumps(event) + "\n")
 
         _logger.debug(
@@ -221,6 +223,200 @@ async def log_tool_event(
     except Exception as e:
         # Log error but don't fail the request
         _logger.error("Failed to log tool event: %s (request_id=%s)", e, request_id, exc_info=True)
+
+
+# Tool Failure Logger — opt-in via RuntimeConfig.log_tool_failures
+_tool_failure_lock = asyncio.Lock()
+
+
+def _should_log_tool_failures() -> bool:
+    from forge.runtime_config import get_runtime_config
+
+    return get_runtime_config().log_tool_failures
+
+
+_TOOL_FAILURE_SCHEMA_VERSION = 1
+_TOOL_INPUT_MAX_STR_LEN = 1024
+_TOOL_INPUT_MAX_DEPTH = 8
+_ERROR_MAX_LEN = 2000
+
+
+def _truncate_for_log(value: str | dict | list | None, max_len: int) -> str | dict | list | None:
+    """Truncate a top-level string value (used for the error field)."""
+    if isinstance(value, str) and len(value) > max_len:
+        return value[:max_len] + f"... ({len(value)} chars)"
+    return value
+
+
+def _truncate_recursive(
+    value: Any,
+    max_str_len: int = _TOOL_INPUT_MAX_STR_LEN,
+    max_depth: int = _TOOL_INPUT_MAX_DEPTH,
+) -> Any:
+    """Recursively cap large string values inside nested dicts/lists.
+
+    Edit/Write tool inputs can carry tens of KB of file content. Without
+    this, a single failure can produce a multi-MB JSONL line.
+    """
+    if max_depth <= 0:
+        return "<truncated: max depth exceeded>"
+    if isinstance(value, str):
+        if len(value) > max_str_len:
+            return value[:max_str_len] + f"... ({len(value)} chars)"
+        return value
+    if isinstance(value, dict):
+        return {k: _truncate_recursive(v, max_str_len, max_depth - 1) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_truncate_recursive(v, max_str_len, max_depth - 1) for v in value]
+    return value
+
+
+def _truncate_error_for_log(error_content: str | dict | list | None) -> Any:
+    """Bound tool error payloads, including Anthropic list/dict content blocks."""
+    if isinstance(error_content, str):
+        return _truncate_for_log(error_content, _ERROR_MAX_LEN)
+    return _truncate_recursive(error_content, max_str_len=_ERROR_MAX_LEN)
+
+
+async def log_tool_failure(
+    *,
+    request_id: str,
+    mapped_model: str,
+    tool_name: str | None,
+    tool_use_id: str | None,
+    tool_input: dict[str, Any] | None,
+    error_content: str | dict | list | None,
+) -> None:
+    """Log tool failure to dedicated JSONL for addendum refinement.
+
+    Opt-in via log_tool_failures (no debug mode required). Best-effort:
+    write failures are logged but never break the LLM response.
+    """
+    if not _should_log_tool_failures():
+        return
+
+    try:
+        from forge.core.state import open_secure_append
+
+        logs_dir = get_forge_home() / "logs" / "tool_failures"
+        logs_dir.mkdir(exist_ok=True, parents=True)
+
+        datestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+        jsonl_path = logs_dir / f"{datestamp}_failures.{_pid_suffix()}.jsonl"
+
+        record: dict[str, Any] = {
+            "schema_version": _TOOL_FAILURE_SCHEMA_VERSION,
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "request_id": request_id,
+            "tool_use_id": tool_use_id,
+            "model": mapped_model,
+            "tool": tool_name,
+            "tool_input": _truncate_recursive(tool_input),
+            "error": _truncate_error_for_log(error_content),
+        }
+
+        async with _tool_failure_lock:
+            with open_secure_append(jsonl_path) as f:
+                f.write(json.dumps(record, default=str) + "\n")
+    except Exception as e:
+        _logger.warning("Failed to write tool failure log: %s", e)
+
+
+def _redact_content(content: object) -> dict[str, object]:
+    """Replace message/response content with a redaction marker."""
+    if content is None:
+        return {"redacted": True, "length": 0}
+    if isinstance(content, str):
+        return {"redacted": True, "length": len(content)}
+    if isinstance(content, list):
+        return {
+            "redacted": True,
+            "items": len(content),
+            "block_types": [
+                (item.get("type") if isinstance(item, dict) else getattr(item, "type", "unknown")) for item in content
+            ],
+        }
+    if isinstance(content, dict):
+        return {"redacted": True, "length": len(str(content))}
+    return {"redacted": True, "length": len(str(content))}
+
+
+def _redact_tools(tools: list) -> list[dict[str, object]]:
+    """Keep tool names and structure, redact descriptions."""
+    redacted = []
+    for tool in tools:
+        if isinstance(tool, dict):
+            entry: dict[str, object] = {"name": tool.get("name")}
+            if "description" in tool:
+                entry["description"] = {"redacted": True}
+            if "input_schema" in tool:
+                entry["input_schema"] = {"redacted": True}
+            redacted.append(entry)
+        else:
+            name = getattr(tool, "name", None)
+            redacted.append({"name": name, "redacted": True})
+    return redacted
+
+
+def _redact_body_for_log(body: dict[str, object] | None) -> dict[str, object] | None:
+    """Replace sensitive content in request/response bodies with redaction markers.
+
+    Preserves structural metadata (model, role, token counts, status)
+    while removing all message text, system prompts, tool descriptions,
+    user/org metadata, and tool output.
+    """
+    if body is None:
+        return None
+
+    _SAFE_KEYS = {
+        "model",
+        "temperature",
+        "max_tokens",
+        "top_p",
+        "stream",
+        "stop_sequences",
+        "reasoning_effort",
+        "verbosity",
+        "usage",
+        "id",
+        "type",
+        "role",
+        "stop_reason",
+    }
+
+    redacted: dict[str, object] = {k: v for k, v in body.items() if k in _SAFE_KEYS}
+
+    if "messages" in body and isinstance(body["messages"], list):
+        redacted["messages"] = [
+            {
+                "role": msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", "unknown"),
+                "content": _redact_content(
+                    msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", None)
+                ),
+            }
+            for msg in body["messages"]
+        ]
+
+    if "system" in body:
+        redacted["system"] = _redact_content(body["system"])
+
+    if "tools" in body and isinstance(body["tools"], list):
+        redacted["tools"] = _redact_tools(body["tools"])
+
+    if "content" in body and isinstance(body["content"], list):
+        redacted["content"] = [
+            {
+                "type": block.get("type") if isinstance(block, dict) else getattr(block, "type", "unknown"),
+                "content": _redact_content(
+                    block.get("text", block.get("content"))
+                    if isinstance(block, dict)
+                    else getattr(block, "text", getattr(block, "content", None))
+                ),
+            }
+            for block in body["content"]
+        ]
+
+    return redacted
 
 
 async def log_request_response(
@@ -240,17 +436,17 @@ async def log_request_response(
     max_tokens: int | None = None,
     streaming: bool = False,
 ) -> None:
-    """Log request/response pairs to JSONL file for analysis and replay.
+    """Log sanitized request/response metadata to JSONL for debugging.
 
     Logs at INFO level on failure (status >= 400) and DEBUG level always.
-    This provides comprehensive visibility for debugging and creating integration tests.
+    Bodies are redacted before writing; these logs are not replay fixtures.
 
     Args:
         request_id: Unique request identifier
         original_model: Original model name requested
         mapped_model: Actual model used after mapping
-        request_body: Full request payload for replay
-        response_body: Full response payload (None for streaming)
+        request_body: Request payload (redacted before write)
+        response_body: Response payload (redacted before write; None for streaming)
         status_code: HTTP status code
         duration_ms: Request duration in milliseconds
         error: Error message if request failed
@@ -291,12 +487,13 @@ async def log_request_response(
 
         is_failure = status_code >= 400
 
-        # Always include bodies in the JSONL file for replay capability
-        event["request_body"] = request_body
-        event["response_body"] = response_body
+        event["request_body"] = _redact_body_for_log(request_body)
+        event["response_body"] = _redact_body_for_log(response_body)
+
+        from forge.core.state import open_secure_append
 
         async with _request_response_lock:
-            with open(jsonl_path, "a") as f:
+            with open_secure_append(jsonl_path) as f:
                 f.write(json.dumps(event, default=str) + "\n")
 
         if is_failure:

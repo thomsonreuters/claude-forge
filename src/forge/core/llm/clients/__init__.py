@@ -7,6 +7,8 @@ Deferred (not yet implemented):
 - AnthropicClient: Direct Anthropic API
 """
 
-from .litellm import LiteLLMClient, ToolCallAccumulator
+from .litellm import LiteLLMClient
+from .openai_compat import ToolCallAccumulator
+from .openrouter import OpenRouterClient
 
-__all__ = ["LiteLLMClient", "ToolCallAccumulator"]
+__all__ = ["LiteLLMClient", "OpenRouterClient", "ToolCallAccumulator"]

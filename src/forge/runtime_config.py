@@ -54,7 +54,8 @@ class RuntimeConfig:
     user_agent_claude_code_version: str = ""
 
     # Optional model override for direct (non-proxy) sessions.
-    # Passed as --model to Claude Code. Empty string = let Claude Code decide.
+    # Passed to Claude Code via ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_*_MODEL.
+    # Empty string = let Claude Code decide.
     default_direct_model: str = ""
 
     # Fallback auto-compact window for proxy mode when model lookup fails.
@@ -91,6 +92,16 @@ class RuntimeConfig:
     # Gates post-hoc "[forge] Policy: checked ..." summary lines and additionalContext.
     # Does NOT affect deny output or substantive warning lines -- those stay visible always.
     policy_summary_feedback: str = "on"
+
+    # Log tool failures to ~/.forge/logs/tool_failures/ even without debug mode.
+    # Off by default because records may include tool inputs and error payloads.
+    log_tool_failures: bool = False
+
+    # Ignore environment variables for credential resolution.
+    # When true, Forge reads credentials only from ~/.forge/credentials.yaml,
+    # ignoring shell env vars (ANTHROPIC_API_KEY, OPENROUTER_API_KEY, etc.).
+    # Useful when shell API keys are for Claude Code (not Forge subprocesses).
+    auth_ignore_env: bool = False
 
     def __post_init__(self) -> None:
         valid_modes = {"host", "sidecar"}
@@ -271,6 +282,17 @@ def _dict_to_runtime_config(data: dict[str, Any], source: Path) -> RuntimeConfig
             # for string fields (e.g., log_level: off → False → "off")
             if isinstance(val, bool) and f.type in ("str", str):
                 val = "on" if val else "off"
+            # Coerce quoted strings to bool for bool fields
+            # (auth_ignore_env: "false" should be False, not truthy string)
+            elif isinstance(val, str) and f.type in (bool, "bool"):
+                low = val.strip().lower()
+                if low in {"1", "true", "yes", "on"}:
+                    val = True
+                elif low in {"0", "false", "no", "off", ""}:
+                    val = False
+                else:
+                    logger.warning("Invalid boolean for %s: %r — using default", f.name, val)
+                    continue
             kwargs[f.name] = val
 
     try:
@@ -360,7 +382,8 @@ proxy_mode: host
 # Version string for User-Agent header to upstream LLM providers
 # user_agent_claude_code_version: "2.1.76"
 
-# Optional model override for direct (non-proxy) sessions (--model flag to Claude Code).
+# Optional model override for direct (non-proxy) sessions.
+# Forge pins this through Claude Code's ANTHROPIC_DEFAULT_*_MODEL env vars.
 # Set to "" to let Claude Code pick. Aliases like "opus" or "sonnet" also work.
 # default_direct_model: claude-opus-4-6
 
@@ -401,4 +424,15 @@ proxy_mode: host
 # "on" (default) prints what was checked and the verdict after each policy evaluation.
 # "off" silences summary lines. Deny messages and substantive warnings stay visible always.
 # policy_summary_feedback: "on"
+
+# Tool failure telemetry for proxied sessions.
+# Records failed tool call inputs and errors to help refine model-family prompt addendums.
+# Off by default because payloads may include file paths, command text, or content snippets.
+# log_tool_failures: false
+
+# Ignore environment variables for credential resolution.
+# When true, Forge reads credentials only from ~/.forge/credentials.yaml.
+# Useful when your shell ANTHROPIC_API_KEY is for Claude Code (OAuth/Max),
+# but you want Forge subprocesses to use a separate key from the credential file.
+# auth_ignore_env: false
 """

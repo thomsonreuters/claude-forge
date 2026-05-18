@@ -373,24 +373,43 @@ class TestBuildMultiDocPrompt:
 # ---------------------------------------------------------------------------
 
 
+def _unresolved_result():
+    """RoutingResult with no base_url (unresolved)."""
+    from forge.core.reactive.routing import RoutingResult
+
+    return RoutingResult(
+        base_url=None,
+        proxy_id=None,
+        template=None,
+        source="unresolved",
+        route=None,
+        credential=None,
+    )
+
+
+def _resolved_result(base_url: str = "http://proxy:8080"):
+    """RoutingResult with a resolved base_url."""
+    from forge.core.reactive.routing import RoutingResult
+
+    return RoutingResult(
+        base_url=base_url,
+        proxy_id="my-proxy",
+        template="litellm-openai",
+        source="preferred_proxy",
+        route=None,
+        credential=None,
+    )
+
+
 class TestResolveHandoffBaseUrl:
-    """Tests for proxy base URL resolution."""
+    """Tests for proxy base URL resolution via shared resolver."""
 
     def test_proxy_id_takes_priority(self) -> None:
-        """When proxy_id resolves via registry, it takes priority over all fallbacks."""
-        from forge.proxy.proxies import ProxyEntry, ProxyRegistry
-
-        entry = ProxyEntry(
-            proxy_id="my-proxy",
-            template="litellm-openai",
-            base_url="http://proxy-from-registry:8080",
-            port=8080,
-            status="healthy",
-        )
-        registry = ProxyRegistry(proxies={"my-proxy": entry})
-        mock_store_cls = MagicMock(return_value=MagicMock(read=MagicMock(return_value=registry)))
-
-        with patch("forge.proxy.proxies.ProxyRegistryStore", mock_store_cls):
+        """When proxy_id resolves via shared resolver, it takes priority."""
+        with patch(
+            "forge.session.handoff_agent.resolve_subprocess_routing",
+            return_value=_resolved_result("http://proxy-from-registry:8080"),
+        ):
             result = resolve_handoff_base_url(
                 proxy_id="my-proxy",
                 confirmed_proxy_base_url="http://session-proxy:8084",
@@ -399,7 +418,7 @@ class TestResolveHandoffBaseUrl:
         assert result == "http://proxy-from-registry:8080"
 
     def test_confirmed_proxy_over_env(self) -> None:
-        """When no proxy_id, uses session's confirmed proxy base_url."""
+        """When no proxy_id, confirmed proxy URL is used over env."""
         result = resolve_handoff_base_url(
             proxy_id=None,
             confirmed_proxy_base_url="http://session-proxy:8084",
@@ -426,16 +445,81 @@ class TestResolveHandoffBaseUrl:
         assert result is None
 
     def test_proxy_id_lookup_failure_falls_through(self) -> None:
-        """When proxy_id lookup fails, falls through to confirmed proxy.
+        """When proxy_id lookup fails, falls through to confirmed proxy."""
+        with patch(
+            "forge.session.handoff_agent.resolve_subprocess_routing",
+            return_value=_unresolved_result(),
+        ):
+            result = resolve_handoff_base_url(
+                proxy_id="nonexistent-proxy",
+                confirmed_proxy_base_url="http://session-proxy:8084",
+                env_base_url=None,
+            )
+        assert result == "http://session-proxy:8084"
 
-        Handoff is async/best-effort — using the session's confirmed proxy
-        (same model) is better than going direct.
-        """
+    def test_proxy_miss_prefers_confirmed_proxy_over_ambient_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Ambient ANTHROPIC_BASE_URL must not beat the session's confirmed proxy."""
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://ambient-env-proxy:8080")
+
         result = resolve_handoff_base_url(
-            proxy_id="nonexistent-proxy",
+            proxy_id="definitely-missing-proxy-for-handoff-test",
             confirmed_proxy_base_url="http://session-proxy:8084",
-            env_base_url=None,
+            env_base_url="http://ambient-env-proxy:8080",
         )
+
+        assert result == "http://session-proxy:8084"
+
+    def test_subprocess_proxy_used_before_confirmed_proxy(self) -> None:
+        """Persisted subprocess proxy is tried before falling back to the session proxy."""
+        with patch(
+            "forge.session.handoff_agent.resolve_subprocess_routing",
+            return_value=_resolved_result("http://subprocess-proxy:8080"),
+        ) as mock_resolver:
+            result = resolve_handoff_base_url(
+                proxy_id=None,
+                subprocess_proxy="openrouter-subprocess",
+                confirmed_proxy_base_url="http://session-proxy:8084",
+                env_base_url=None,
+            )
+
+        assert result == "http://subprocess-proxy:8080"
+        mock_resolver.assert_called_once_with(
+            preferred_proxy="openrouter-subprocess",
+            require_route=False,
+            use_environment=False,
+        )
+
+    def test_config_proxy_takes_priority_over_subprocess_proxy(self) -> None:
+        """Handoff-specific proxy remains the highest-priority handoff route."""
+        with patch(
+            "forge.session.handoff_agent.resolve_subprocess_routing",
+            return_value=_resolved_result("http://handoff-config-proxy:8080"),
+        ) as mock_resolver:
+            result = resolve_handoff_base_url(
+                proxy_id="handoff-config-proxy",
+                subprocess_proxy="openrouter-subprocess",
+                confirmed_proxy_base_url="http://session-proxy:8084",
+            )
+
+        assert result == "http://handoff-config-proxy:8080"
+        mock_resolver.assert_called_once_with(
+            preferred_proxy="handoff-config-proxy",
+            require_route=False,
+            use_environment=False,
+        )
+
+    def test_subprocess_proxy_miss_falls_back_to_confirmed_proxy(self) -> None:
+        """Async handoff remains best-effort if the subprocess proxy is unavailable."""
+        with patch(
+            "forge.session.handoff_agent.resolve_subprocess_routing",
+            return_value=_unresolved_result(),
+        ):
+            result = resolve_handoff_base_url(
+                proxy_id=None,
+                subprocess_proxy="missing-subprocess-proxy",
+                confirmed_proxy_base_url="http://session-proxy:8084",
+            )
+
         assert result == "http://session-proxy:8084"
 
     def test_direct_short_circuits_all_resolution(self) -> None:
@@ -447,6 +531,19 @@ class TestResolveHandoffBaseUrl:
             direct=True,
         )
         assert result is None
+
+    def test_delegates_to_shared_resolver(self) -> None:
+        """Verifies resolve_subprocess_routing is called with correct params."""
+        with patch(
+            "forge.session.handoff_agent.resolve_subprocess_routing",
+            return_value=_resolved_result(),
+        ) as mock_resolver:
+            resolve_handoff_base_url(proxy_id="my-proxy")
+        mock_resolver.assert_called_once_with(
+            preferred_proxy="my-proxy",
+            require_route=False,
+            use_environment=False,
+        )
 
 
 # ---------------------------------------------------------------------------

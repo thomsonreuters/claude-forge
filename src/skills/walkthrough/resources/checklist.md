@@ -87,7 +87,7 @@ terminal to try Forge commands hands-on in later sections.
 <!-- auto -->
 
 ```bash
-bash "$SCRIPTS/run-in-repo.sh" forge extension enable --local
+bash "$SCRIPTS/run-in-repo.sh" forge extension enable --scope local
 ```
 
 - [ ] Exit code 0
@@ -206,7 +206,7 @@ Try at least 2-3 commands. They all run in the sandbox — your real system is n
 <!-- auto -->
 
 ```bash
-bash "$SCRIPTS/run-in-repo.sh" forge proxy create litellm-openai
+bash "$SCRIPTS/run-in-repo.sh" forge proxy create openrouter-anthropic
 ```
 
 - [ ] Proxy created successfully
@@ -265,7 +265,7 @@ forge claude start --proxy $PROXY_ID
 ```
 
 This starts Claude Code (Session B) with API calls routed through the proxy. Forge hooks, status line, and % commands
-are all active because extensions were installed `--local`.
+are all active because extensions were installed with `--scope local`.
 
 - [ ] Claude Code launched in test repo
 - [ ] Session B is running and responsive
@@ -280,11 +280,12 @@ Look at the **status bar** at the bottom of Session B. You should see two lines 
 
 - **Session name** (`walkthrough-demo`) and branch info
 
-- **Proxy template** (`litellm-openai`) and **model mappings** (e.g., `[O:gpt-5.2 S:gpt-5.1-codex H:gpt-5-mini]`)
+- **Proxy template** (`openrouter-anthropic`) and **model mappings** (e.g.,
+  `[O:claude-opus S:claude-sonnet H:claude-haiku]`)
 
 - [ ] Status line shows session name (walkthrough-demo)
 
-- [ ] Status line shows proxy template (litellm-openai) and tier-to-model mappings
+- [ ] Status line shows proxy template (openrouter-anthropic) and tier-to-model mappings
 
 ---
 
@@ -683,7 +684,7 @@ rm -rf "$FORGE_TEST_REPO/.forge/search-index"
 <!-- auto -->
 
 ```bash
-bash "$SCRIPTS/run-in-repo.sh" forge extension disable --local --force
+bash "$SCRIPTS/run-in-repo.sh" forge extension disable --scope local --force
 ```
 
 - [ ] Uninstall completed (exit code 0)

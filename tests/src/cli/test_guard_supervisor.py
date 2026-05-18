@@ -624,20 +624,3 @@ class TestSupervisorProxyFlags:
         mock_preflight.assert_called_once_with("litellm-gemini")
         mock_apply.assert_called_once()
         assert mock_apply.call_args.kwargs.get("supervisor_proxy") == "litellm-gemini"
-
-
-class TestDirectDeprecatedAlias:
-    """Verify hidden --direct alias on guard supervisor."""
-
-    @patch("forge.guard.semantic.supervisor.invoke_supervisor")
-    def test_guard_supervisor_direct_alias_still_works(self, mock_invoke, tmp_path) -> None:
-        f = tmp_path / "test.py"
-        f.write_text("x = 1")
-        mock_invoke.return_value = _allow_decision()
-
-        runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["guard", "supervisor", "-f", str(f), "-r", "abc-123", "--direct", "--json"],
-        )
-        assert result.exit_code == 0

@@ -20,11 +20,13 @@ see README.md in the project root.
 
 import asyncio
 import logging
+import os
 import socket
 import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
+from typing import Any
 
 import click
 import uvicorn
@@ -45,6 +47,8 @@ from forge.proxy.converters import (
     convert_openai_to_anthropic,
     convert_openai_to_anthropic_sse,
 )
+from forge.proxy.cost_logger import log_request_cost
+from forge.proxy.cost_tracker import CostTracker
 from forge.proxy.data_models import (
     MessagesRequest,
     TokenCountRequest,
@@ -57,6 +61,7 @@ from forge.proxy.utils import (
     log_request_beautifully,
     log_request_response,
     log_tool_event,
+    log_tool_failure,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,7 +78,146 @@ PREFERRED_PROVIDER = None
 
 # When a proxy is started under a proxy id, its config should be stable for the
 # lifetime of the process (no hot reload).
-PROXY_ID: str | None = None
+PROXY_ID: str | None = os.environ.get("FORGE_PROXY_ID")
+
+cost_tracker: CostTracker | None = None
+
+
+def _initialize_cost_tracker_from_config() -> CostTracker:
+    """Initialize request cost tracking in the module serving FastAPI traffic.
+
+    ``python -m forge.proxy.server`` executes this file as ``__main__``, while
+    uvicorn imports ``forge.proxy.server:app`` for request handling. Module
+    globals therefore need to be initialized in the imported app module too.
+    """
+    global cost_tracker
+    if cost_tracker is not None:
+        return cost_tracker
+
+    from forge.config.schema import CostConfig
+
+    cost_cfg = getattr(config.proxy, "costs", None) or CostConfig()
+    if cost_cfg.caps.per_day is not None or cost_cfg.caps.per_month is not None:
+        from forge.core.paths import get_forge_home
+
+        cost_tracker = CostTracker(
+            daily_cap_usd=cost_cfg.caps.per_day,
+            monthly_cap_usd=cost_cfg.caps.per_month,
+            cap_mode=cost_cfg.cap_mode,
+            on_cap_hit=cost_cfg.on_cap_hit,
+        )
+        cost_tracker.bootstrap_from_logs(get_forge_home() / "costs" / "requests", proxy_id=PROXY_ID)
+    else:
+        cost_tracker = CostTracker()
+    return cost_tracker
+
+
+def _ensure_runtime_state() -> None:
+    """Ensure the imported app module has proxy config and runtime trackers."""
+    if PROXY_ID is None:
+        reload()
+    elif not config.proxy.active_template:
+        reload(proxy_id=PROXY_ID)
+
+    _initialize_cost_tracker_from_config()
+
+
+def _calc_and_log_cost(
+    *,
+    model: str,
+    tier: str,
+    input_tokens: int,
+    output_tokens: int,
+    cached_tokens: int,
+    latency_ms: float,
+    failed: bool,
+    request_id: str,
+) -> int:
+    """Calculate cost in microdollars and write to the persistent cost log.
+
+    Best-effort: pricing/logging failures return 0 cost and warn.
+    Never raises — cost tracking must not break the proxy request path.
+    """
+    try:
+        from forge.core.models.pricing import calculate_cost, get_pricing
+
+        cost_micros = calculate_cost(model, input_tokens, output_tokens, cached_tokens)
+        pricing = get_pricing(model)
+
+        log_request_cost(
+            proxy_id=PROXY_ID or "unknown",
+            model=model,
+            tier=tier,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            cost_micros=cost_micros,
+            latency_ms=latency_ms,
+            failed=failed,
+            request_id=request_id,
+            pricing_source=pricing.source,
+        )
+
+        if cost_tracker is not None:
+            cost_tracker.record(cost_micros)
+
+        return cost_micros
+    except Exception as e:
+        logger.warning("Cost calculation failed for model=%s (non-fatal): %s", model, e)
+        return 0
+
+
+_CAP_CONFIG_KEY = {"daily": "per_day", "monthly": "per_month"}
+
+
+def _cap_result_message(cap_result) -> str:
+    """Format a spend cap result for HTTP headers and errors."""
+    cap_type = cap_result.cap_type or "configured"
+    config_key = _CAP_CONFIG_KEY.get(cap_type, f"per_{cap_type}")
+    return (
+        f"{'Projected ' if cap_result.projected else ''}"
+        f"{cap_type} spend cap reached: "
+        f"${cap_result.current_micros / 1_000_000:.2f} / "
+        f"${cap_result.limit_micros / 1_000_000:.2f}. "
+        f"Adjust with: forge proxy set <id> costs.caps.{config_key}=<amount>"
+    )
+
+
+def _with_spend_warning(headers: dict[str, str], warning: str | None) -> dict[str, str]:
+    """Attach the optional spend warning header to a response header dict."""
+    if warning:
+        headers["X-Spend-Warning"] = warning
+    return headers
+
+
+def _textish_chars(value: object) -> int:
+    """Approximate text-bearing request payload size for strict cap preflight."""
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, dict):
+        total = 0
+        for key in ("content", "text", "thinking", "input", "name", "description"):
+            if key in value:
+                total += _textish_chars(value[key])
+        return total
+    if isinstance(value, (list, tuple)):
+        return sum(_textish_chars(item) for item in value)
+
+    total = 0
+    for attr in ("content", "text", "thinking", "input", "name", "description"):
+        if hasattr(value, attr):
+            total += _textish_chars(getattr(value, attr))
+    return total
+
+
+def _estimate_input_tokens(request_data: MessagesRequest) -> int:
+    """Approximate request input tokens for strict cap preflight."""
+    chars = _textish_chars(getattr(request_data, "system", None))
+    chars += _textish_chars(getattr(request_data, "messages", None))
+    chars += _textish_chars(getattr(request_data, "tools", None))
+    return chars // 4
 
 
 def _get_tier_override(tier: str) -> TierOverride | None:
@@ -88,6 +232,26 @@ def _get_tier_override(tier: str) -> TierOverride | None:
         return provider_cfg.tier_overrides.get(tier)
     except Exception:
         return None
+
+
+def _resolve_model_with_alternatives(tier: str, original_model_name: str | None, fallback_model: str) -> str:
+    """Resolve backend model, checking per-tier alternatives before the tier default.
+
+    Used by both message routing and token counting so model resolution is
+    consistent across both paths.  Strips ``[1m]`` context-window suffix before
+    lookup since it is a Claude Code hint, not a routing decision.
+    """
+    try:
+        provider_cfg = config.proxy.get_provider()
+        alt_models = provider_cfg.model_alternatives.get(tier, {})
+        if original_model_name and alt_models:
+            lookup = original_model_name.removesuffix("[1m]")
+            if lookup in alt_models:
+                return alt_models[lookup]
+    except Exception:
+        # Best-effort: degrade to fallback_model if provider config is unavailable
+        logger.debug("model_alternatives lookup failed, using tier default", exc_info=True)
+    return fallback_model
 
 
 @asynccontextmanager
@@ -190,8 +354,9 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
     request_id = raw_request.state.request_id
     start_time = time.time()
 
-    if PROXY_ID is None:
-        reload()
+    _ensure_runtime_state()
+
+    spend_warning: str | None = None
 
     # Resolve effective tier (routing invariants):
     # Precedence: request explicit tier > config.proxy.default_tier
@@ -226,22 +391,26 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
     # Check if original model is an explicit backend model (has provider prefix)
     # These should be passed through, not tier-resolved
-    is_explicit_backend = (
-        original_model_name is not None
-        and "/" in original_model_name
-        and any(
-            original_model_name.startswith(prefix)
-            for prefix in [
-                "openai/",
-                "anthropic/",
-                "vertex_ai/",
-                "bedrock/",
-                "gemini/",
-                "together_ai/",
-                "replicate/",
-            ]
+    if config.proxy.preferred_provider == "openrouter":
+        # OpenRouter: any provider/model format is explicit (google/, meta-llama/, etc.)
+        is_explicit_backend = original_model_name is not None and "/" in original_model_name
+    else:
+        is_explicit_backend = (
+            original_model_name is not None
+            and "/" in original_model_name
+            and any(
+                original_model_name.startswith(prefix)
+                for prefix in [
+                    "openai/",
+                    "anthropic/",
+                    "vertex_ai/",
+                    "bedrock/",
+                    "gemini/",
+                    "together_ai/",
+                    "replicate/",
+                ]
+            )
         )
-    )
 
     # Only use tier-resolved model for Anthropic-style or ambiguous requests
     # For explicit backend models, use what map_model_name() returned (usually pass-through)
@@ -252,9 +421,40 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             f"[{request_id}] Explicit backend model '{original_model_name}' - preserving as '{actual_model_id}'"
         )
     else:
-        # Anthropic-style or ambiguous - use tier-resolved model from unified config
-        actual_model_id = config.proxy.get_model_for_tier(resolved_tier)
+        # Anthropic-style or ambiguous — check alternatives, then fall back to tier default
+        tier_default = config.proxy.get_model_for_tier(resolved_tier)
+        actual_model_id = _resolve_model_with_alternatives(resolved_tier, original_model_name, tier_default)
         logger.debug(f"[{request_id}] Tier-resolved model: tier={resolved_tier} -> '{actual_model_id}'")
+
+    # Spend cap check (after model resolution so strict preflight prices the actual model)
+    if cost_tracker is not None and cost_tracker.has_caps:
+        projected = 0
+        if cost_tracker.cap_mode == "strict":
+            from forge.core.models.pricing import calculate_cost as _est_cost
+
+            _est_max_output = request_data.max_tokens or 4096
+            _est_input = _estimate_input_tokens(request_data)
+            try:
+                projected = _est_cost(actual_model_id, _est_input, _est_max_output, 0)
+            except Exception:
+                projected = 0
+
+        cap_result = cost_tracker.check_cap(projected_cost_micros=projected)
+        if cap_result.exceeded:
+            spend_warning = _cap_result_message(cap_result)
+            if cost_tracker.on_cap_hit == "reject":
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "type": "error",
+                        "error": {
+                            "type": "spend_cap_exceeded",
+                            "message": spend_warning,
+                        },
+                    },
+                    headers={"X-Request-ID": request_id},
+                )
+            logger.warning("[%s] %s", request_id, spend_warning)
 
     try:
         num_messages = len(request_data.messages) if request_data.messages else 0
@@ -262,7 +462,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
         tool_names = [tool.name for tool in request_data.tools] if request_data.tools else []
         has_system = bool(request_data.system)
 
-        await _check_client_tool_failures(request_data, request_id)
+        await _check_client_tool_failures(request_data, request_id, actual_model_id)
 
         # Detect provider BEFORE conversion to enable provider-specific schema handling
         detected_provider = client_factory.detect_provider_for_model(actual_model_id)
@@ -282,7 +482,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
         # Upstream LLM gateways may filter traffic by User-Agent; without this,
         # the proxy's OpenAI SDK default header could cause requests to be blocked.
         # Only inject for LiteLLM providers (other clients don't need it).
-        if provider_name in ("litellm_remote", "litellm_local"):
+        if provider_name in ("litellm_remote", "litellm_local", "openrouter"):
             incoming_user_agent = raw_request.headers.get("user-agent")
             if incoming_user_agent:
                 openai_request_dict["_user_agent"] = incoming_user_agent
@@ -343,7 +543,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 status_code=401,
                 detail={
                     "type": "authentication_error",
-                    "message": f"Authentication failed: {e}",
+                    "message": f"Authentication failed [{request_id}]",
                 },
             )
 
@@ -354,10 +554,11 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                     async for chunk in client.create_streaming_completion(openai_request_dict, request_id):
                         yield chunk
                 except ToolCallError as e:
+                    logger.error(f"[{request_id}] ToolCallError: {e}")
                     yield {
                         "error": {
                             "type": e.error_type,
-                            "message": str(e),
+                            "message": f"Tool call error [{request_id}]",
                         }
                     }
                 except ProxyStreamError as e:
@@ -365,7 +566,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                     yield {
                         "error": {
                             "type": e.error_type,
-                            "message": str(e),
+                            "message": f"Streaming request failed [{request_id}]",
                             "status_code": e.status_code,
                         }
                     }
@@ -374,9 +575,11 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 "X-Request-ID": request_id,
                 "X-Resolved-Tier": resolved_tier,
                 "X-Resolved-Model": actual_model_id,
+                "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
             }
+            headers = _with_spend_warning(headers, spend_warning)
 
             # Log streaming request (no response body available)
             duration_ms = (time.time() - start_time) * 1000
@@ -410,16 +613,31 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             )
 
             def _on_stream_complete(usage: dict[str, int], failed: bool, error_type: str | None) -> None:
+                elapsed = (time.time() - start_time) * 1000
+                in_tok = usage.get("input_tokens", 0)
+                out_tok = usage.get("output_tokens", 0)
+                cache_tok = usage.get("cached_tokens", 0)
+                cost = _calc_and_log_cost(
+                    model=actual_model_id,
+                    tier=resolved_tier,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    cached_tokens=cache_tok,
+                    latency_ms=elapsed,
+                    failed=failed,
+                    request_id=request_id,
+                )
                 proxy_metrics.record_request(
                     tier=resolved_tier,
                     model=actual_model_id,
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
-                    cached_tokens=usage.get("cached_tokens", 0),
-                    latency_ms=(time.time() - start_time) * 1000,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    cached_tokens=cache_tok,
+                    latency_ms=elapsed,
                     streaming=True,
                     failed=failed,
                     error_type=error_type,
+                    cost_micros=cost,
                 )
 
             return StreamingResponse(
@@ -451,18 +669,31 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
                 duration_ms = (time.time() - start_time) * 1000
 
-                # Record metrics (extract from openai_response which has cached_tokens)
                 _usage = openai_response.get("usage", {})
+                _in = _usage.get("prompt_tokens", 0)
+                _out = _usage.get("completion_tokens", 0)
+                _cached = _usage.get("cached_tokens", 0)
+                _cost = _calc_and_log_cost(
+                    model=actual_model_id,
+                    tier=resolved_tier,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cached_tokens=_cached,
+                    latency_ms=duration_ms,
+                    failed=False,
+                    request_id=request_id,
+                )
                 proxy_metrics.record_request(
                     tier=resolved_tier,
                     model=actual_model_id,
-                    input_tokens=_usage.get("prompt_tokens", 0),
-                    output_tokens=_usage.get("completion_tokens", 0),
-                    cached_tokens=_usage.get("cached_tokens", 0),
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cached_tokens=_cached,
                     latency_ms=duration_ms,
                     streaming=False,
                     failed=False,
                     error_type=None,
+                    cost_micros=_cost,
                 )
 
                 asyncio.create_task(
@@ -495,17 +726,32 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 )
                 return JSONResponse(
                     content=response_dict,
-                    headers={
-                        "X-Request-ID": request_id,
-                        "X-Resolved-Tier": resolved_tier,
-                        "X-Resolved-Model": actual_model_id,
-                    },
+                    headers=_with_spend_warning(
+                        {
+                            "X-Request-ID": request_id,
+                            "X-Resolved-Tier": resolved_tier,
+                            "X-Resolved-Model": actual_model_id,
+                            "X-Request-Cost": f"{_cost / 1_000_000:.6f}",
+                            "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
+                        },
+                        spend_warning,
+                    ),
                 )
 
             except ToolCallError as e:
                 duration_ms = (time.time() - start_time) * 1000
                 error_msg = str(e)
 
+                _tc_cost = _calc_and_log_cost(
+                    model=actual_model_id,
+                    tier=resolved_tier,
+                    input_tokens=0,
+                    output_tokens=0,
+                    cached_tokens=0,
+                    latency_ms=duration_ms,
+                    failed=True,
+                    request_id=request_id,
+                )
                 proxy_metrics.record_request(
                     tier=resolved_tier,
                     model=actual_model_id,
@@ -516,6 +762,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                     streaming=False,
                     failed=True,
                     error_type="tool_call_error",
+                    cost_micros=_tc_cost,
                 )
 
                 asyncio.create_task(
@@ -571,28 +818,64 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
                 retry_duration_ms = (time.time() - start_time) * 1000
                 _retry_usage = openai_response.get("usage", {})
+                _ri = _retry_usage.get("prompt_tokens", 0)
+                _ro = _retry_usage.get("completion_tokens", 0)
+                _rc = _retry_usage.get("cached_tokens", 0)
+                _rcost = _calc_and_log_cost(
+                    model=actual_model_id,
+                    tier=resolved_tier,
+                    input_tokens=_ri,
+                    output_tokens=_ro,
+                    cached_tokens=_rc,
+                    latency_ms=retry_duration_ms,
+                    failed=False,
+                    request_id=request_id,
+                )
                 proxy_metrics.record_request(
                     tier=resolved_tier,
                     model=actual_model_id,
-                    input_tokens=_retry_usage.get("prompt_tokens", 0),
-                    output_tokens=_retry_usage.get("completion_tokens", 0),
-                    cached_tokens=_retry_usage.get("cached_tokens", 0),
+                    input_tokens=_ri,
+                    output_tokens=_ro,
+                    cached_tokens=_rc,
                     latency_ms=retry_duration_ms,
                     streaming=False,
                     failed=False,
                     error_type=None,
+                    cost_micros=_rcost,
                 )
 
                 response_dict = anthropic_response.model_dump()
                 response_dict["_request_id"] = request_id
-                return JSONResponse(content=response_dict)
+                return JSONResponse(
+                    content=response_dict,
+                    headers=_with_spend_warning(
+                        {
+                            "X-Request-ID": request_id,
+                            "X-Resolved-Tier": resolved_tier,
+                            "X-Resolved-Model": actual_model_id,
+                            "X-Request-Cost": f"{_rcost / 1_000_000:.6f}",
+                            "X-Cumulative-Cost": f"{proxy_metrics.total_cost_micros / 1_000_000:.6f}",
+                        },
+                        spend_warning,
+                    ),
+                )
 
     except HTTPException:
         raise
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
-        error_msg = f"Internal error: {str(e)}"
+        error_msg = f"Internal error [{request_id}]"
 
+        _err_cost = _calc_and_log_cost(
+            model=actual_model_id,
+            tier=resolved_tier,
+            input_tokens=0,
+            output_tokens=0,
+            cached_tokens=0,
+            latency_ms=duration_ms,
+            failed=True,
+            request_id=request_id,
+        )
         proxy_metrics.record_request(
             tier=resolved_tier,
             model=actual_model_id,
@@ -603,6 +886,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             streaming=request_data.stream or False,
             failed=True,
             error_type="api_error",
+            cost_micros=_err_cost,
         )
 
         asyncio.create_task(
@@ -644,30 +928,12 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
     """Count tokens using the appropriate client's token counter."""
     request_id = raw_request.state.request_id
 
-    if PROXY_ID is None:
-        reload()
+    _ensure_runtime_state()
 
     try:
-        # Get model info — map AFTER reload() for fresh config
         original_model_name = request_data.original_model_name
-        actual_model_id = map_model_name(request_data.model)
 
-        logger.info(f"[{request_id}] Token counting: original='{original_model_name}', target='{actual_model_id}'")
-
-        # Detect provider for token counting (schema normalization doesn't affect token count much, but consistency is good)
-        detected_provider = client_factory.detect_provider_for_model(actual_model_id)
-        provider_name = detected_provider.value
-
-        simulated_request = MessagesRequest(
-            model=actual_model_id,
-            messages=request_data.messages,
-            system=request_data.system,
-            max_tokens=1,
-        )
-        openai_dict = convert_anthropic_to_openai(simulated_request, provider=provider_name)
-        messages = openai_dict.get("messages", [])
-
-        # Resolve effective tier for token counting (match routing invariants)
+        # Resolve tier FIRST (same precedence as message routing)
         if request_data.has_explicit_tier and request_data.tier:
             resolved_tier: str = request_data.tier
             resolved_tier_source = "request"
@@ -684,10 +950,52 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
             )
 
         request_data.tier = resolved_tier
+
+        # Match the /v1/messages model resolution: explicit backend models are
+        # preserved; Anthropic-style or ambiguous models go through tier + alternatives.
+        mapped_model = map_model_name(request_data.model)
+
+        if config.proxy.preferred_provider == "openrouter":
+            is_explicit_backend = original_model_name is not None and "/" in original_model_name
+        else:
+            is_explicit_backend = (
+                original_model_name is not None
+                and "/" in original_model_name
+                and any(
+                    original_model_name.startswith(p)
+                    for p in [
+                        "openai/",
+                        "anthropic/",
+                        "vertex_ai/",
+                        "bedrock/",
+                        "gemini/",
+                        "together_ai/",
+                        "replicate/",
+                    ]
+                )
+            )
+
+        if is_explicit_backend:
+            actual_model_id = mapped_model
+        else:
+            tier_default = config.proxy.get_model_for_tier(resolved_tier)
+            actual_model_id = _resolve_model_with_alternatives(resolved_tier, original_model_name, tier_default)
+
+        logger.info(f"[{request_id}] Token counting: original='{original_model_name}', target='{actual_model_id}'")
         logger.debug(f"[{request_id}] Token count resolved tier: {resolved_tier} (source={resolved_tier_source})")
 
-        # Note: system message is already included in messages from convert_anthropic_to_openai
-        # Get client and count tokens (pass tier for tier-specific hyperparameters)
+        detected_provider = client_factory.detect_provider_for_model(actual_model_id)
+        provider_name = detected_provider.value
+
+        simulated_request = MessagesRequest(
+            model=actual_model_id,
+            messages=request_data.messages,
+            system=request_data.system,
+            max_tokens=1,
+        )
+        openai_dict = convert_anthropic_to_openai(simulated_request, provider=provider_name)
+        messages = openai_dict.get("messages", [])
+
         client = await client_factory.get_client(actual_model_id, tier=resolved_tier)
         token_count = await client.count_tokens(messages)
 
@@ -698,26 +1006,30 @@ async def count_tokens(request_data: TokenCountRequest, raw_request: Request):
         logger.error(f"[{request_id}] Token counting failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail={"type": "api_error", "message": f"Token counting failed: {str(e)}"},
+            detail={"type": "api_error", "message": f"Token counting failed [{request_id}]"},
         )
+
+
+DEFAULT_CONTEXT_WINDOW = 200000
 
 
 def get_context_window(model_name: str) -> int:
     """Get context window size for a model from the central catalog.
 
-    This function delegates to core.models which is the single source of truth
-    for model intrinsic properties. Unknown models will raise ModelCatalogError.
+    Falls back to a safe default for models not in the catalog (e.g.,
+    OpenRouter models outside Forge's known set).
 
     Args:
         model_name: Model ID (canonical or alias like 'openai/gpt-5.5')
 
     Returns:
         Context window size in tokens.
-
-    Raises:
-        ModelCatalogError: If the model is not in the catalog.
     """
-    from forge.core.models import get_context_window_tokens
+    from forge.core.models import get_context_window_tokens, model_exists
+
+    if not model_exists(model_name):
+        logger.debug(f"Model {model_name!r} not in catalog, using default context window")
+        return DEFAULT_CONTEXT_WINDOW
 
     return get_context_window_tokens(model_name)
 
@@ -761,6 +1073,7 @@ async def root(request: Request):
         request_host=request_host,
         request_port=request_port,
         env_port=env_port,
+        process_proxy_id=os.environ.get("FORGE_PROXY_ID"),
     )
 
     # Tier mappings exposed via GET / for status line and session context
@@ -902,9 +1215,21 @@ async def log_requests_middleware(request: Request, call_next):
         )
 
 
-async def _check_client_tool_failures(request_data: MessagesRequest, request_id: str):
-    """Check for client-side tool execution failures in the request."""
-    for msg in request_data.messages:
+async def _check_client_tool_failures(request_data: MessagesRequest, request_id: str, mapped_model: str):
+    """Check for client-side tool execution failures in the request.
+
+    Only scans the most recent user message. Older tool_result blocks were
+    already inspected on prior requests; re-scanning them produces duplicate
+    log entries and skews telemetry.
+    """
+    latest_user_msg = next(
+        (m for m in reversed(request_data.messages) if m.role == "user" and isinstance(m.content, list)),
+        None,
+    )
+    if latest_user_msg is None:
+        return
+
+    for msg in (latest_user_msg,):
         if msg.role == "user" and isinstance(msg.content, list):
             for block in msg.content:
                 if hasattr(block, "type") and block.type == "tool_result":
@@ -953,7 +1278,7 @@ async def _check_client_tool_failures(request_data: MessagesRequest, request_id:
                             error_content = block.content
 
                     if is_error and tool_use_id:
-                        tool_name = _find_tool_name(request_data.messages, msg, tool_use_id)
+                        tool_name, tool_input = _find_tool_use_info(request_data.messages, msg, tool_use_id)
 
                         # Check if this is a stale cleared tool result (not actionable)
                         is_cleared_content = (
@@ -992,6 +1317,16 @@ async def _check_client_tool_failures(request_data: MessagesRequest, request_id:
                         # Only log as failure if we have actual error content (not cleared)
                         if error_content and not is_cleared_content:
                             asyncio.create_task(
+                                log_tool_failure(
+                                    request_id=request_id,
+                                    mapped_model=mapped_model,
+                                    tool_name=tool_name,
+                                    tool_use_id=tool_use_id,
+                                    tool_input=tool_input,
+                                    error_content=error_content,
+                                )
+                            )
+                            asyncio.create_task(
                                 log_tool_event(
                                     request_id=request_id,
                                     tool_name=tool_name,
@@ -1006,8 +1341,8 @@ async def _check_client_tool_failures(request_data: MessagesRequest, request_id:
                             )
 
 
-def _find_tool_name(messages, current_msg, tool_use_id):
-    """Find tool name from message history."""
+def _find_tool_use_info(messages, current_msg, tool_use_id) -> tuple[str | None, dict[str, Any] | None]:
+    """Find tool name and input parameters from message history."""
     current_idx = messages.index(current_msg)
 
     for i in range(current_idx - 1, -1, -1):
@@ -1020,8 +1355,11 @@ def _find_tool_name(messages, current_msg, tool_use_id):
                     and hasattr(block, "id")
                     and block.id == tool_use_id
                 ):
-                    return getattr(block, "name", None)
-    return None
+                    return (
+                        getattr(block, "name", None),
+                        getattr(block, "input", None),
+                    )
+    return None, None
 
 
 def find_available_port(start_port: int, max_attempts: int = 10) -> int:
@@ -1042,10 +1380,10 @@ def find_available_port(start_port: int, max_attempts: int = 10) -> int:
     "--template",
     type=str,
     required=True,
-    help="Configuration template to use (e.g., litellm-gemini, litellm-openai, litellm-anthropic)",
+    help="Configuration template to use (e.g., openrouter-gemini, openrouter-openai, openrouter-anthropic)",
 )
 @click.option("--port", type=int, default=8082, help="Port to run the server on (default: 8082)")
-@click.option("--host", default="0.0.0.0", help="Host to bind the server to (default: 0.0.0.0)")
+@click.option("--host", default="127.0.0.1", help="Host to bind the server to (default: 127.0.0.1)")
 @click.option("--reload", is_flag=True, help="Enable auto-reload on code changes")
 @click.option(
     "--auto-port",
@@ -1154,9 +1492,16 @@ def main(
     os.environ["ACTIVE_PORT"] = str(actual_port)
     os.environ["PREFERRED_PROVIDER"] = provider
 
-    # Freeze proxy id for request handlers (no hot reload in proxy mode)
+    # Freeze proxy id for request handlers. Set in env so the uvicorn worker
+    # (which reimports the module when app is passed as a string) picks it up.
     global PROXY_ID
     PROXY_ID = effective_proxy_id
+    if effective_proxy_id is not None:
+        os.environ["FORGE_PROXY_ID"] = effective_proxy_id
+
+    # Initialize in this module for direct/app-object runs; the imported
+    # uvicorn app module initializes itself lazily via _ensure_runtime_state().
+    _initialize_cost_tracker_from_config()
 
     provider_cfg = cfg.proxy.get_provider(provider)
     tier_models = {

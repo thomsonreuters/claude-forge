@@ -39,7 +39,7 @@ class TestPhase0IdentityFields:
 
     def test_start_session_populates_identity_fields(self, forge_workspace: ContainerLike) -> None:
         """forge session start should populate forge_root, checkout_root, relative_path in the index."""
-        forge_workspace.exec("cd /workspace && forge extensions enable --local --profile minimal")
+        forge_workspace.exec("cd /workspace && forge extensions enable --scope local --profile minimal")
 
         result = forge_workspace.exec("cd /workspace && forge session start identity-test")
         assert result.returncode == 0, f"Session start failed: {result.stderr}"
@@ -57,7 +57,7 @@ class TestPhase0IdentityFields:
 
     def test_session_state_has_forge_root(self, forge_workspace: ContainerLike) -> None:
         """Session manifest should have forge_root field."""
-        forge_workspace.exec("cd /workspace && forge extensions enable --local --profile minimal")
+        forge_workspace.exec("cd /workspace && forge extensions enable --scope local --profile minimal")
 
         result = forge_workspace.exec("cd /workspace && forge session start state-test")
         assert result.returncode == 0, f"Session start failed: {result.stderr}"
@@ -71,7 +71,7 @@ class TestPhase1IndexShapeValidation:
 
     def test_pre_oss_v1_bare_key_index_rejected(self, forge_workspace: ContainerLike) -> None:
         """A pre-OSS v1 bare-key index should fail with reset instructions."""
-        forge_workspace.exec("cd /workspace && forge extensions enable --local --profile minimal")
+        forge_workspace.exec("cd /workspace && forge extensions enable --scope local --profile minimal")
 
         # Ensure the index directory exists
         forge_workspace.mkdir("$HOME/.forge/sessions")
@@ -125,7 +125,7 @@ class TestPhase2NoCwdFallback:
 
     def test_status_line_no_session_without_env(self, forge_workspace: ContainerLike) -> None:
         """Status line should not detect sessions via CWD when FORGE_SESSION is unset."""
-        forge_workspace.exec("cd /workspace && forge extensions enable --local --profile minimal")
+        forge_workspace.exec("cd /workspace && forge extensions enable --scope local --profile minimal")
 
         # Create a session (creates .forge/sessions/ in CWD)
         forge_workspace.exec("cd /workspace && forge session start cwd-test")
@@ -146,7 +146,7 @@ class TestPhase2NoCwdFallback:
 
     def test_status_line_shows_session_with_env(self, forge_workspace: ContainerLike) -> None:
         """Status line should detect session when FORGE_SESSION is set."""
-        forge_workspace.exec("cd /workspace && forge extensions enable --local --profile minimal")
+        forge_workspace.exec("cd /workspace && forge extensions enable --scope local --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start env-test")
 
         # Run status line WITH FORGE_SESSION set
@@ -162,7 +162,7 @@ class TestPhase2NoCwdFallback:
 
     def test_hook_resolution_without_env_fails_gracefully(self, forge_workspace: ContainerLike) -> None:
         """Hook session resolution should return None without FORGE_SESSION (no CWD scan)."""
-        forge_workspace.exec("cd /workspace && forge extensions enable --local --profile minimal")
+        forge_workspace.exec("cd /workspace && forge extensions enable --scope local --profile minimal")
 
         # Create a session and its manifest
         forge_workspace.exec("cd /workspace && forge session start hook-test")
@@ -188,7 +188,7 @@ class TestPhase3SessionListScopes:
 
     def test_session_list_scope_matrix(self, forge_workspace: ContainerLike) -> None:
         """repo/project/all scopes should split sessions by logical repo vs Forge project."""
-        forge_workspace.exec("cd /workspace && forge extensions enable --local --profile minimal")
+        forge_workspace.exec("cd /workspace && forge extensions enable --scope local --profile minimal")
 
         root_result = forge_workspace.exec("cd /workspace && forge session start repo-root --no-launch")
         assert root_result.returncode == 0, f"Root session start failed: {root_result.stderr}"
@@ -236,7 +236,7 @@ class TestPhase7Rule1Enforcement:
         # Start from a completely clean repo (no .forge/, no .claude/)
         result = forge_workspace.exec("""
             cd /workspace
-            forge extensions enable --local --profile minimal
+            forge extensions enable --scope local --profile minimal
             forge session start rule1-test --no-launch
         """)
         assert result.returncode == 0, f"Enable+start failed: {result.stderr}"
@@ -254,7 +254,7 @@ class TestPhase7Rule1Enforcement:
 
     def test_worktree_start_uses_parent_forge_root(self, forge_workspace: ContainerLike) -> None:
         """--worktree session resolves forge_root from the parent repo, not the new worktree."""
-        forge_workspace.exec("cd /workspace && forge extensions enable --local --profile minimal")
+        forge_workspace.exec("cd /workspace && forge extensions enable --scope local --profile minimal")
 
         result = forge_workspace.exec("cd /workspace && forge session start wt-rule1 --worktree --no-proxy --no-launch")
         assert result.returncode == 0, f"Worktree start failed: {result.stderr}\n{result.stdout}"

@@ -8,6 +8,7 @@
 # differentiated by tier_overrides (reasoning_effort and verbosity).
 
 proxy:
+  family: openai
   preferred_provider: litellm
   default_port: 8085
 

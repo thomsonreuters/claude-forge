@@ -48,7 +48,14 @@ def _mock_store(registry: ProxyRegistry) -> MagicMock:
 
 
 def _spec(name: str, proxy: str) -> ModelSpec:
-    return ModelSpec(name=name, proxy=proxy, model_flag=None, description="Test")
+    return ModelSpec(
+        name=name,
+        model_id=name,
+        family="openai",
+        provider_refs=(("openrouter", f"openai/{name}"),),
+        description="Test",
+        preferred_proxy=proxy,
+    )
 
 
 class TestStaleProxyNotReady:
@@ -80,12 +87,8 @@ class TestStaleProxyNotReady:
 
         assert reachable is False
 
-    def test_model_unavailable_when_proxy_not_responding(self):
-        with patch(
-            "forge.core.reactive.proxy.check_proxy_reachable",
-            return_value=(False, "Proxy 'litellm-openai' not responding", "http://localhost:8085"),
-        ):
-            result = check_model_availability([_spec("gpt-5.5", "litellm-openai")])
+    def test_model_unavailable_when_no_proxy_resolves(self):
+        """check_model_availability reports unavailable when routing finds no proxy."""
+        result = check_model_availability([_spec("gpt-5.5", "litellm-openai")])
 
         assert result[0].status == "unavailable"
-        assert "not responding" in result[0].reason

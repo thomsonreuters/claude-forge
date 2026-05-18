@@ -10,10 +10,12 @@ class LLMError(Exception):
 class NoApiKeyError(LLMError):
     """Raised when required API key is not configured."""
 
-    def __init__(self, provider: str, env_var: str) -> None:
+    def __init__(self, provider: str, env_var: str, *, detail: str | None = None) -> None:
         self.provider = provider
         self.env_var = env_var
-        super().__init__(f"API key not configured for {provider}. Set {env_var}.")
+        self.detail = detail
+        msg = detail if detail else f"API key not configured for {provider}. Set {env_var}."
+        super().__init__(msg)
 
 
 class AuthenticationError(LLMError):

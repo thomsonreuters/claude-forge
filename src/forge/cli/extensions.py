@@ -194,7 +194,27 @@ def _print_completion_message(
         console.print(f"\n[dim]Tip: Additional skills available with --profile {required}: {skill_list}[/dim]")
 
 
-def _resolve_project_root(scope: InstallScope, *, auto_create: bool = False) -> Path | None:
+def _validate_anchor(anchor: Path) -> None:
+    """Reject anchors that point inside a ``.claude/`` directory.
+
+    The ``.claude/`` creation in ``enable_cmd`` runs before the installer's
+    ``get_target_root()`` guard, so an anchor like ``/repo/.claude`` would
+    create ``/repo/.claude/.claude/`` before the guard fires.
+    """
+    resolved = anchor.expanduser().resolve()
+    if ".claude" in resolved.parts:
+        raise click.UsageError(
+            f"--root points inside a .claude directory: {anchor}\n"
+            "Provide the project root instead (the parent of .claude/)."
+        )
+
+
+def _resolve_project_root(
+    scope: InstallScope,
+    *,
+    anchor: Path | None = None,
+    auto_create: bool = False,
+) -> Path | None:
     """Resolve canonical project root for a given scope.
 
     For user scope, returns None.
@@ -202,8 +222,11 @@ def _resolve_project_root(scope: InstallScope, *, auto_create: bool = False) -> 
     the canonicalized project root.  When *auto_create* is True and no
     ``.claude/`` exists, creates it at the git root (Rule 4).
 
+    When *anchor* is provided, skips the walk-up and uses that path directly.
+
     Args:
         scope: The installation scope.
+        anchor: Explicit target directory (skips walk-up when set).
         auto_create: Whether to create ``.claude/`` if missing (Rule 4).
 
     Returns:
@@ -215,6 +238,12 @@ def _resolve_project_root(scope: InstallScope, *, auto_create: bool = False) -> 
     """
     if scope == InstallScope.USER:
         return None
+
+    if anchor is not None:
+        resolved = anchor.expanduser().resolve()
+        if auto_create and not (resolved / ".claude").is_dir():
+            _create_claude_dir(resolved)
+        return resolved
 
     try:
         _detected_scope, project_root = find_claude_root()
@@ -231,7 +260,8 @@ def _resolve_project_root(scope: InstallScope, *, auto_create: bool = False) -> 
                 _create_claude_dir(git_root)
             return git_root
         raise NoClaudeDirectoryError(
-            "No .claude directory found. Use --user for global install, " "or run from within a Claude Code project."
+            "No .claude directory found. Use '--scope user' for global install, "
+            "or run from within a Claude Code project."
         )
 
     # Canonicalize to handle symlinks and ensure consistent keys
@@ -364,10 +394,10 @@ def _uninstall_all_installations(tracking: TrackingStore, yes: bool) -> None:
         console.print(f"[green]All {len(installations)} installation(s) disabled.[/green]")
 
 
-def _can_resolve_project_root(scope: InstallScope) -> bool:
+def _can_resolve_project_root(scope: InstallScope, *, anchor: Path | None = None) -> bool:
     """Check if project root can be resolved without raising."""
     try:
-        _resolve_project_root(scope)
+        _resolve_project_root(scope, anchor=anchor)
         return True
     except NoClaudeDirectoryError:
         return False
@@ -391,28 +421,19 @@ def extensions() -> None:
 
 @extensions.command("enable")
 @click.option(
-    "--user",
-    "-U",
-    "scope",
-    flag_value="user",
-    help="Personal scope → ~/.claude/settings.json",
+    "--scope",
+    "-S",
+    type=click.Choice(["local", "project", "user"]),
+    default=None,
+    help="Installation scope: local (gitignored), project (committed), user (global)",
 )
 @click.option(
-    "--project",
-    "-P",
-    "scope",
-    flag_value="project",
-    help="Team scope → .claude/settings.json (commit to repo)",
+    "--root",
+    "path",
+    type=click.Path(exists=True, file_okay=False, resolve_path=True),
+    default=None,
+    help="Target directory (default: walk up from cwd to find .claude/)",
 )
-@click.option(
-    "--local",
-    "-L",
-    "scope",
-    flag_value="local",
-    help="Local override → .claude/settings.local.json (gitignored)",
-)
-# Note: default is None (auto-detect). Walks up from cwd to find .claude/,
-# installs LOCAL there. Falls back to USER at home directory.
 @click.option(
     "--profile",
     "-p",
@@ -451,6 +472,7 @@ def extensions() -> None:
 @click.option("--dry-run", "-n", is_flag=True, help="Show plan without executing")
 def enable_cmd(
     scope: str | None,
+    path: str | None,
     profile: str,
     mode: str,
     with_modules: str | None,
@@ -461,21 +483,22 @@ def enable_cmd(
     """Enable Forge extensions.
 
     \b
-    Scope Detection (when no --user/--project/--local specified):
+    Scope Detection (when no --scope specified):
         Walks up from current directory looking for a .claude/ directory.
-        - If found: enables LOCAL in that project's .claude/settings.local.json
-        - If reached ~: enables USER in ~/.claude/settings.json
-        - If not found: fails (use --user for global scope outside a project)
+        - If found: enables local in that project's .claude/settings.local.json
+        - If in a git repo: enables local at the git root
+        - If reached ~: enables user in ~/.claude/settings.json
+        - If not found: fails (use --scope user outside a project)
 
     \b
     Examples:
-        forge extension enable                      # Auto-detect scope (see above)
-        forge extension enable --user               # Personal scope at ~/.claude
-        forge extension enable --local              # Local scope at .claude/settings.local.json
-        forge extension enable --profile minimal    # Commands only
-        forge extension enable --profile full       # Everything including status-line
-        forge extension enable --symlink            # Development mode
-        forge extension enable --dry-run            # Preview changes
+        forge extension enable                                # Auto-detect scope
+        forge extension enable --scope local                  # Local at nearest .claude/
+        forge extension enable --scope local --root /repo/api # Local at specific path
+        forge extension enable --root /repo/api               # Same (defaults to local)
+        forge extension enable --scope user                   # Global ~/.claude
+        forge extension enable --profile minimal              # Commands only
+        forge extension enable --dry-run                      # Preview changes
     """
     try:
         # Check Claude Code minimum version (hard-block: reject over warn)
@@ -486,6 +509,20 @@ def enable_cmd(
             console.print(f"[red]Error:[/red] {version_check.reason}")
             console.print("\n[dim]Tip: Run 'claude update' to upgrade.[/dim]")
             sys.exit(1)
+
+        anchor = Path(path) if path else None
+
+        # Validate: --scope user + --root is contradictory
+        if scope == "user" and anchor is not None:
+            raise click.UsageError("--scope user is global; --root is not applicable.")
+
+        # Validate: anchor must not point inside .claude/
+        if anchor is not None:
+            _validate_anchor(anchor)
+
+        # Default: --root without --scope implies local
+        if anchor is not None and scope is None:
+            scope = "local"
 
         # --- Scope resolution (Rule 4: auto-create .claude/ in git repos) ---
         needs_create = False
@@ -502,7 +539,7 @@ def enable_cmd(
             console.print(f"[dim]Auto-detected scope: {install_scope.value}[/dim]")
         else:
             install_scope = InstallScope(scope)
-            project_root = _resolve_project_root(install_scope, auto_create=False)
+            project_root = _resolve_project_root(install_scope, anchor=anchor, auto_create=False)
             if project_root is not None:
                 needs_create = not (project_root / ".claude").is_dir()
 
@@ -556,9 +593,14 @@ def enable_cmd(
 
                 _print_completion_message(plan, install_scope, project_root, TrackingStore())
 
+    except click.UsageError:
+        raise
     except NoClaudeDirectoryError as e:
         console.print(f"[red]Error:[/red] {e}")
-        console.print("\n[dim]Tip: Use --user/-U to enable globally, or run from a Claude Code project.[/dim]")
+        console.print(
+            "\n[dim]Tip: Use '--scope user' to enable globally, "
+            "or '--root <dir>' to target a specific directory.[/dim]"
+        )
         sys.exit(1)
     except SettingsConflictError as e:
         console.print(f"[red]Settings conflict:[/red] {e}")
@@ -570,22 +612,13 @@ def enable_cmd(
 
 
 @extensions.command("sync")
-@click.option("--user", "-U", "scope", flag_value="user", help="Personal (~/.claude)")
 @click.option(
-    "--project",
-    "-P",
-    "scope",
-    flag_value="project",
-    help="Team (.claude/settings.json)",
+    "--scope",
+    "-S",
+    type=click.Choice(["local", "project", "user"]),
+    default=None,
+    help="Installation scope",
 )
-@click.option(
-    "--local",
-    "-L",
-    "scope",
-    flag_value="local",
-    help="Local (.claude/settings.local.json)",
-)
-# Note: default is None (auto-detect). Finds nearest Forge installation.
 @click.option("--force", "-f", is_flag=True, help="Override conflicts")
 def sync_cmd(scope: str | None, force: bool) -> None:
     """Sync existing Forge extensions.
@@ -595,7 +628,7 @@ def sync_cmd(scope: str | None, force: bool) -> None:
     source.
 
     \b
-    Scope Detection (when no --user/--project/--local specified):
+    Scope Detection (when no --scope specified):
         Walks up from current directory looking for existing Forge extensions
         (detected by .settings.*.json.forge.* files in .claude/).
         - Checks LOCAL first, then PROJECT, then USER
@@ -603,8 +636,9 @@ def sync_cmd(scope: str | None, force: bool) -> None:
 
     \b
     Examples:
-        forge extension sync              # Sync Forge extensions
-        forge extension sync --force      # Force re-sync
+        forge extension sync                    # Sync Forge extensions
+        forge extension sync --scope local      # Sync local scope
+        forge extension sync --force            # Force re-sync
     """
     try:
         # Check Claude Code minimum version (same gate as enable)
@@ -657,20 +691,12 @@ def sync_cmd(scope: str | None, force: bool) -> None:
 
 
 @extensions.command("disable")
-@click.option("--user", "-U", "scope", flag_value="user", help="Personal (~/.claude)")
 @click.option(
-    "--project",
-    "-P",
-    "scope",
-    flag_value="project",
-    help="Team (.claude/settings.json)",
-)
-@click.option(
-    "--local",
-    "-L",
-    "scope",
-    flag_value="local",
-    help="Local (.claude/settings.local.json)",
+    "--scope",
+    "-S",
+    type=click.Choice(["local", "project", "user"]),
+    default=None,
+    help="Installation scope",
 )
 @click.option(
     "--all",
@@ -679,7 +705,6 @@ def sync_cmd(scope: str | None, force: bool) -> None:
     is_flag=True,
     help="Disable ALL tracked installations",
 )
-# Note: default is None (auto-detect). Finds nearest Forge installation.
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option("--force", "-f", is_flag=True, hidden=True, help="Deprecated alias for --yes")
 def disable_cmd(scope: str | None, uninstall_all: bool, yes: bool, force: bool) -> None:
@@ -689,7 +714,7 @@ def disable_cmd(scope: str | None, uninstall_all: bool, yes: bool, force: bool) 
     User modifications are preserved.
 
     \b
-    Scope Detection (when no --user/--project/--local/--all specified):
+    Scope Detection (when no --scope/--all specified):
         Walks up from current directory looking for existing Forge extensions
         (detected by .settings.*.json.forge.* files in .claude/).
         - Checks LOCAL first, then PROJECT, then USER
@@ -699,8 +724,17 @@ def disable_cmd(scope: str | None, uninstall_all: bool, yes: bool, force: bool) 
     --all mode:
         Disables ALL tracked installations (user + all local/project).
         Uses ~/.forge/installed.json to find all installations.
+
+    \b
+    Examples:
+        forge extension disable                   # Auto-detect scope
+        forge extension disable --scope local     # Disable local scope
+        forge extension disable --all --yes       # Disable everything
     """
     yes = yes or force
+
+    if uninstall_all and scope is not None:
+        raise click.UsageError("--all and --scope are mutually exclusive.")
     try:
         tracking = TrackingStore()
 
@@ -784,37 +818,51 @@ def disable_cmd(scope: str | None, uninstall_all: bool, yes: bool, force: bool) 
 
 
 @extensions.command("status")
-@click.option("--user", "-U", "scope", flag_value="user", help="Personal (~/.claude)")
 @click.option(
-    "--project",
-    "-P",
-    "scope",
-    flag_value="project",
-    help="Team (.claude/settings.json)",
+    "--scope",
+    "-S",
+    type=click.Choice(["local", "project", "user"]),
+    default=None,
+    help="Installation scope",
 )
 @click.option(
-    "--local",
-    "-L",
-    "scope",
-    flag_value="local",
-    help="Local (.claude/settings.local.json)",
+    "--root",
+    "path",
+    type=click.Path(exists=True, file_okay=False, resolve_path=True),
+    default=None,
+    help="Target directory to check (default: walk up from cwd)",
 )
 @click.option("--all", "-a", "show_all", is_flag=True, help="Show all scopes")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
-# Note: default is None (auto-detect). Shows nearest Forge installation.
-def status_cmd(scope: str | None, show_all: bool, as_json: bool) -> None:
+def status_cmd(scope: str | None, path: str | None, show_all: bool, as_json: bool) -> None:
     """Show extensions status.
 
     Displays what Forge has enabled in the specified scope(s).
 
     \b
-    Scope Detection (when no --user/--project/--local/--all specified):
+    Scope Detection (when no --scope/--all specified):
         Walks up from current directory looking for existing Forge installations
         (detected by .settings.*.json.forge.* files in .claude/).
         - Checks LOCAL first, then PROJECT, then USER
         - If no installation found, shows all scopes for informational purposes
+
+    \b
+    Examples:
+        forge extension status                                # Auto-detect
+        forge extension status --scope local --root /repo/api # Check specific install
+        forge extension status --root /repo/api               # Auto-detect scope at path
+        forge extension status --all                          # Show all scopes
     """
     import os
+
+    anchor = Path(path) if path else None
+
+    if show_all and scope is not None:
+        raise click.UsageError("--all and --scope are mutually exclusive.")
+    if show_all and anchor is not None:
+        raise click.UsageError("--all and --root are mutually exclusive.")
+    if scope == "user" and anchor is not None:
+        raise click.UsageError("--scope user is global; --root is not applicable.")
 
     try:
         tracking = TrackingStore()
@@ -825,12 +873,24 @@ def status_cmd(scope: str | None, show_all: bool, as_json: bool) -> None:
 
     cwd = os.getcwd()
 
+    # When auto-detect finds the real install root (which may differ from
+    # anchor if --root points at a subdirectory), use it for tracking lookups.
+    detected_root: Path | None = None
+
     detected_scope_name: str | None = None
     if show_all:
         scopes = [InstallScope.USER, InstallScope.PROJECT, InstallScope.LOCAL]
-    elif scope is None:
+    elif scope is None and anchor is None:
         try:
-            detected_scope, _ = find_forge_installation()
+            detected_scope, detected_root = find_forge_installation()
+            detected_scope_name = detected_scope.value
+            scopes = [detected_scope]
+        except NoForgeInstallationError:
+            scopes = [InstallScope.USER, InstallScope.PROJECT, InstallScope.LOCAL]
+    elif scope is None and anchor is not None:
+        # --root without --scope: auto-detect scope at that path
+        try:
+            detected_scope, detected_root = find_forge_installation(start=anchor)
             detected_scope_name = detected_scope.value
             scopes = [detected_scope]
         except NoForgeInstallationError:
@@ -838,13 +898,16 @@ def status_cmd(scope: str | None, show_all: bool, as_json: bool) -> None:
     else:
         scopes = [InstallScope(scope)]
 
+    # Use the detected root (from walk-up) over the raw anchor for lookups.
+    effective_anchor = detected_root if detected_root is not None else anchor
+
     if as_json:
         import json
 
         data = []
         for s in scopes:
             try:
-                project_root = _resolve_project_root(s)
+                project_root = _resolve_project_root(s, anchor=effective_anchor)
                 project_path_str = str(project_root) if project_root else None
             except NoClaudeDirectoryError:
                 project_path_str = None
@@ -870,15 +933,15 @@ def status_cmd(scope: str | None, show_all: bool, as_json: bool) -> None:
     if detected_scope_name:
         console.print(f"[dim]Auto-detected scope: {detected_scope_name}[/dim]")
     elif scope is None and not show_all:
-        console.print(f"[dim]No extensions detected in {display_path(cwd)}[/dim]")
+        location = display_path(str(anchor)) if anchor else display_path(cwd)
+        console.print(f"[dim]No extensions detected in {location}[/dim]")
         console.print("[dim]Showing all scopes for this location:[/dim]")
 
     for s in scopes:
         try:
-            project_root = _resolve_project_root(s)
+            project_root = _resolve_project_root(s, anchor=effective_anchor)
             project_path_str = str(project_root) if project_root else None
         except NoClaudeDirectoryError:
-            # No .claude directory found - show "not installed" gracefully
             project_path_str = None
 
         installation = tracking.get_installation(s.value, project_path_str)
@@ -886,13 +949,12 @@ def status_cmd(scope: str | None, show_all: bool, as_json: bool) -> None:
         console.print(f"\n[bold]Scope: {s.value}[/bold]")
 
         if installation is None:
-            # Show path being checked to clarify why "Not installed"
             if s == InstallScope.USER:
                 location = "~/.claude"
             elif project_path_str:
                 location = project_path_str
             else:
-                location = cwd
+                location = str(anchor) if anchor else cwd
             console.print(f"  [dim]Not enabled at {display_path(location)}[/dim]")
             continue
 
@@ -919,7 +981,7 @@ def status_cmd(scope: str | None, show_all: bool, as_json: bool) -> None:
             for f in installation.files:
                 console.print(f"    - {display_path(f.target_path)}")
 
-    if scope is None and not show_all:
+    if scope is None and not show_all and anchor is None:
         local_installed = any(
             tracking.get_installation(
                 s.value,

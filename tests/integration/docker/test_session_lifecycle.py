@@ -58,7 +58,7 @@ class TestWorktreeSemantics:
 
     def test_multiple_sessions_in_same_worktree(self, forge_workspace: ContainerLike) -> None:
         """Verify multiple sessions can coexist in same worktree (per-session dirs)."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
 
         # Create first session
         result1 = forge_workspace.exec("cd /workspace && forge session start alpha")
@@ -76,7 +76,7 @@ class TestWorktreeSemantics:
 
     def test_worktree_flag_creates_isolated_session(self, forge_workspace: ContainerLike) -> None:
         """Verify --worktree creates a new worktree with isolated session."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
 
         # Create first session in main worktree
         result1 = forge_workspace.exec("cd /workspace && forge session start main-session")
@@ -120,7 +120,7 @@ print('isolated')
 
     def test_worktree_session_in_index(self, forge_workspace: ContainerLike) -> None:
         """Verify both sessions tracked in global index."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start main-session")
         forge_workspace.exec("cd /workspace && forge session start worktree-session --worktree")
 
@@ -144,7 +144,7 @@ class TestIndexSelfHealing:
 
     def test_deleted_session_removed_from_index(self, forge_workspace: ContainerLike) -> None:
         """Verify deleted session is removed from global index."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start test-session")
 
         # Verify in index
@@ -177,7 +177,7 @@ print('removed_from_index')
 
     def test_orphaned_manifest_pruned_on_list(self, forge_workspace: ContainerLike) -> None:
         """Verify orphaned index entry pruned on access."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start test-session")
 
         # Manually delete manifest (simulating corruption/external deletion)
@@ -205,7 +205,7 @@ class TestIntentVsConfirmed:
         - confirmed.claude_session_id is pre-seeded
         - confirmed.confirmed_by is None before hook confirmation
         """
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start test-session --no-launch")
 
         check = forge_workspace.exec("""
@@ -229,7 +229,7 @@ print('manifest_structure_ok')
 
     def test_session_set_rejects_confirmed_fields(self, forge_workspace: ContainerLike) -> None:
         """Verify session set rejects confirmed.* fields."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start test-session")
 
         # Try to set a confirmed field
@@ -243,7 +243,7 @@ print('manifest_structure_ok')
 
     def test_override_stored_in_overrides_not_intent(self, forge_workspace: ContainerLike) -> None:
         """Verify session set stores override in overrides section, not intent."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start test-session")
 
         # Set an override (key is relative to intent, not prefixed with 'intent.')
@@ -281,7 +281,7 @@ print('override_stored_correctly')
 
     def test_corrupt_manifest_error_message_helpful(self, forge_workspace: ContainerLike) -> None:
         """Verify corrupt manifest produces helpful error message."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start test-session")
 
         # Corrupt manifest
@@ -308,7 +308,7 @@ class TestWorktreeWorkflow:
 
     def test_fork_creates_worktree_and_tracks_parent(self, forge_workspace: ContainerLike) -> None:
         """Verify fork --worktree creates a new worktree with parent link and git branch."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start parent-sess --no-launch")
         _simulate_hook_uuid(forge_workspace, "parent-sess", "parent-uuid-wt")
 
@@ -358,7 +358,7 @@ print('fork_ok')
 
     def test_fork_default_no_worktree(self, forge_workspace: ContainerLike) -> None:
         """Default fork stays in parent's directory with no git branch."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start parent-nw --no-launch")
         _simulate_hook_uuid(forge_workspace, "parent-nw", "parent-nw-uuid")
 
@@ -403,7 +403,7 @@ print('fork_nw_ok')
 
     def test_force_same_dir_fork_rejects_unrelated_existing_session(self, forge_workspace: ContainerLike) -> None:
         """Force same-dir fork should fail when the target name already belongs to a different session."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start parent-nw --no-launch")
         _simulate_hook_uuid(forge_workspace, "parent-nw", "parent-nw-uuid")
         forge_workspace.exec("cd /workspace && forge session start fork-nw --no-launch")
@@ -432,7 +432,7 @@ print('same_dir_force_guard_ok')
 
     def test_delete_worktree_session_cleans_up(self, forge_workspace: ContainerLike) -> None:
         """Verify delete removes worktree directory, branch, and index entry."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start wt-sess --worktree")
 
         # Capture worktree path before deletion
@@ -478,7 +478,7 @@ print('cleanup_ok')
 
     def test_delete_keep_worktree_preserves_directory(self, forge_workspace: ContainerLike) -> None:
         """Verify --keep-worktree preserves the directory but removes the session."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start wt-keep --worktree")
 
         # Capture worktree path from index before deletion (avoids brittle glob assumptions)
@@ -528,7 +528,7 @@ print('keep_ok')
 
     def test_worktree_config_copy(self, forge_workspace: ContainerLike) -> None:
         """Verify .env is copied from main repo to worktree on creation."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
 
         # Create .env in main repo (untracked)
         forge_workspace.write_file("/workspace/.env", "SECRET_KEY=test123\nDB_URL=localhost\n")
@@ -559,7 +559,7 @@ print('config_ok')
 
     def test_artifact_paths_route_to_main_repo(self, forge_workspace: ContainerLike) -> None:
         """Verify worktree session's project_root points to main repo for artifact storage."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
 
         result = forge_workspace.exec("cd /workspace && forge session start art-sess --worktree")
         assert result.returncode == 0, f"Session start failed: {result.stderr}"
@@ -586,7 +586,7 @@ print('artifacts_ok')
 
     def test_dirty_worktree_blocks_delete(self, forge_workspace: ContainerLike) -> None:
         """Verify delete rejects dirty worktree without --force."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start dirty-sess --worktree")
 
         # Get worktree path
@@ -654,7 +654,7 @@ print('dirty_ok')
 
     def test_resume_from_worktree_inherits_worktree(self, forge_workspace: ContainerLike) -> None:
         """Verify resume creates child in same worktree as parent, not a new one."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start wt-parent --worktree")
 
         # Resume --fresh creates a child session in the parent's worktree
@@ -702,7 +702,7 @@ print('resume_ok')
 
     def test_fork_with_branch_override(self, forge_workspace: ContainerLike) -> None:
         """Verify fork --branch implies a worktree and uses the custom branch name."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start branch-parent --no-launch")
         _simulate_hook_uuid(forge_workspace, "branch-parent", "branch-parent-uuid")
 
@@ -754,7 +754,7 @@ print('branch_ok')
 
     def test_fork_from_incognito_rejected(self, forge_workspace: ContainerLike) -> None:
         """Verify forking from an incognito session is rejected."""
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
 
         # Create session with --no-launch, then patch is_incognito in the manifest.
         # Can't use --incognito directly: mock Claude exits instantly, triggering
@@ -808,7 +808,7 @@ print('incognito_ok')
         the worktree), so this should succeed even when the user's shell is
         inside the worktree directory.
         """
-        forge_workspace.exec("forge extension enable --user --profile minimal")
+        forge_workspace.exec("forge extension enable --scope user --profile minimal")
         forge_workspace.exec("cd /workspace && forge session start inside-sess --worktree")
 
         # Get worktree path

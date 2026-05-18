@@ -1,0 +1,23 @@
+# Template: openrouter-anthropic
+# Anthropic Claude models via OpenRouter (direct, no LiteLLM)
+#
+# Access to Claude Opus 4.6/4.7, Sonnet 4.6, and Haiku 4.5.
+# Requires OPENROUTER_API_KEY in .env (or environment).
+#
+# Use --model claude-opus-4-7 to select Opus 4.7 instead of the 4.6 default.
+
+proxy:
+  family: anthropic
+  preferred_provider: openrouter
+  default_port: 8095
+
+  openrouter:
+    tiers:
+      haiku: anthropic/claude-haiku-4.5
+      sonnet: anthropic/claude-sonnet-4.6
+      opus: anthropic/claude-opus-4.6
+    model_alternatives:
+      opus:
+        claude-opus-4-7: anthropic/claude-opus-4.7
+    base_url: "https://openrouter.ai/api/v1"
+    error_hints: true

@@ -34,11 +34,15 @@ def handoff() -> None:
     help="Repo-relative path to transcript artifact",
 )
 @click.option("--timeout", default=None, type=int, help="Max seconds for agent to run")
+@click.option("--subprocess-proxy", default=None, hidden=True, help="Stop-time subprocess proxy snapshot")
+@click.option("--root", "forge_root", default=None, type=click.Path(), hidden=True, help="Explicit Forge project root")
 def run_cmd(
     session_name: str,
     worktree_path: str,
     transcript_rel: str,
     timeout: int | None,
+    subprocess_proxy: str | None,
+    forge_root: str | None,
 ) -> None:
     """Run the handoff agent for a completed session.
 
@@ -47,6 +51,7 @@ def run_cmd(
     enabled, and spawns claude -p to update project memory documents.
     """
     worktree = Path(worktree_path).resolve()
+    effective_root = Path(forge_root).resolve() if forge_root else worktree
 
     # We use SessionStore directly (not resolve_session_store) because this
     # runs as a detached background process without FORGE_SESSION env var set.
@@ -55,7 +60,7 @@ def run_cmd(
         from forge.session.effective import compute_effective_intent
         from forge.session.store import SessionStore
 
-        store = SessionStore(str(worktree), session_name)
+        store = SessionStore(str(effective_root), session_name)
         if not store.exists():
             logger.info("No session manifest for %s in %s", session_name, worktree)
             return
@@ -86,13 +91,14 @@ def run_cmd(
         confirmed_proxy_base_url=confirmed_proxy_url,
         env_base_url=os.environ.get("ANTHROPIC_BASE_URL"),
         direct=config.direct,
+        subprocess_proxy=subprocess_proxy or effective.subprocess_proxy,
     )
 
     designated_docs = effective.memory.designated_docs if effective.memory else []
 
     success = run_handoff_agent(
         session_name=session_name,
-        forge_root=worktree,
+        forge_root=effective_root,
         transcript_snapshot_rel=transcript_rel,
         config=config,
         base_url=base_url,

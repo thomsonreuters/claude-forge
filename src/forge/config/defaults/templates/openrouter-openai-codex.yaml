@@ -1,0 +1,23 @@
+# Template: openrouter-openai-codex
+# OpenAI Codex models via OpenRouter (direct, no LiteLLM)
+#
+# Requires OPENROUTER_API_KEY in .env (or environment).
+
+proxy:
+  family: openai
+  preferred_provider: openrouter
+  default_port: 8098
+
+  openrouter:
+    tiers:
+      haiku: openai/gpt-5.1-codex-mini
+      sonnet: openai/gpt-5.3-codex
+      opus: openai/gpt-5.5
+    tier_overrides:
+      sonnet:
+        reasoning_effort: medium
+      opus:
+        reasoning_effort: high
+        verbosity: high
+    base_url: "https://openrouter.ai/api/v1"
+    error_hints: true

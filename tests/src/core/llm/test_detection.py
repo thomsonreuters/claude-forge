@@ -20,7 +20,7 @@ class TestDetectProvider:
             ("openai/gpt-5.2", "litellm_remote"),
             ("openai/gpt-4o-mini", "litellm_remote"),
             ("anthropic/claude-sonnet-4", "litellm_remote"),
-            ("vertex_ai/gemini-2.5-pro", "litellm_remote"),
+            ("vertex_ai/gemini-3.1-pro-preview", "litellm_remote"),
             ("bedrock/anthropic.claude-3", "litellm_remote"),
             ("replicate/meta/llama-3", "litellm_remote"),
             ("together_ai/mistral-7b", "litellm_remote"),
@@ -35,7 +35,7 @@ class TestDetectProvider:
     def test_case_insensitive(self):
         """Provider detection is case-insensitive."""
         assert detect_provider("OpenAI/gpt-5.2") == "litellm_remote"
-        assert detect_provider("VERTEX_AI/gemini-2.5-pro") == "litellm_remote"
+        assert detect_provider("VERTEX_AI/gemini-3.1-pro-preview") == "litellm_remote"
         assert detect_provider("Gemini/gemini-2.0-flash") == "litellm_local"
 
     def test_unprefixed_model_raises(self):
@@ -70,6 +70,10 @@ class TestIsImplemented:
 
     def test_deferred_providers_not_implemented(self):
         assert is_implemented("anthropic") is False
+
+    def test_openrouter_implemented(self):
+        """OpenRouter has a client implementation."""
+        assert is_implemented("openrouter") is True
 
 
 class TestPrefixConstants:

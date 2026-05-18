@@ -14,6 +14,7 @@ workflow (blocking + polling). The proxy server itself remains async.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import socket
@@ -44,6 +45,8 @@ from forge.core.auth.template_secrets import resolve_env_or_credential
 from forge.core.paths import get_forge_home
 from forge.core.state import now_iso
 from forge.proxy.proxies import ProxyEntry, ProxyRegistry, ProxyRegistryStore
+
+logger = logging.getLogger(__name__)
 
 
 class ProxyStartError(ValueError):
@@ -177,7 +180,7 @@ def create_proxy_file(
         raise ProxyStartError(
             f"Template '{template}' has no upstream URL configured.\n"
             f"Use: forge proxy create {template} --base-url https://your-litellm-server/\n"
-            f"Or store it: forge auth login -p litellm-remote"
+            f"Or store it: forge auth login -c litellm-remote"
         )
 
     proxy_config = ProxyInstanceConfig(
@@ -189,7 +192,9 @@ def create_proxy_file(
         port=port,
         upstream_base_url=resolved_upstream,
         tiers=tiers,
+        family=cfg.proxy.family,
         tier_overrides=tier_overrides,
+        model_alternatives=provider.model_alternatives,
         default_tier=cfg.proxy.default_tier or "sonnet",
         provider_settings=provider_settings,
         created_at=now_iso(),
@@ -245,6 +250,61 @@ def _has_env_var(var_name: str) -> bool:
     return var_name in os.environ
 
 
+def _ensure_template_credentials(template: str) -> None:
+    """Fail fast if template secret credentials are missing.
+
+    Only checks secret env vars (API keys), not connection values
+    like LITELLM_BASE_URL that can come from CLI --base-url or
+    persisted proxy config. Runs on the spawn path only — after
+    reuse/adoption checks pass.
+    """
+    from forge.core.auth.capabilities import (
+        credential_for_env_var,
+        credentials_for_template,
+        format_missing_credential_error,
+    )
+    from forge.core.auth.template_secrets import TEMPLATE_SECRETS
+
+    required = TEMPLATE_SECRETS.get(template, [])
+    if not required:
+        return
+
+    # Only check secret vars (API keys). Connection values (base URLs)
+    # may come from CLI args, proxy config, or backend_dependency.
+    missing: list[str] = []
+    for var_name in required:
+        cred = credential_for_env_var(var_name)
+        if cred:
+            ev = next((ev for ev in cred.env_vars if ev.name == var_name), None)
+            if ev and ev.connection_value:
+                continue
+        if not resolve_env_or_credential(var_name):
+            missing.append(var_name)
+
+    if not missing:
+        return
+
+    try:
+        from forge.runtime_config import get_runtime_config
+
+        env_ignored = get_runtime_config().auth_ignore_env
+    except Exception as e:
+        logger.debug("Could not read auth_ignore_env; formatting credential error without env-ignored note: %s", e)
+        env_ignored = False
+
+    creds = credentials_for_template(template)
+    if creds:
+        msg = format_missing_credential_error(
+            creds[0], missing_vars=missing, template=template, env_ignored=env_ignored
+        )
+        raise ProxyStartError(msg)
+
+    raise ProxyStartError(
+        f"Template '{template}' requires credentials: {', '.join(missing)}\n"
+        f"Tip: Run 'forge auth login' to store them, or add to .env / shell exports."
+    )
+
+
 def _ensure_dependency_backend(backend_dep: BackendDependency, template: str) -> None:
     """Ensure dependency backend is running before starting proxy.
 
@@ -295,20 +355,51 @@ def _ensure_dependency_backend(backend_dep: BackendDependency, template: str) ->
 
     missing = [k for k in backend_dep.required_env_vars if not resolve_env_or_credential(k)]
     if missing:
+        from forge.core.auth.capabilities import (
+            credentials_for_template,
+            format_missing_credential_error,
+        )
+
+        try:
+            from forge.runtime_config import get_runtime_config
+
+            env_ignored = get_runtime_config().auth_ignore_env
+        except Exception as e:
+            logger.debug("Could not read auth_ignore_env; formatting credential error without env-ignored note: %s", e)
+            env_ignored = False
+
+        creds = credentials_for_template(template)
+        if creds:
+            raise ProxyStartError(
+                format_missing_credential_error(
+                    creds[0], missing_vars=missing, template=template, env_ignored=env_ignored
+                )
+            )
         raise ProxyStartError(
             f"Template '{template}' requires credentials: {', '.join(missing)}\n"
-            f"Run 'forge auth login' to store them, or add to .env / shell exports."
+            f"Tip: Run 'forge auth login' to store them, or add to .env / shell exports."
         )
 
     # Inject credential-file values into os.environ for the backend subprocess
     # (LiteLLM adapter copies os.environ when spawning).
-    injected: dict[str, str] = {}
+    # When auth_ignore_env is active, override even when env var is present
+    # so the subprocess uses the credential-file value, not the ignored env var.
+    try:
+        from forge.runtime_config import get_runtime_config
+
+        ignore_env = get_runtime_config().auth_ignore_env
+    except Exception as e:
+        logger.debug("Could not read auth_ignore_env; using environment credentials for backend subprocess: %s", e)
+        ignore_env = False
+
+    _SENTINEL = object()
+    originals: dict[str, str | object] = {}
     for key in backend_dep.required_env_vars:
-        if not os.environ.get(key):
+        if ignore_env or not os.environ.get(key):
             val = resolve_env_or_credential(key)
             if val:
+                originals[key] = os.environ.get(key, _SENTINEL)
                 os.environ[key] = val
-                injected[key] = val
 
     try:
         result = backend_manager.ensure_backend(backend_id, backend_dep.adapter, backend_dep.port)
@@ -322,9 +413,11 @@ def _ensure_dependency_backend(backend_dep: BackendDependency, template: str) ->
             f"Backend: {backend_dep.adapter} on port {backend_dep.port}"
         )
     finally:
-        for key, val in injected.items():
-            if os.environ.get(key) == val:
+        for key, original in originals.items():
+            if original is _SENTINEL:
                 os.environ.pop(key, None)
+            else:
+                os.environ[key] = str(original)
 
 
 def start_proxy(
@@ -372,10 +465,6 @@ def start_proxy(
     _validate_template_exists(template)
 
     cfg = load_config(template=template)
-
-    # Ensure dependency backend is running (BEFORE reuse/adopt/spawn)
-    if cfg.proxy.backend_dependency:
-        _ensure_dependency_backend(cfg.proxy.backend_dependency, template)
 
     store = ProxyRegistryStore()
     registry = store.read()  # May raise ProxyRegistryCorruptedError
@@ -451,6 +540,13 @@ def start_proxy(
         return ProxyStartResult(proxy=adopted, source="adopt")
 
     # 3) Spawn a new proxy process.
+    # Dependency backend + credential preflights run here (not earlier)
+    # so reuse/adopt paths aren't blocked by missing credentials or
+    # backend state in the current shell.
+    if cfg.proxy.backend_dependency:
+        _ensure_dependency_backend(cfg.proxy.backend_dependency, template)
+    _ensure_template_credentials(template)
+
     # Port selection: honor explicit port or scan for available
     if port is not None:
         if _is_port_in_use(target_port):
@@ -502,7 +598,13 @@ def start_proxy(
 
     store.update(timeout_s=5.0, mutate=_register_starting)
 
-    proc, stderr_capture = _spawn_proxy_process(template=template, host=host, port=spawn_port, proxy_id=actual_proxy_id)
+    proc, stderr_capture = _spawn_proxy_process(
+        template=template,
+        host=host,
+        port=spawn_port,
+        proxy_id=actual_proxy_id,
+        provider=cfg.proxy.preferred_provider,
+    )
     try:
         _wait_until_healthy(
             base_url=base_url,
@@ -725,8 +827,12 @@ def _is_port_in_use(port: int) -> bool:
         return False
 
 
-def _check_proxy_dependencies() -> None:
+def _check_proxy_dependencies(*, provider: str = "") -> None:
     """Check if proxy dependencies are installed.
+
+    Args:
+        provider: The preferred_provider from the template. When "openrouter",
+                  litellm is not required (direct API, no LiteLLM subprocess).
 
     Raises:
         ProxyStartError: If required proxy dependencies are missing.
@@ -742,10 +848,11 @@ def _check_proxy_dependencies() -> None:
     except ImportError:
         missing.append("uvicorn")
 
-    try:
-        import litellm  # noqa: F401
-    except ImportError:
-        missing.append("litellm")
+    if provider != "openrouter":
+        try:
+            import litellm  # noqa: F401
+        except ImportError:
+            missing.append("litellm")
 
     if missing:
         deps_str = ", ".join(missing)
@@ -759,13 +866,15 @@ def _check_proxy_dependencies() -> None:
         )
 
 
-def _spawn_proxy_process(*, template: str, host: str, port: int, proxy_id: str) -> tuple[subprocess.Popen[bytes], Path]:
+def _spawn_proxy_process(
+    *, template: str, host: str, port: int, proxy_id: str, provider: str = ""
+) -> tuple[subprocess.Popen[bytes], Path]:
     """Spawn a proxy subprocess with the given configuration.
 
     Returns:
         Tuple of (process, stderr_capture_path) for error reporting.
     """
-    _check_proxy_dependencies()
+    _check_proxy_dependencies(provider=provider)
 
     cmd = [
         sys.executable,

@@ -220,6 +220,34 @@ def test_extra_args_forwarded(tmp_path, monkeypatch):
     assert captured["extra_args"] == ["--debug"]
 
 
+def test_proxy_launch_by_template_injects_resolved_proxy_addendum(tmp_path, monkeypatch):
+    """Bare launcher resolves template names to proxy IDs before addendum lookup."""
+    _setup_proxy_env(tmp_path, monkeypatch)
+
+    captured = {}
+
+    def fake_resolve(proxy_id: str | None) -> str:
+        captured["proxy_id"] = proxy_id
+        return "Bare addendum"
+
+    def fake_invoke(*, system_prompt_file=None, **_kw):
+        captured["system_prompt_file"] = system_prompt_file
+        captured["content"] = Path(system_prompt_file).read_text(encoding="utf-8")
+        return 0
+
+    with (
+        patch("forge.cli.session_addendum.resolve_addendum_content_for_proxy", side_effect=fake_resolve),
+        patch(_INVOKE, side_effect=fake_invoke),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(main, ["claude", "start", "--proxy", "litellm-openai"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["proxy_id"] == "proxy_1"
+    assert captured["content"] == "Bare addendum"
+    assert not Path(captured["system_prompt_file"]).exists()
+
+
 # --- Output ---
 
 
@@ -251,7 +279,7 @@ def test_direct_launch_prints_summary(tmp_path, monkeypatch):
 
 
 def test_direct_launch_honors_default_direct_model(tmp_path, monkeypatch):
-    """Direct mode passes default_direct_model from runtime config to invoke_claude."""
+    """Direct mode passes default_direct_model through Claude Code env vars."""
     from forge.runtime_config import reset_runtime_config
 
     project_root = tmp_path / "project"
@@ -267,8 +295,9 @@ def test_direct_launch_honors_default_direct_model(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_invoke(*, model=None, **_kw):
+    def fake_invoke(*, model=None, env_vars=None, **_kw):
         captured["model"] = model
+        captured["env_vars"] = env_vars or {}
         return 0
 
     with patch(_INVOKE, side_effect=fake_invoke):
@@ -276,7 +305,9 @@ def test_direct_launch_honors_default_direct_model(tmp_path, monkeypatch):
         result = runner.invoke(main, ["claude", "start", "--no-proxy"])
 
     assert result.exit_code == 0, result.output
-    assert captured["model"] == "claude-opus-4-6"
+    assert captured["model"] is None
+    assert captured["env_vars"]["ANTHROPIC_MODEL"] == "opus"
+    assert captured["env_vars"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-4-6"
 
 
 def test_direct_launch_no_model_when_unconfigured(tmp_path, monkeypatch):
@@ -440,21 +471,3 @@ class TestBuildBareLaunchEnv:
         assert env["ANTHROPIC_BASE_URL"] == "http://localhost:8085"
         assert "ACTIVE_TEMPLATE" not in env
         assert "ACTIVE_TEMPLATE" in unset
-
-
-def test_claude_start_direct_alias_still_works(tmp_path, monkeypatch):
-    """Hidden --direct alias should behave identically to --no-proxy."""
-    monkeypatch.setenv("FORGE_HOME", str(tmp_path / "forge"))
-
-    captured: dict[str, object] = {}
-
-    def fake_invoke(*, env_vars=None, unset_env_vars=None, **_kw):
-        captured["env_vars"] = env_vars or {}
-        captured["unset_env_vars"] = unset_env_vars or []
-        return 0
-
-    with patch(_INVOKE, side_effect=fake_invoke):
-        runner = CliRunner()
-        result = runner.invoke(main, ["claude", "start", "--direct"])
-
-    assert result.exit_code == 0, result.output

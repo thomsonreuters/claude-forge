@@ -53,6 +53,7 @@ def get_proxy_identity(
     request_host: str | None = None,
     request_port: int | None = None,
     env_port: int | None = None,
+    process_proxy_id: str | None = None,
 ) -> ProxyIdentity:
     """Discover proxy identity using 2-tier approach.
 
@@ -60,8 +61,9 @@ def get_proxy_identity(
         request_port > env_port > DEFAULT_PROXY_PORT
 
     Priority for proxy identity:
-        1. Registry lookup by (template, port) (source="registry")
-        2. Derived values (source="derived", status="unregistered")
+        1. Process proxy id + registry lookup by (template, port) (source="registry")
+        2. Registry lookup by (template, port) (source="registry")
+        3. Derived values (source="derived", status="unregistered")
 
     The base_url is always derived from the effective host/port, not from
     the registry, to ensure accuracy with the actual request endpoint.
@@ -71,6 +73,7 @@ def get_proxy_identity(
         request_host: Host from the incoming request (preferred)
         request_port: Port from the incoming request (preferred)
         env_port: Port from ACTIVE_PORT env var (fallback)
+        process_proxy_id: Proxy id this process was started with (FORGE_PROXY_ID).
 
     Returns:
         ProxyIdentity with all fields populated. proxy_id may be None
@@ -91,6 +94,18 @@ def get_proxy_identity(
             for entry in registry.proxies.values()
             if entry.template == active_template and entry.port == effective_port
         ]
+        if process_proxy_id:
+            for entry in matches:
+                if entry.proxy_id == process_proxy_id:
+                    return ProxyIdentity(
+                        proxy_id=entry.proxy_id,
+                        template=active_template,
+                        port=effective_port,
+                        base_url=base_url,
+                        source="registry",
+                        status="registered",
+                    )
+
         if matches:
             best_match = sorted(matches, key=lambda e: e.proxy_id)[0]
             return ProxyIdentity(
@@ -110,7 +125,7 @@ def get_proxy_identity(
         logger.debug(f"Proxy registry lookup failed: {e}")
 
     return ProxyIdentity(
-        proxy_id=None,
+        proxy_id=process_proxy_id,
         template=active_template,
         port=effective_port,
         base_url=base_url,

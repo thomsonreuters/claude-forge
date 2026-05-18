@@ -19,6 +19,7 @@ from forge.core.reactive.structured_output import extract_json_from_response
 
 from .engine import run_multi_review
 from .models import ConsensusOutput, ModelSpec, RoleSpec
+from .routing import WorkerRoutingPlan
 
 ROLE_MARKER = "{role_prompt}"
 
@@ -127,6 +128,8 @@ def run_consensus(
     timeout_seconds: int = 600,
     cwd: str | None = None,
     original_subject: str = "",
+    via: str | None = None,
+    routing_plan: WorkerRoutingPlan | None = None,
 ) -> ConsensusOutput:
     """Run two-round consensus workflow with role-assigned workers.
 
@@ -138,9 +141,17 @@ def run_consensus(
         original_subject: The raw subject/target text (before template
             wrapping). Included in the reconciliation brief so Round 2
             workers retain scope context.
+        via: Route all workers through this proxy (passed to routing).
+            Ignored when routing_plan is provided.
+        routing_plan: Pre-resolved routing plan. When provided, skips
+            internal routing resolution and reuses the same route decisions
+            for both rounds; Round 2 changes prompts but not route-bearing
+            model fields or order.
 
     Raises ValueError if the resource lacks the role marker.
     """
+    from forge.review.routing import resolve_invocation_routing
+
     template = validate_resource(resource_path)
 
     # --- Build Round 1 specs ---
@@ -159,9 +170,11 @@ def run_consensus(
         specs_r1.append(
             ModelSpec(
                 name=role_spec.model.name,
-                proxy=role_spec.model.proxy,
-                model_flag=role_spec.model.model_flag,
+                model_id=role_spec.model.model_id,
+                family=role_spec.model.family,
+                provider_refs=role_spec.model.provider_refs,
                 description=f"{label} role via {role_spec.model.name}",
+                preferred_proxy=role_spec.model.preferred_proxy,
                 prompt=filled,
                 worker_id=worker_id,
             )
@@ -169,10 +182,13 @@ def run_consensus(
 
     role_map = {spec.effective_worker_id: r.effective_label for spec, r in zip(specs_r1, roles)}
 
+    plan_r1 = routing_plan if routing_plan is not None else resolve_invocation_routing(specs_r1, via=via)
+
     # --- Round 1: Independent positions (blinded) ---
     round1_output = run_multi_review(
         prompt="",
         models=specs_r1,
+        routing_plan=plan_r1,
         timeout_seconds=timeout_seconds,
         cwd=cwd,
         resume_id=None,
@@ -188,18 +204,23 @@ def run_consensus(
         specs_r2.append(
             ModelSpec(
                 name=spec_r1.name,
-                proxy=spec_r1.proxy,
-                model_flag=spec_r1.model_flag,
+                model_id=spec_r1.model_id,
+                family=spec_r1.family,
+                provider_refs=spec_r1.provider_refs,
                 description=f"{role_spec.effective_label} reconciliation via {spec_r1.name}",
+                preferred_proxy=spec_r1.preferred_proxy,
                 prompt=reconciliation_prompt,
                 worker_id=spec_r1.effective_worker_id,
             )
         )
 
+    plan_r2 = routing_plan if routing_plan is not None else resolve_invocation_routing(specs_r2, via=via)
+
     # --- Round 2: Reconciliation (blinded) ---
     round2_output = run_multi_review(
         prompt="",
         models=specs_r2,
+        routing_plan=plan_r2,
         timeout_seconds=timeout_seconds,
         cwd=cwd,
         resume_id=None,

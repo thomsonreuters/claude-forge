@@ -25,6 +25,7 @@ from forge.proxy.proxies import (
     ProxyResolutionError,
     resolve_proxy,
 )
+from forge.session.direct_model import apply_direct_model_env
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -160,16 +161,24 @@ def _build_bare_launch_env(
 
 
 @claude.command("start")
-@click.option("--proxy", "proxy_id", type=str, default=None, help="Proxy to use (proxy_id or template name)")
 @click.option(
-    "--no-proxy", "direct", is_flag=True, default=False, help="Bypass the proxy and talk to Anthropic directly"
+    "--proxy",
+    "proxy_id",
+    type=str,
+    default=None,
+    help="Proxy to use (proxy_id or template name)",
 )
-@click.option("--direct", "direct_deprecated", is_flag=True, hidden=True, help="Deprecated alias for --no-proxy")
+@click.option(
+    "--no-proxy",
+    "direct",
+    is_flag=True,
+    default=False,
+    help="Bypass the proxy and talk to Anthropic directly",
+)
 @click.argument("claude_args", nargs=-1, type=click.UNPROCESSED)
 def start_cmd(
     proxy_id: str | None,
     direct: bool,
-    direct_deprecated: bool,
     claude_args: tuple[str, ...],
 ) -> None:
     """Start Claude Code with proxy routing or direct to Anthropic.
@@ -183,7 +192,6 @@ def start_cmd(
         forge claude start --no-proxy
         forge claude start --proxy my-proxy -- --debug
     """
-    direct = direct or direct_deprecated
     if direct and proxy_id:
         click.echo("Error: --no-proxy and --proxy are mutually exclusive")
         sys.exit(1)
@@ -237,26 +245,43 @@ def start_cmd(
         context_limit=context_limit,
     )
 
-    # Direct mode: honor configured default model from runtime config
-    direct_model: str | None = None
     if direct:
         from forge.runtime_config import get_default_direct_model
 
         direct_model = get_default_direct_model()
+        error = apply_direct_model_env(env_vars, direct_model)
+        if error:
+            click.echo(f"Error: {error}")
+            sys.exit(1)
 
     if proxy_display:
         console.print(f"Starting Claude with proxy [green]{proxy_display}[/green] ({template})")
     else:
         console.print("Starting Claude [green]direct[/green] (no proxy)")
 
-    sys.exit(
-        invoke_claude(
-            model=direct_model,
-            env_vars=env_vars,
-            unset_env_vars=unset_vars,
-            extra_args=list(claude_args) if claude_args else None,
-        )
+    from forge.cli.session_addendum import (
+        resolve_addendum_content_for_proxy,
+        write_bare_addendum,
     )
+
+    addendum_content = resolve_addendum_content_for_proxy(proxy_display)
+    addendum_path: Path | None = None
+    if addendum_content:
+        addendum_path = write_bare_addendum(addendum_content)
+
+    try:
+        sys.exit(
+            invoke_claude(
+                model=None,
+                system_prompt_file=str(addendum_path) if addendum_path else None,
+                env_vars=env_vars,
+                unset_env_vars=unset_vars,
+                extra_args=list(claude_args) if claude_args else None,
+            )
+        )
+    finally:
+        if addendum_path:
+            addendum_path.unlink(missing_ok=True)
 
 
 # --- Preset subgroup ---

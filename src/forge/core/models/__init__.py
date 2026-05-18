@@ -43,9 +43,16 @@ from forge.core.models.catalog import (
     get_max_output_tokens,
     get_model_spec,
     get_provider_defaults,
+    get_system_prompt_addendum,
     load_model_catalog,
     model_exists,
     resolve_model_id,
+)
+from forge.core.models.pricing import (
+    ModelPricing,
+    calculate_cost,
+    get_pricing,
+    micros_to_usd,
 )
 from forge.core.models.types import (
     ModelCatalog,
@@ -68,8 +75,15 @@ __all__ = [
     "get_provider_defaults",
     # Display
     "get_compact_name",
+    # System prompt addendum
+    "get_system_prompt_addendum",
     # Error type
     "ModelCatalogError",
+    # Pricing
+    "ModelPricing",
+    "get_pricing",
+    "calculate_cost",
+    "micros_to_usd",
     # Types
     "ModelCatalog",
     "ModelSpec",

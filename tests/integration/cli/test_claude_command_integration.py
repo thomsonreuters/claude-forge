@@ -17,7 +17,7 @@ class TestClaudeStartBareLauncher:
         mock_claude_workspace: ContainerLike,
         claude_capture_file,
     ) -> None:
-        """Direct bare launch should pass the configured model and avoid session state."""
+        """Direct bare launch should pin the configured model and avoid session state."""
         mkdir_result = mock_claude_workspace.mkdir("$HOME/.forge")
         assert mkdir_result.returncode == 0, mkdir_result.stderr
 
@@ -31,9 +31,11 @@ class TestClaudeStartBareLauncher:
         assert result.returncode == 0, f"Direct bare launch failed: {result.stderr}"
 
         invocations = mock_claude_workspace.read_file("/tmp/claude_invocations.log")
-        assert "--model claude-sonnet-4-6" in invocations, invocations
+        assert "--model" not in invocations, invocations
 
         env_capture = claude_capture_file("/tmp/claude_env_*.log")
+        assert "ANTHROPIC_MODEL=sonnet" in env_capture
+        assert "ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-4-6" in env_capture
         assert "FORGE_SESSION=" not in env_capture
         assert "ANTHROPIC_BASE_URL=" not in env_capture
         assert "ACTIVE_TEMPLATE=" not in env_capture

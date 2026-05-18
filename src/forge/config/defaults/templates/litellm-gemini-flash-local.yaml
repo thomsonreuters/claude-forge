@@ -11,6 +11,7 @@
 # restart with: forge backend stop litellm-4000
 
 proxy:
+  family: gemini
   preferred_provider: litellm
   default_port: 8088
 

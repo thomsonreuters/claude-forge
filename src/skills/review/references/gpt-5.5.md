@@ -1,19 +1,19 @@
 # GPT-5.5 Prompting Guide
 
 > Synthesized from [OpenAI Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance),
-> [OpenAI Platform docs](https://developers.openai.com/api/docs/guides/latest-model),
-> [OpenAI Cookbook](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide), and web research.
-> March 2026.
+> [OpenAI Platform docs](https://developers.openai.com/api/docs/guides/latest-model), and
+> [OpenAI Cookbook](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide). May 2026.
 
 ## Overview
 
-GPT-5.5 is OpenAI's frontier model for **complex professional work**, released March 2026. It unifies the reasoning
-capabilities of the GPT-5 line with the coding strengths of GPT-5.3-Codex into a single model. Key advances over
-GPT-5.2:
+GPT-5.5 is OpenAI's frontier model for **complex professional work**, announced April 23, 2026 and made available in the
+API on April 24, 2026. It is tuned for long-context, tool-heavy, professional workflows. Prompt-relevant changes:
 
-- **400K token context window**
-- **33% fewer false claims** and 18% fewer errors compared to GPT-5.2
-- **~18-20% fewer tokens** on complex tasks (refactors, multi-file reasoning, architectural planning)
+- **1,050,000 token API context window**
+- **128,000 max output tokens**
+- **`medium` default reasoning effort**, with `none`, `low`, `high`, and `xhigh` available
+- **More outcome-first behavior** - shorter prompts with clear success criteria usually work better than process-heavy
+  legacy scaffolding
 
 **Key characteristic:** GPT-5.5 is designed for production-grade assistants and agents. It performs best when prompts
 clearly specify the **output contract**, **tool-use expectations**, and **completion criteria**. The highest-leverage
@@ -40,7 +40,7 @@ completion criteria explicit.
 - GPT-5.1, GPT-5.2: `none`
 - GPT-5.5: `medium`
 
-**Best practice:** Make prompt updates before increasing reasoning effort. Increase `reasoning_effort` one notch only
+**Best practice:** Make prompt updates before increasing reasoning effort. Increase `reasoning.effort` one notch only
 after prompt fixes. When lowering to `none` for execution-heavy workloads, encourage the model to "think" or outline
 steps before answering.
 
@@ -48,11 +48,11 @@ steps before answering.
 
 A **dedicated API parameter** (not just prompt engineering) that controls response length.
 
-| Level    | Behavior                                     | Typical output |
-| -------- | -------------------------------------------- | -------------- |
-| `low`    | Terse, to-the-point, just the facts          | ~560 tokens    |
-| `medium` | **Default.** Balanced detail for most tasks. | ~850 tokens    |
-| `high`   | Detailed, explanatory, comprehensive.        | ~1,300+ tokens |
+| Level    | Behavior                                     | Use when                                      |
+| -------- | -------------------------------------------- | --------------------------------------------- |
+| `low`    | Terse, to-the-point, just the facts          | Latency and scanability matter most           |
+| `medium` | **Default.** Balanced detail for most tasks. | General assistants and professional workflows |
+| `high`   | Detailed, explanatory, comprehensive.        | The user asked for depth or auditability      |
 
 ```python
 response = client.responses.create(
@@ -68,11 +68,12 @@ verbose code in tool calls produced the best results.
 
 ### Context Window
 
-- **400,000 tokens** input / **128,000 tokens** max output
+- **1,050,000 tokens** input / **128,000 tokens** max output
+- Prompts above 272K input tokens have higher API pricing; use context budgets deliberately.
 
 ### Knowledge Cutoff
 
-**August 2025.**
+**December 1, 2025.**
 
 ---
 
@@ -80,21 +81,18 @@ verbose code in tool calls produced the best results.
 
 | Aspect                | GPT-5.5 Behavior                                                                  |
 | --------------------- | --------------------------------------------------------------------------------- |
-| Workflow tracking     | Better at tracking position in workflows, fewer "start over" turns                |
-| Verbosity             | ~18-20% fewer tokens on complex tasks; controllable via `verbosity` param         |
-| Tool calling          | Higher first-call accuracy (>90%); fewer total tool calls; better parallelization |
-| Grounding             | 33% fewer false claims; conservative bias toward correctness                      |
-| Multi-agent           | Major step up — better at breaking specs into tasks, respecting inter-agent deps  |
-| Instruction following | Stronger fidelity; behaves more like a reliable orchestrator                      |
-
-**First-call accuracy math:** >90% per step sounds good, but in a 12-step agent workflow, 90% per-step gives ~28% chance
-of completing without any retry. This is why reducing total tool calls matters.
+| Reasoning default     | `medium`; use `low` before `none` when planning, search, or tool use still matter |
+| Prompt shape          | Outcome-first prompts usually work better than step-by-step process scaffolding   |
+| Tool calling          | Stronger tool selection; define tool triggers, evidence rules, and stop rules     |
+| User-visible preamble | Useful for time-to-first-token in long or tool-heavy turns                        |
+| Verbosity             | Concise and direct by default; controllable via the `verbosity` API parameter     |
+| Instruction following | More literal and thorough; define success criteria and stopping conditions        |
 
 ---
 
 ## Prompting Patterns
 
-### 3.1 Output Contracts and Completion Criteria
+### Output Contracts and Completion Criteria
 
 OpenAI's primary recommendation for GPT-5.5. Explicitly define **what "done" looks like**:
 
@@ -109,7 +107,7 @@ OpenAI's primary recommendation for GPT-5.5. Explicitly define **what "done" loo
 
 Start with the smallest prompt that passes your evals. Add blocks only when they fix a measured failure mode.
 
-### 3.2 Controlling Verbosity and Output Shape
+### Controlling Verbosity and Output Shape
 
 Use the `verbosity` API parameter as the **primary lever**, and prompt-level constraints as secondary:
 
@@ -124,10 +122,10 @@ Use the `verbosity` API parameter as the **primary lever**, and prompt-level con
 </output_verbosity_spec>
 ```
 
-### 3.3 Initiative Nudges
+### Initiative Nudges
 
 If the model feels too literal or stops at the first plausible answer, add an **initiative nudge** before raising
-`reasoning_effort`:
+`reasoning.effort`:
 
 ```xml
 <initiative>
@@ -137,9 +135,9 @@ If the model feels too literal or stops at the first plausible answer, add an **
 </initiative>
 ```
 
-This is cheaper and often more effective than bumping `reasoning_effort` up a notch.
+This is cheaper and often more effective than bumping `reasoning.effort` up a notch.
 
-### 3.4 Preventing Scope Drift
+### Preventing Scope Drift
 
 GPT-5.5 is more controllable than GPT-5.2 but still prone to scope drift on coding tasks:
 
@@ -153,9 +151,9 @@ GPT-5.5 is more controllable than GPT-5.2 but still prone to scope drift on codi
 </design_and_scope_constraints>
 ```
 
-### 3.5 Long-Context and Recall
+### Long-Context and Recall
 
-With 400K tokens available, long-context handling is more common. For inputs >10K tokens, use **forced re-grounding**:
+With 1.05M tokens available, long-context handling is more common. For inputs >10K tokens, use **forced re-grounding**:
 
 ```xml
 <long_context_handling>
@@ -167,7 +165,7 @@ With 400K tokens available, long-context handling is more common. For inputs >10
 </long_context_handling>
 ```
 
-### 3.6 Preambles (Tool-Use Transparency)
+### Preambles (Tool-Use Transparency)
 
 GPT-5.5 can generate brief, user-visible explanations before invoking tools — outlining its intent before the actual
 tool call. This boosts tool-calling accuracy without bloating reasoning overhead.
@@ -178,7 +176,7 @@ Enable with a system instruction:
 Before you call a tool, explain in one sentence why you are calling it.
 ```
 
-### 3.7 Handling Ambiguity & Hallucination Risk
+### Handling Ambiguity & Hallucination Risk
 
 ```xml
 <uncertainty_and_ambiguity>
@@ -207,8 +205,8 @@ Before finalizing an answer in legal, financial, compliance, or safety-sensitive
 
 ## Agentic Steerability & User Updates
 
-GPT-5.5 behaves more like a **reliable orchestrator** — better at tracking workflow state, recovering from small
-mistakes, and completing multi-step sequences without repeating work.
+GPT-5.5 works well in long-running workflows when the prompt defines progress, stopping conditions, and when to ask for
+help.
 
 ### Verbosity + Code Quality (Cursor's Pattern)
 
@@ -232,13 +230,16 @@ This prevents status updates and post-task summaries from disrupting flow while 
 </user_updates_spec>
 ```
 
-### Multi-Agent Orchestration
+### Delegation Rules
 
-GPT-5.5 is significantly better at:
-
-- Breaking a spec into clear tasks with inter-agent dependencies
-- Keeping agents aligned on the same definition of "done"
-- Respecting dependency ordering without explicit reminders
+```xml
+<delegation_rules>
+- Delegate only when subtasks are independent or can proceed in parallel.
+- For each delegated task, define ownership, expected output, dependencies, and "done".
+- Keep blocking decisions in the main workflow unless delegation is explicitly useful.
+- Integrate delegated results before finalizing.
+</delegation_rules>
+```
 
 ---
 
@@ -262,22 +263,16 @@ GPT-5.5 is significantly better at:
 ### Parallel Tool Calls
 
 - GPT-5.5 supports parallel function calls — invoking multiple tools in a single model pass
-- **Not supported** when `reasoning_effort` is `none`
+- Do not rely on `none` for multi-step tool workflows; use `low` or higher when planning, search, or chained tools
+  matter
 - OpenAI measures parallelization efficiency via **tool yields**: if 3 tools are called in parallel, followed by 3 more
   in parallel, the number of yields is 2 (a better latency proxy than raw tool call count)
 
-### First-Call Accuracy
-
-GPT-5.5 achieves >90% first-call accuracy — calling functions with valid, correctly typed arguments on the first
-attempt. Higher accuracy in fewer turns on Toolathlon compared to GPT-5.2.
-
 ---
 
-## Structured Extraction, PDF, and Office Workflows
+## Structured Extraction
 
-GPT-5.5 continues to improve on GPT-5.2's already strong extraction capabilities.
-
-### Best Practices
+For extraction, prompts should define the schema, missing-field behavior, and completeness check.
 
 1. Always provide a schema or JSON shape
 2. Use structured outputs for strict schema adherence
@@ -303,16 +298,11 @@ You will extract structured data from tables/PDFs/emails into JSON.
 **New in GPT-5.5:** You can define tools with `type: custom` to enable models to send plaintext inputs directly to
 tools, rather than being limited to structured JSON.
 
-### Multi-File Extraction
-
-- Serialize per-document results separately
-- Include stable ID (filename, contract title, page range)
-
 ---
 
 ## Web Search and Research
 
-GPT-5.5 is more steerable at synthesizing across many sources. Knowledge cutoff: **August 2025**.
+GPT-5.5 is more steerable at synthesizing across many sources. Knowledge cutoff: **December 1, 2025**.
 
 ### Research Agent Prompt
 
@@ -343,15 +333,17 @@ GPT-5.5 is more steerable at synthesizing across many sources. Knowledge cutoff:
 
 ## Responses API
 
-GPT-5.5 is designed around the **Responses API**, which replaces Chat Completions for new features.
+GPT-5.5 is designed around the **Responses API** for reasoning, tool-calling, and multi-turn use cases.
 
-| Feature        | Chat Completions | Responses API |
-| -------------- | ---------------- | ------------- |
-| Basic text gen | Yes              | Yes           |
-| CoT forwarding | No               | Yes           |
+| Feature                     | Chat Completions | Responses API |
+| --------------------------- | ---------------- | ------------- |
+| Basic text generation       | Yes              | Yes           |
+| Reasoning item preservation | No               | Yes           |
+| `previous_response_id`      | No               | Yes           |
 
-**Why Responses API matters:** It passes the previous turn's chain-of-thought to the model, leading to fewer generated
-reasoning tokens, higher cache hit rates, and less latency. Chat Completions still works for basic text generation.
+**Why Responses API matters:** It preserves reasoning items across turns, which improves multi-step tool workflows and
+can reduce redundant reasoning. If you manually replay assistant output items, preserve returned reasoning and `phase`
+items unchanged.
 
 ---
 
@@ -370,7 +362,7 @@ reasoning tokens, higher cache hit rates, and less latency. Chat Completions sti
 ### Migration Steps
 
 1. **Switch models, don't change prompts yet** — Test model change in isolation
-2. **Pin reasoning_effort** — Match prior model's latency/depth profile
+2. **Pin `reasoning.effort`** — Match prior model's latency/depth profile
 3. **Run evals for baseline** — If results look good, ready to ship
 4. **If regressions, try an initiative nudge first** — Before raising reasoning effort
 5. **If still regressing, tune the prompt** — Use Prompt Optimizer + targeted constraints
@@ -383,18 +375,6 @@ OpenAI's [Prompt Optimizer](https://platform.openai.com/chat/edit?optimize=true)
 - Quickly improve existing prompts for GPT-5.5
 - Migrate across GPT-5 models
 - Remove common failure modes
-
----
-
-## Cognitive Modes (ChatGPT Interface)
-
-| Mode              | Best For                                                  |
-| ----------------- | --------------------------------------------------------- |
-| **Instant Mode**  | Everyday conversational tasks                             |
-| **Thinking Mode** | Math, coding, analysis, structured workflows              |
-| **Pro Mode**      | Legal phrasing, financial summaries, risk-sensitive tasks |
-
-**New in GPT-5.5 Thinking:** Provides an **upfront plan** of its thinking, so users can adjust course mid-response.
 
 ---
 
@@ -463,17 +443,17 @@ Before finalizing in legal/financial/compliance/safety contexts:
 
 ## Key Differences: GPT-5.5 vs GPT-5.2 vs Gemini 3.1 Pro
 
-| Aspect                  | GPT-5.5                            | GPT-5.2                | Gemini 3.1 Pro        |
-| ----------------------- | ---------------------------------- | ---------------------- | --------------------- |
-| Default reasoning       | `medium`                           | `none`                 | `high` (dynamic)      |
-| Default verbosity       | Low-medium, controllable via API   | Low, prompt-controlled | Concise               |
-| Context window          | 400K tokens                        | 400K tokens            | 1M tokens             |
-| Temperature             | Flexible                           | Flexible               | Must stay at 1.0      |
-| Structured extraction   | Strong (+ custom tool types)       | Strong                 | Good                  |
-| Tool calling efficiency | >90% first-call; fewer total calls | May take more actions  | Varies                |
-| Multi-agent             | Strong orchestration               | Moderate               | Good                  |
-| Knowledge cutoff        | August 2025                        | August 2025            | Varies                |
-| Best for                | Agentic, coding, professional work | Enterprise, document   | Reasoning, multimodal |
+| Aspect                | GPT-5.5                                  | GPT-5.2                   | Gemini 3.1 Pro             |
+| --------------------- | ---------------------------------------- | ------------------------- | -------------------------- |
+| Default reasoning     | `medium`                                 | `none`                    | `high` (dynamic)           |
+| Default verbosity     | Direct, controllable via API             | Low, prompt-controlled    | Concise                    |
+| Context window        | 1.05M tokens                             | 400K tokens               | 1M tokens                  |
+| Temperature           | Flexible                                 | Flexible                  | Keep at 1.0                |
+| Structured extraction | Strong (+ custom tool types)             | Strong                    | Good                       |
+| Tool prompting        | Define triggers, evidence, stop rules    | May need more scaffolding | Use direct tool rules      |
+| Multi-turn state      | `previous_response_id` / reasoning items | Responses state           | Thought signatures         |
+| Knowledge cutoff      | Dec 1, 2025                              | August 2025               | January 2025               |
+| Best for              | Agentic, coding, professional work       | Enterprise, document      | Reasoning, multimodal work |
 
 ---
 
@@ -487,14 +467,14 @@ Before finalizing in legal/financial/compliance/safety contexts:
 
 4. **Enable preambles for tool-use transparency** — "Before calling a tool, explain why" boosts accuracy
 
-5. **Tune `reasoning_effort` by task shape** — Lower to `none` for execution-heavy workloads; raise to `high` for
+5. **Tune `reasoning.effort` by task shape** — Lower to `none` for execution-heavy workloads; raise to `high` for
    complex multi-step problems
 
-6. **Anchor long-context answers** — Reference specific sections even with 400K context available
+6. **Anchor long-context answers** — Reference specific sections even with 1.05M context available
 
 7. **Migration is incremental** — One change at a time; model first, then reasoning effort, then prompt
 
-8. **Parallelize tool calls** — Except at `none` reasoning effort; measure tool yields, not raw call counts
+8. **Parallelize tool calls** — Use `low` or higher for multi-step tool planning; measure tool yields, not raw calls
 
 ---
 
@@ -508,6 +488,3 @@ Before finalizing in legal/financial/compliance/safety contexts:
 - [OpenAI: Reasoning Best Practices](https://developers.openai.com/api/docs/guides/reasoning-best-practices)
 - [OpenAI Cookbook: GPT-5 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide)
 - [OpenAI Cookbook: GPT-5 New Params and Tools](https://cookbook.openai.com/examples/gpt-5/gpt-5_new_params_and_tools)
-- [GPT-5.5 vs GPT-5.2 Comparison (NxCode)](https://www.nxcode.io/resources/news/gpt-5-5-vs-gpt-5-2-comparison-upgrade-guide-2026)
-- [GPT-5.5 Complete Guide (ThePromptBuddy)](https://www.thepromptbuddy.com/prompts/gpt-5-5-complete-guide-features-and-what-s-new-2026)
-- [Augment Code: GPT-5.5 Default](https://www.augmentcode.com/blog/why-gpt-5-5-is-our-new-default-and-free-for-now)

@@ -1,0 +1,26 @@
+# Template: openrouter-gemini-flash
+# Gemini 2.5 Flash via OpenRouter (cheap, all tiers use Flash)
+#
+# Requires OPENROUTER_API_KEY in .env (or environment).
+#
+# All tiers use Flash, differentiated by reasoning_effort.
+
+proxy:
+  family: gemini
+  preferred_provider: openrouter
+  default_port: 8099
+
+  openrouter:
+    tiers:
+      haiku: google/gemini-2.5-flash
+      sonnet: google/gemini-2.5-flash
+      opus: google/gemini-2.5-flash
+    tier_overrides:
+      haiku:
+        reasoning_effort: low
+      sonnet:
+        reasoning_effort: medium
+      opus:
+        reasoning_effort: high
+    base_url: "https://openrouter.ai/api/v1"
+    error_hints: true

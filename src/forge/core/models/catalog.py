@@ -148,6 +148,7 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
     )
     verbosity_levels = _parse_tuple_or_none(model_id, "verbosity_levels", data.get("verbosity_levels"))
     thinking_levels = _parse_tuple_or_none(model_id, "thinking_levels", data.get("thinking_levels"))
+    thinking_modes = _parse_tuple_or_none(model_id, "thinking_modes", data.get("thinking_modes"))
 
     tags_raw = data.get("tags", [])
     if not isinstance(tags_raw, list):
@@ -157,6 +158,22 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
     short_name = data.get("short_name")
     if short_name is not None:
         short_name = str(short_name)
+
+    addendum = data.get("system_prompt_addendum")
+    if addendum is not None:
+        addendum = str(addendum)
+        if not addendum.startswith("system_prompt_addendums/") or not addendum.endswith(".md"):
+            raise ModelCatalogError(
+                f"Model {model_id!r} system_prompt_addendum must be "
+                f"'system_prompt_addendums/<name>.md', got {addendum!r}"
+            )
+        try:
+            ref = resources.files("forge.core.data").joinpath(*addendum.split("/"))
+            ref.read_text(encoding="utf-8")
+        except Exception as e:
+            raise ModelCatalogError(
+                f"Model {model_id!r} system_prompt_addendum resource not found: {addendum!r}"
+            ) from e
 
     try:
         return ModelSpec(
@@ -169,6 +186,9 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
             supports_thinking=bool(data["supports_thinking"]),
             supports_images=bool(data["supports_images"]),
             supports_verbosity=bool(data.get("supports_verbosity", False)),
+            supports_top_p=bool(data.get("supports_top_p", True)),
+            supports_sampling_overrides=bool(data.get("supports_sampling_overrides", True)),
+            supports_1m_context=bool(data.get("supports_1m_context", False)),
             temperature_constraint=constraint,
             temperature=temperature,
             verbosity_levels=verbosity_levels,
@@ -176,8 +196,11 @@ def _parse_model_spec(model_id: str, data: dict[str, Any]) -> ModelSpec:
             native_thinking_param=data.get("native_thinking_param"),
             litellm_reasoning_efforts=litellm_reasoning_efforts,
             default_reasoning_effort=data.get("default_reasoning_effort"),
+            thinking_modes=thinking_modes,
             thinking_levels=thinking_levels,
             default_thinking_level=data.get("default_thinking_level"),
+            token_estimate_multiplier=float(data.get("token_estimate_multiplier", 1.0)),
+            system_prompt_addendum=addendum,
             tags=tags,
         )
     except (TypeError, ValueError) as e:
@@ -417,3 +440,28 @@ def get_compact_name(model: str) -> str:
     model = model.removesuffix("-preview")
 
     return model
+
+
+def get_system_prompt_addendum(model_or_alias: str) -> str | None:
+    """Return system prompt addendum content for a model, or None.
+
+    Fails open: returns None for models not in the catalog (common with
+    OpenRouter custom routing) or if resource loading fails at runtime.
+    """
+    if "/" in model_or_alias:
+        model_or_alias = model_or_alias.split("/")[-1]
+
+    try:
+        spec = get_model_spec(model_or_alias)
+    except (KeyError, ModelCatalogError):
+        return None
+
+    if not spec.system_prompt_addendum:
+        return None
+
+    try:
+        ref = resources.files("forge.core.data").joinpath(*spec.system_prompt_addendum.split("/"))
+        return ref.read_text(encoding="utf-8")
+    except Exception:
+        logger.warning("Failed to load system prompt addendum: %s", spec.system_prompt_addendum)
+        return None

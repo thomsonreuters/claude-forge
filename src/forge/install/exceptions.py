@@ -120,7 +120,7 @@ class NoClaudeDirectoryError(ForgeInstallError):
         self.start_path = start_path
         super().__init__(
             f"no .claude directory found walking up from '{start_path}'. "
-            "Run from within a Claude Code project, or use --user for global install."
+            "Run from within a Claude Code project, or use '--scope user' for global install."
         )
 
 

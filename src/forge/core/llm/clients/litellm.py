@@ -17,7 +17,7 @@ import time
 from typing import Any, AsyncGenerator
 
 import httpx
-from openai import APIError, APIStatusError, AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI
 from tenacity import (
     retry,
     retry_if_exception,
@@ -25,6 +25,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from forge.core.models.catalog import get_model_spec, model_exists
 from forge.runtime_config import get_runtime_config
 
 from ..credentials import CredentialManager
@@ -39,117 +40,16 @@ from ..types import (
     ToolCallDelta,
 )
 from .base import estimate_message_tokens, merge_hyperparams
-
-logger = logging.getLogger(__name__)
-
-
-# GPT-5 family models that use the Responses API (supports tools + verbosity + reasoning_effort)
-GPT5_MODELS = frozenset(
-    {
-        "gpt-5",
-        "gpt-5-chat",
-        "gpt-5-codex",
-        "gpt-5-mini",
-        "gpt-5-nano",
-        "gpt-5-pro",
-        "gpt-5.1",
-        "gpt-5.1-codex",
-        "gpt-5.1-codex-max",
-        "gpt-5.1-codex-mini",
-        "gpt-5.1-mini",
-        "gpt-5.2",
-        "gpt-5.2-codex",
-        "gpt-5.2-pro",
-        "gpt-5.3-codex",
-        "gpt-5.5",
-        "gpt-5.4",
-        "gpt-5.4-mini",
-        "gpt-5.4-nano",
-        "gpt-5.4-pro",
-    }
+from .openai_compat import (
+    ToolCallAccumulator,
+    build_chat_completion_kwargs,
+    extract_cached_tokens,
+    is_retryable_error,
+    message_to_openai,
+    openai_response_to_completion,
 )
 
-
-def _extract_cached_tokens(usage: object) -> int:
-    """Extract cached_tokens from a usage object's prompt_tokens_details.
-
-    LiteLLM passes through provider cache metrics in
-    ``usage.prompt_tokens_details.cached_tokens``.  The field may be an
-    object (SDK model) or a plain dict depending on the response path.
-
-    Returns 0 if no cache data is present.
-    """
-    prompt_details = getattr(usage, "prompt_tokens_details", None)
-    if prompt_details is None and isinstance(usage, dict):
-        prompt_details = usage.get("prompt_tokens_details")
-    if not prompt_details:
-        return 0
-    if isinstance(prompt_details, dict):
-        raw = prompt_details.get("cached_tokens", 0) or 0
-    else:
-        raw = getattr(prompt_details, "cached_tokens", 0) or 0
-    return int(raw)
-
-
-class ToolCallAccumulator:
-    """Accumulates streaming tool call deltas into complete ToolCalls.
-
-    During streaming, tool calls arrive as fragments (id, name, argument chunks).
-    OpenAI sends `id` only on the first chunk; subsequent chunks use `index`
-    to correlate. This accumulator uses index-based lookup to handle both.
-    """
-
-    def __init__(self) -> None:
-        self._pending: dict[int, ToolCallDelta] = {}  # index -> accumulated delta
-
-    def add_delta(self, delta: ToolCallDelta) -> None:
-        """Add a streaming delta to the accumulator."""
-        idx = delta.index
-        if idx is None:
-            return
-
-        if idx not in self._pending:
-            self._pending[idx] = ToolCallDelta(index=idx)
-
-        existing = self._pending[idx]
-        if delta.id:
-            existing.id = delta.id
-        if delta.name:
-            existing.name = delta.name
-        existing.arguments_json += delta.arguments_json
-
-    def finalize(self) -> list[ToolCall]:
-        """Parse accumulated deltas into complete ToolCalls.
-
-        Returns tool calls sorted by index for deterministic ordering.
-        """
-        result = []
-        for idx in sorted(self._pending):
-            delta = self._pending[idx]
-            if delta.id and delta.name:
-                try:
-                    arguments = json.loads(delta.arguments_json) if delta.arguments_json else {}
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse tool call arguments: {delta.arguments_json}")
-                    arguments = {}
-
-                result.append(
-                    ToolCall(
-                        id=delta.id,
-                        name=delta.name,
-                        arguments=arguments,
-                    )
-                )
-            elif delta.arguments_json:
-                logger.warning(
-                    f"Dropping incomplete tool call at index {idx}: "
-                    f"id={delta.id}, name={delta.name}, args_len={len(delta.arguments_json)}"
-                )
-        return result
-
-    def has_pending(self) -> bool:
-        """Check if there are any pending tool calls."""
-        return len(self._pending) > 0
+logger = logging.getLogger(__name__)
 
 
 class LiteLLMClient:
@@ -209,32 +109,19 @@ class LiteLLMClient:
         )
         return self._client
 
-    @staticmethod
-    def _is_retryable_error(error: Exception) -> bool:
-        """Return True if the error should trigger tenacity retry.
-
-        Only retries transient errors (rate limits, server errors).
-        Auth failures (401/403) are excluded — retrying with the same
-        bad credentials just adds ~14s of delay.
-        """
-        if isinstance(error, APIStatusError):
-            # 400 = BadRequestError (never succeeds on retry), 401/403 = auth failures
-            return error.status_code not in (400, 401, 403)
-        if isinstance(error, (RateLimitError, APIError)):
-            return True
-        return False
+    _is_retryable_error = staticmethod(is_retryable_error)
 
     def _is_gpt5_model(self) -> bool:
-        """Check if the current model is a GPT-5 family model.
+        """Check if the current model belongs to the GPT-5 family.
 
-        GPT-5 models support the Responses API with verbosity control.
-        Uses exact match against known GPT-5 model names.
-
-        Returns:
-            True if the model is a GPT-5 family model.
+        Used by the Chat Completions safety net (`_build_request_kwargs`) to
+        strip `reasoning_effort` when tools are present -- a Chat Completions
+        API limitation that affects all GPT-5 models regardless of whether
+        we route them to Responses API. Distinct from `_should_use_responses_api`
+        which determines routing.
         """
         model_name = self._model.split("/")[-1].lower()
-        return model_name in GPT5_MODELS
+        return model_name.startswith("gpt-5")
 
     def _should_use_responses_api(
         self,
@@ -243,11 +130,14 @@ class LiteLLMClient:
     ) -> bool:
         """Determine if Responses API should be used.
 
-        GPT-5 models always use Responses API which supports tools, verbosity,
-        and reasoning_effort together. Chat Completions API does NOT support
-        reasoning_effort with function tools for GPT-5.
+        Reads `use_responses_api` from the model catalog (single source of truth).
+        Returns False for models not in the catalog (graceful for OpenRouter's
+        open model space).
         """
-        return self._is_gpt5_model()
+        model_name = self._model.split("/")[-1].lower()
+        if not model_exists(model_name):
+            return False
+        return get_model_spec(model_name).use_responses_api
 
     @staticmethod
     def _convert_messages_for_responses(messages: list[Message]) -> list[dict[str, Any]]:
@@ -384,7 +274,7 @@ class LiteLLMClient:
                 "completion_tokens": output_tokens,
                 "total_tokens": input_tokens + output_tokens,
             }
-            cached = _extract_cached_tokens(resp_usage)
+            cached = extract_cached_tokens(resp_usage)
             if cached:
                 usage["cached_tokens"] = cached
 
@@ -412,81 +302,11 @@ class LiteLLMClient:
 
     def _message_to_openai(self, msg: Message) -> dict[str, Any]:
         """Convert canonical Message to OpenAI format."""
-        result: dict[str, Any] = {"role": msg.role, "content": msg.content}
-
-        if msg.tool_call_id:
-            result["tool_call_id"] = msg.tool_call_id
-
-        if msg.tool_calls:
-            result["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.name,
-                        "arguments": json.dumps(tc.arguments),
-                    },
-                }
-                for tc in msg.tool_calls
-            ]
-
-        return result
+        return message_to_openai(msg)
 
     def _openai_to_completion(self, response: Any) -> CompletionResponse:
         """Convert OpenAI response to canonical CompletionResponse."""
-        # Check for error response (LiteLLM returns ChatCompletion with error dict)
-        if hasattr(response, "error") and response.error:
-            error_msg = response.error.get("message", "Unknown error")
-            error_code = response.error.get("code", "unknown")
-            raise ProviderError(
-                self._provider,
-                Exception(f"API error (code={error_code}): {error_msg}"),
-            )
-
-        if not response.choices:
-            raise ProviderError(
-                self._provider,
-                Exception("No choices in response"),
-            )
-
-        choice = response.choices[0]
-        message = choice.message
-
-        text = message.content or ""
-
-        tool_calls = None
-        if message.tool_calls:
-            tool_calls = []
-            for tc in message.tool_calls:
-                try:
-                    arguments = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    arguments = {}
-                tool_calls.append(
-                    ToolCall(
-                        id=tc.id,
-                        name=tc.function.name,
-                        arguments=arguments,
-                    )
-                )
-
-        usage = None
-        if response.usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            }
-            cached = _extract_cached_tokens(response.usage)
-            if cached:
-                usage["cached_tokens"] = cached
-
-        return CompletionResponse(
-            text=text,
-            tool_calls=tool_calls,
-            usage=usage,
-            raw=response.model_dump(),
-        )
+        return openai_response_to_completion(response, self._provider)
 
     def _build_request_kwargs(
         self,
@@ -495,39 +315,10 @@ class LiteLLMClient:
         hyperparams: ModelHyperparameters,
     ) -> dict[str, Any]:
         """Build kwargs for OpenAI chat completion request."""
-        kwargs: dict[str, Any] = {
-            "model": self._model,
-            "messages": [self._message_to_openai(m) for m in messages],
-            "max_tokens": hyperparams.max_tokens,
-        }
+        kwargs = build_chat_completion_kwargs(self._model, messages, tools, hyperparams)
 
-        if hyperparams.temperature is not None:
-            kwargs["temperature"] = hyperparams.temperature
-
-        if hyperparams.top_p is not None:
-            kwargs["top_p"] = hyperparams.top_p
-
-        # Handle reasoning_effort (OpenAI o1/o3/gpt-5 models)
-        if hyperparams.reasoning_effort is not None:
-            kwargs["reasoning_effort"] = hyperparams.reasoning_effort
-
-        # Note: verbosity is handled separately in _complete_with_responses_api
-        # (only applies to GPT-5 models via Responses API)
-
-        # Note: Claude Code's `thinking` config (type: enabled/adaptive/disabled,
-        # budget_tokens) is Anthropic-specific. For litellm, thinking is controlled
-        # via `reasoning_effort` which litellm translates to each provider's native
-        # parameter (Gemini 3: thinking_level, Gemini 2.5: thinkingBudget).
-        # The tier's reasoning_effort is already set above from proxy config.
-
-        if tools:
-            kwargs["tools"] = tools
-
-        if "openai" in hyperparams.extra:
-            kwargs.update(hyperparams.extra["openai"])
-
-        # Safety net: GPT-5 Chat Completions API doesn't support reasoning_effort
-        # with function tools. Runs AFTER extras merge so callers can't reintroduce it.
+        # GPT-5 Chat Completions API doesn't support reasoning_effort with
+        # function tools. Runs AFTER extras merge so callers can't reintroduce it.
         if tools and "reasoning_effort" in kwargs and self._is_gpt5_model():
             dropped = kwargs.pop("reasoning_effort")
             logger.warning(
@@ -649,8 +440,24 @@ class LiteLLMClient:
             error_str = str(e).lower()
             if "authentication" in error_str or "unauthorized" in error_str:
                 await self._credentials.invalidate(self._provider)
+                await self._close_client()
                 raise AuthenticationError(self._provider, str(e)) from e
             raise ProviderError(self._provider, e) from e
+
+    async def _close_client(self) -> None:
+        """Close and discard the cached HTTP client.
+
+        Forces credential re-resolution on next request. Especially
+        important when a custom httpx.AsyncClient with SSL context was
+        created (remote LiteLLM with root CA).
+        """
+        client = self._client
+        self._client = None
+        if client is not None:
+            try:
+                await client.close()
+            except Exception:
+                pass
 
     async def stream(
         self,
@@ -718,6 +525,7 @@ class LiteLLMClient:
                 error_str = str(e).lower()
                 if "authentication" in error_str or "unauthorized" in error_str:
                     await self._credentials.invalidate(self._provider)
+                    await self._close_client()
                 yield StreamEvent(type="error", error=str(e))
                 return
 
@@ -740,7 +548,7 @@ class LiteLLMClient:
                         "completion_tokens": chunk.usage.completion_tokens,
                         "total_tokens": chunk.usage.total_tokens,
                     }
-                    cached = _extract_cached_tokens(chunk.usage)
+                    cached = extract_cached_tokens(chunk.usage)
                     if cached:
                         usage_data["cached_tokens"] = cached
 
@@ -755,8 +563,11 @@ class LiteLLMClient:
 
                 if delta.tool_calls:
                     for tc_delta in delta.tool_calls:
+                        idx = tc_delta.index
+                        if idx is None and len(delta.tool_calls) == 1:
+                            idx = accumulator.default_index()
                         tool_delta = ToolCallDelta(
-                            index=tc_delta.index,
+                            index=idx,
                             id=tc_delta.id,
                             name=tc_delta.function.name if tc_delta.function else None,
                             arguments_json=(tc_delta.function.arguments or "") if tc_delta.function else "",
@@ -778,6 +589,7 @@ class LiteLLMClient:
             error_str = str(e).lower()
             if "authentication" in error_str or "unauthorized" in error_str:
                 await self._credentials.invalidate(self._provider)
+                await self._close_client()
             yield StreamEvent(type="error", error=str(e))
 
     async def count_tokens(

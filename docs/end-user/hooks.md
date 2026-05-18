@@ -80,8 +80,8 @@ Hooks are installed as part of `forge extension enable`, or can be managed separ
 
 ```bash
 forge extension enable                           # Auto-detect scope
-forge extension enable --user                    # Personal install → ~/.claude/settings.json
-forge extension enable --local                   # Local install → .claude/settings.local.json
+forge extension enable --scope user              # Personal install → ~/.claude/settings.json
+forge extension enable --scope local             # Local install → .claude/settings.local.json
 ```
 
 **Advanced:** Install hooks only (without commands, agents, etc.):

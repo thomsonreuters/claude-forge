@@ -38,6 +38,7 @@ def mock_claude_workspace(
         # need ANTHROPIC_API_KEY for preflight validation.
         # Write to /forge/.env (WORKDIR) so load_dotenv() picks it up.
         echo 'LITELLM_BASE_URL=https://litellm.test.example.com' >> /forge/.env
+        echo 'LITELLM_API_KEY=sk-litellm-test-mock-key' >> /forge/.env
         echo 'ANTHROPIC_API_KEY=sk-ant-test-mock-key' >> /forge/.env
 
         # Clean global forge state (session index, pending-work, etc.)

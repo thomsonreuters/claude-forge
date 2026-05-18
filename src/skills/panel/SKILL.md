@@ -23,7 +23,7 @@ Run a panel review: fans out the same review task to multiple models in parallel
 | --------------- | -------- | ---------------------------------------------------------------------------- |
 | `target`        | Optional | File, directory, or instruction on what to review (defaults to cwd)          |
 | `--code`        | Optional | Switch: use code review framework (default: document review)                 |
-| `--models`      | Optional | Comma-separated model list (default: all available)                          |
+| `--models`      | Optional | Comma-separated model list (default: Forge workflow defaults)                |
 | `--roles`       | Optional | Comma-separated reviewer roles (security, performance, architecture, ...)    |
 | `--review-type` | Optional | Review focus: full, security, performance, quick (security/perf need --code) |
 | `--severity`    | Optional | Minimum severity to report: high or critical                                 |
@@ -38,11 +38,19 @@ and stop.
 
 ## Models Used
 
-| Model            | Strength                             | Via                  |
-| ---------------- | ------------------------------------ | -------------------- |
-| `gpt-5.5`        | Logical problems, systematic review  | litellm-openai proxy |
-| `gemini-2.5-pro` | Balanced analysis, large context     | litellm-gemini proxy |
-| `claude-opus`    | Deep architecture, complex reasoning | Direct Anthropic     |
+| Model                    | Strength                            | Via                     |
+| ------------------------ | ----------------------------------- | ----------------------- |
+| `gpt-5.5`                | Logical problems, systematic review | openrouter-openai proxy |
+| `gemini-3.1-pro-preview` | Balanced analysis, large context    | openrouter-gemini proxy |
+| `claude-opus`            | Stable Claude Opus 4.6 reasoning    | Direct Anthropic        |
+
+Selectable direct Claude workers include `claude-opus-4.6`, `claude-opus-4.6-1m`, and `claude-opus-4.7`. Use
+`claude-opus-4.7` as a bounded review/quorum worker when the prompt has a concrete target and should require file:line
+evidence. You can include both 4.6 and 4.7 in one panel, for example:
+
+```bash
+forge workflow panel src/ --code --models claude-opus-4.6,claude-opus-4.7 --json --cwd "$(pwd)"
+```
 
 ---
 
@@ -82,7 +90,7 @@ Parse the JSON output. The structure is:
   "prompt": "...",
   "results": {
     "gpt-5.5": {"response": "...", "error": null, "success": true, "duration_seconds": 45.2},
-    "gemini-2.5-pro": {"response": "...", "error": null, "success": true, "duration_seconds": 38.1},
+    "gemini-3.1-pro-preview": {"response": "...", "error": null, "success": true, "duration_seconds": 38.1},
     "claude-opus": {"response": "...", "error": null, "success": true, "duration_seconds": 52.7}
   },
   "successful": 3,
@@ -116,5 +124,5 @@ result in the conversation. If `--output` was not specified, print the result in
 ## Requirements
 
 - **Forge CLI**: `forge` must be on PATH
-- **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create litellm-openai`)
+- **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create openrouter-openai`)
 - **List available models**: `forge workflow list-models`

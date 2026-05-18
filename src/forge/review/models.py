@@ -1,13 +1,16 @@
 """Data models for multi-model review.
 
 Defines model specifications, review results, and the default
-model catalog. Models reference ``proxy`` (proxy_id or template name)
-for proxy resolution via ``lookup_proxy_base_url()``.
+model catalog. Models declare identity and provider refs; concrete
+routing is derived at runtime by ``forge.review.routing``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Literal
+
+PromptMode = Literal["override", "prefix"]
 
 
 @dataclass(frozen=True)
@@ -15,24 +18,30 @@ class ModelSpec:
     """A model backend for multi-model review.
 
     Attributes:
-        name: Human-readable identifier (e.g., "gpt-5.1").
-        proxy: Proxy (proxy_id or template name) for base_url resolution.
-            None means direct Anthropic (no ANTHROPIC_BASE_URL).
-        model_flag: Value for ``claude -p --model <flag>``.
-            None means use the proxy's default model.
+        name: Human-readable identifier (e.g., "gpt-5.5").
+        model_id: Forge-canonical model ID (e.g., "gpt-5.5").
+        family: Model family (e.g., "openai", "anthropic", "gemini").
+        provider_refs: Ordered provider preference as (namespace, model_ref)
+            pairs. ``("direct", "claude-opus-4-6")`` means direct Anthropic;
+            ``("openrouter", "openai/gpt-5.5")`` means OpenRouter routing.
         description: What this model is good at.
+        preferred_proxy: Catalog recommendation for proxy routing (soft,
+            overridable). None for direct-only models.
         prompt: Per-worker prompt override. When set, this worker receives
-            this prompt instead of the global prompt passed to run_multi_review().
+            this prompt according to prompt_mode.
+        prompt_mode: "override" means prompt replaces the global prompt.
+            "prefix" means prompt is prepended to the global prompt as a hint.
         worker_id: Stable key for JSON output. Defaults to ``name`` when None.
-            Use when the same model appears multiple times with different roles
-            (e.g., ``gpt-5.5-security``, ``gpt-5.5-architecture``).
     """
 
     name: str
-    proxy: str | None
-    model_flag: str | None
+    model_id: str
+    family: str
+    provider_refs: tuple[tuple[str, str], ...]
     description: str
+    preferred_proxy: str | None = None
     prompt: str | None = None
+    prompt_mode: PromptMode = "override"
     worker_id: str | None = None
 
     @property
@@ -69,47 +78,157 @@ class MultiReviewOutput:
         return sum(1 for r in self.results if not r.success)
 
 
-def _build_default_models() -> dict[str, ModelSpec]:
-    """Build default review models from the model catalog's defaults section.
+_CLAUDE_47_BOUNDED_REVIEW_PROMPT = """\
+You are the Claude Opus 4.7 bounded-review worker in a Forge quorum.
 
-    Model names and flags derive from model_catalog.yaml so updating
-    defaults is a single YAML change. Dict keys use compact display names
-    (e.g., "gemini-3.1-pro" not "gemini-3.1-pro-preview") so the CLI
-    surface stays clean.
+Use the provided target and prompt as the complete task scope. Prefer concrete
+evidence over broad narrative: cite file:line locations for every substantive
+finding, quote only the minimum necessary code, and separate confirmed issues
+from hypotheses. Do not rely on vague prior referents or unstated conversation
+history. If the prompt lacks a needed target, say exactly what is missing.
+"""
+
+
+def _build_available_models() -> dict[str, ModelSpec]:
+    """Build available review models from the model catalog.
+
+    Model names derive from model_catalog.yaml so updating defaults is
+    a single YAML change. Provider-specific model refs come from the
+    corresponding proxy template tier configs.
     """
-    from forge.core.models.catalog import get_compact_name, get_default_model
+    from forge.core.models.catalog import get_default_model
 
     openai_opus = get_default_model("openai", "opus")
     gemini_opus = get_default_model("gemini", "opus")
     anthropic_opus = get_default_model("anthropic", "opus")
-
-    openai_name = get_compact_name(openai_opus)
-    gemini_name = get_compact_name(gemini_opus)
+    deepseek_opus = get_default_model("deepseek", "opus")
+    minimax_opus = get_default_model("minimax", "opus")
+    qwen_opus = get_default_model("qwen", "opus")
+    glm_opus = get_default_model("glm", "opus")
+    kimi_opus = get_default_model("kimi", "opus")
 
     return {
-        openai_name: ModelSpec(
-            name=openai_name,
-            proxy="litellm-openai",
-            model_flag=None,
+        openai_opus: ModelSpec(
+            name=openai_opus,
+            model_id=openai_opus,
+            family="openai",
+            provider_refs=(("openrouter", "openai/gpt-5.5"), ("litellm", "openai/gpt-5.5")),
+            preferred_proxy="openrouter-openai",
             description="Logical problems, systematic code review",
         ),
-        gemini_name: ModelSpec(
-            name=gemini_name,
-            proxy="litellm-gemini",
-            model_flag=None,
+        gemini_opus: ModelSpec(
+            name=gemini_opus,
+            model_id=gemini_opus,
+            family="gemini",
+            provider_refs=(
+                ("openrouter", "google/gemini-3.1-pro-preview"),
+                ("litellm", "google/gemini-3.1-pro-preview"),
+            ),
+            preferred_proxy="openrouter-gemini",
             description="Balanced analysis, pragmatic suggestions, large context",
+        ),
+        deepseek_opus: ModelSpec(
+            name=deepseek_opus,
+            model_id=deepseek_opus,
+            family="deepseek",
+            provider_refs=(("openrouter", "deepseek/deepseek-v4-pro"),),
+            preferred_proxy="openrouter-deepseek",
+            description="Cost-efficient reasoning, strong code analysis",
+        ),
+        minimax_opus: ModelSpec(
+            name=minimax_opus,
+            model_id=minimax_opus,
+            family="minimax",
+            provider_refs=(("openrouter", "minimax/minimax-m2.7"),),
+            preferred_proxy="openrouter-minimax",
+            description="Cost-efficient agentic analysis, broad coverage",
+        ),
+        qwen_opus: ModelSpec(
+            name=qwen_opus,
+            model_id=qwen_opus,
+            family="qwen",
+            provider_refs=(("openrouter", "qwen/qwen3.6-max-preview"),),
+            preferred_proxy="openrouter-qwen",
+            description="Large context multilingual analysis",
+        ),
+        glm_opus: ModelSpec(
+            name=glm_opus,
+            model_id=glm_opus,
+            family="glm",
+            provider_refs=(("openrouter", "z-ai/glm-5.1"),),
+            preferred_proxy="openrouter-glm",
+            description="Cost-efficient general analysis",
+        ),
+        kimi_opus: ModelSpec(
+            name=kimi_opus,
+            model_id=kimi_opus,
+            family="kimi",
+            provider_refs=(("openrouter", "moonshotai/kimi-k2.6"),),
+            preferred_proxy="openrouter-kimi",
+            description="Agentic code generation and analysis",
         ),
         "claude-opus": ModelSpec(
             name="claude-opus",
-            proxy=None,
-            model_flag=anthropic_opus,
+            model_id="claude-opus",
+            family="anthropic",
+            provider_refs=(("direct", anthropic_opus),),
             description="Deep architectural analysis, complex reasoning",
+        ),
+        "claude-opus-4.6": ModelSpec(
+            name="claude-opus-4.6",
+            model_id="claude-opus-4.6",
+            family="anthropic",
+            provider_refs=(("direct", "claude-opus-4-6"),),
+            description="Stable Claude Opus 4.6 direct worker",
+        ),
+        "claude-opus-4.6-1m": ModelSpec(
+            name="claude-opus-4.6-1m",
+            model_id="claude-opus-4.6-1m",
+            family="anthropic",
+            provider_refs=(("direct", "claude-opus-4-6[1m]"),),
+            description="Stable Claude Opus 4.6 direct worker with 1M context pin",
+        ),
+        "claude-opus-4.7": ModelSpec(
+            name="claude-opus-4.7",
+            model_id="claude-opus-4.7",
+            family="anthropic",
+            provider_refs=(("direct", "claude-opus-4-7"),),
+            description="Bounded single-shot review and quorum dissent",
+            prompt=_CLAUDE_47_BOUNDED_REVIEW_PROMPT,
+            prompt_mode="prefix",
         ),
     }
 
 
+def _build_default_model_names() -> tuple[str, ...]:
+    """Return the semantically chosen default quorum model names."""
+    from forge.core.models.catalog import get_default_model
+
+    return (
+        get_default_model("openai", "opus"),
+        get_default_model("gemini", "opus"),
+        "claude-opus",
+    )
+
+
+def _build_model_aliases(available: dict[str, ModelSpec]) -> dict[str, str]:
+    """Return convenience aliases mapped to canonical workflow model names."""
+    from forge.core.models.catalog import get_compact_name, get_default_model
+
+    aliases: dict[str, str] = {}
+    for family in ("openai", "gemini", "deepseek", "minimax", "qwen", "glm", "kimi"):
+        canonical = get_default_model(family, "opus")
+        compact = get_compact_name(canonical)
+        if compact != canonical and compact not in available:
+            aliases[compact] = canonical
+    return aliases
+
+
 # Proxy_ids match Forge template names (forge proxy create <template>).
-DEFAULT_MODELS: dict[str, ModelSpec] = _build_default_models()
+AVAILABLE_MODELS: dict[str, ModelSpec] = _build_available_models()
+MODEL_ALIASES: dict[str, str] = _build_model_aliases(AVAILABLE_MODELS)
+_DEFAULT_MODEL_NAMES: tuple[str, ...] = _build_default_model_names()
+DEFAULT_MODELS: dict[str, ModelSpec] = {name: AVAILABLE_MODELS[name] for name in _DEFAULT_MODEL_NAMES}
 
 
 def resolve_model_specs(names_str: str | None) -> list[ModelSpec]:
@@ -122,12 +241,24 @@ def resolve_model_specs(names_str: str | None) -> list[ModelSpec]:
         return list(DEFAULT_MODELS.values())
 
     names = [m.strip() for m in names_str.split(",")]
-    invalid = [m for m in names if m not in DEFAULT_MODELS]
+    invalid = [m for m in names if m not in AVAILABLE_MODELS and m not in MODEL_ALIASES]
     if invalid:
-        available = list(DEFAULT_MODELS.keys())
+        available = list(AVAILABLE_MODELS.keys()) + sorted(MODEL_ALIASES.keys())
         raise ValueError(f"Unknown models: {invalid}. Available: {available}")
 
-    return [DEFAULT_MODELS[m] for m in names]
+    specs: list[ModelSpec] = []
+    for name in names:
+        if name in AVAILABLE_MODELS:
+            specs.append(AVAILABLE_MODELS[name])
+            continue
+        canonical = MODEL_ALIASES[name]
+        specs.append(replace(AVAILABLE_MODELS[canonical], worker_id=name))
+    return specs
+
+
+def available_model_specs() -> list[ModelSpec]:
+    """Return every selectable workflow model spec."""
+    return list(AVAILABLE_MODELS.values())
 
 
 @dataclass(frozen=True)
@@ -143,50 +274,57 @@ def check_model_availability(
     specs: list[ModelSpec] | None = None,
     timeout_s: float = 1.0,
 ) -> list[ModelAvailability]:
-    """Check proxy/credential availability for each model.
+    """Check route availability for each model via the routing chain.
 
-    Deduplicates proxy health checks internally. Does not fail on
-    unavailable models -- returns status for each.
+    Delegates to ``resolve_subprocess_routing()`` per spec. Does not
+    fail on unavailable models -- returns status for each.
     """
-    from forge.core.auth.template_secrets import resolve_env_or_credential
-    from forge.core.reactive.proxy import check_proxy_reachable
+    from forge.core.reactive.routing import resolve_subprocess_routing
+    from forge.review.routing import derive_model_routes
 
     if specs is None:
         specs = list(DEFAULT_MODELS.values())
 
-    proxy_cache: dict[str, tuple[str, str, str | None]] = {}
     results: list[ModelAvailability] = []
 
     for spec in specs:
-        if spec.proxy is None:
-            if resolve_env_or_credential("ANTHROPIC_API_KEY"):
+        try:
+            routes = derive_model_routes(spec)
+
+            direct_only = bool(routes) and all(r.provider == "direct" for r in routes)
+            if direct_only:
+                from forge.core.auth.template_secrets import resolve_env_or_credential
+
+                if resolve_env_or_credential("ANTHROPIC_API_KEY"):
+                    results.append(ModelAvailability(spec=spec, status="ready", reason=""))
+                else:
+                    results.append(
+                        ModelAvailability(
+                            spec=spec,
+                            status="unavailable",
+                            reason="ANTHROPIC_API_KEY not configured",
+                        )
+                    )
+                continue
+
+            result = resolve_subprocess_routing(
+                preferred_proxy=spec.preferred_proxy,
+                routes=routes,
+                require_route=True,
+            )
+
+            if result.route is not None:
                 results.append(ModelAvailability(spec=spec, status="ready", reason=""))
             else:
                 results.append(
                     ModelAvailability(
                         spec=spec,
                         status="unavailable",
-                        reason="ANTHROPIC_API_KEY not configured",
+                        reason=result.warning or "No compatible proxy found",
                     )
                 )
-            continue
-
-        if spec.proxy in proxy_cache:
-            status, reason, _url = proxy_cache[spec.proxy]
-            results.append(ModelAvailability(spec=spec, status=status, reason=reason))
-            continue
-
-        try:
-            reachable, reason, _url = check_proxy_reachable(spec.proxy, timeout_s)
-            if reachable:
-                status, reason = "ready", ""
-            else:
-                status = "unavailable"
         except Exception as e:
-            status, reason, _url = "error", str(e), None
-
-        proxy_cache[spec.proxy] = (status, reason, _url)
-        results.append(ModelAvailability(spec=spec, status=status, reason=reason))
+            results.append(ModelAvailability(spec=spec, status="error", reason=str(e)))
 
     return results
 

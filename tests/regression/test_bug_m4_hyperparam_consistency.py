@@ -71,7 +71,7 @@ async def _assert_consistency(
     monkeypatch.setattr(
         cf_mod,
         "_enforce_max_output_tokens_cap",
-        lambda _model, req: req if req is not None else 4096,
+        lambda _model, req, **_kwargs: req if req is not None else 4096,
     )
 
     # Reset singleton for clean state

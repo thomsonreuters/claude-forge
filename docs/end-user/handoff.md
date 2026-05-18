@@ -201,7 +201,7 @@ The agent inherits the session's proxy by default (same model routing). Override
 ```yaml
 auto_update:
   enabled: true
-  proxy: litellm-gemini-flash-local   # Use a cheaper proxy for summarization
+  proxy: openrouter-gemini-flash   # Use a cheaper proxy for summarization
 ```
 
 Priority chain: `proxy` -> `confirmed.started_with_proxy` -> `ANTHROPIC_BASE_URL` env -> Anthropic direct.

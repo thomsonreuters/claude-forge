@@ -19,7 +19,7 @@ import forge.cli.session as session_cli
 from forge.cli.main import main
 from forge.session import IndexStore, SessionManager, SessionStore, create_session_state
 from forge.session.active import ActiveSessionStore
-from forge.session.config import LAUNCH_MODE_HOST
+from forge.session.config import LAUNCH_MODE_HOST, LAUNCH_MODE_SIDECAR
 from forge.session.exceptions import DirtyWorktreeError, SessionNotFoundError
 from forge.session.models import Derivation, StartedWithProxy, SystemPromptIntent
 
@@ -81,6 +81,68 @@ def _set_index_age(name: str, forge_root: Path, days: int) -> None:
     IndexStore().update_session(name, last_accessed_at=_iso_days_ago(days), forge_root=str(forge_root))
 
 
+def test_resume_token_estimate_multiplier_skips_proxy_config_lookup(temp_env: Path) -> None:
+    """Proxy-routed resume checks use the default tokenizer heuristic in v1."""
+    from forge.cli import session_lifecycle
+
+    parent = create_session_state("parent", worktree_path=str(temp_env))
+
+    with patch("forge.config.loader.load_proxy_instance_config", side_effect=AssertionError("unexpected proxy I/O")):
+        multiplier = session_lifecycle._resume_token_estimate_multiplier(
+            parent_state=parent,
+            effective_proxy_ref="litellm-anthropic",
+        )
+
+    assert multiplier == 1.0
+
+
+def test_resume_token_estimate_multiplier_uses_direct_pin(temp_env: Path) -> None:
+    """Direct 4.7 resume checks keep the model-specific tokenizer margin."""
+    from forge.cli import session_lifecycle
+
+    parent = create_session_state("parent", worktree_path=str(temp_env), direct_model="claude-opus-4-7")
+
+    multiplier = session_lifecycle._resume_token_estimate_multiplier(
+        parent_state=parent,
+        effective_proxy_ref=None,
+    )
+
+    assert multiplier == 1.35
+
+
+def test_addendum_resolution_mixed_family_uses_claude_default() -> None:
+    """Mixed proxy tiers should use the configured default tier, including None for Claude."""
+    from forge.cli import session_lifecycle
+
+    config = _proxy_cfg(
+        haiku="openai/gpt-5.4-mini",
+        sonnet="anthropic/claude-sonnet-4-6",
+        opus="openai/gpt-5.5",
+        default_tier="sonnet",
+    )
+
+    with patch("forge.config.loader.load_proxy_instance_config", return_value=config):
+        assert session_lifecycle.resolve_addendum_content_for_proxy("mixed-proxy") is None
+
+
+def test_addendum_resolution_mixed_family_uses_openai_default() -> None:
+    """Mixed proxy tiers should inject the default tier's addendum when that tier needs one."""
+    from forge.cli import session_lifecycle
+
+    config = _proxy_cfg(
+        haiku="anthropic/claude-haiku-4-5-20251001",
+        sonnet="anthropic/claude-sonnet-4-6",
+        opus="openai/gpt-5.5",
+        default_tier="opus",
+    )
+
+    with patch("forge.config.loader.load_proxy_instance_config", return_value=config):
+        content = session_lifecycle.resolve_addendum_content_for_proxy("mixed-proxy")
+
+    assert content is not None
+    assert "Tool Parameter Guidance" in content
+
+
 def _set_manifest_age(forge_root: Path, name: str, days: int) -> None:
     store = SessionStore(str(forge_root), name)
 
@@ -117,6 +179,36 @@ def _seed_supervised_duplicate_sessions(project: Path) -> tuple[Path, Path]:
     _write_session_manifest(forge_root_b, "shared", target_b)
 
     return forge_root_a, forge_root_b
+
+
+def _proxy_cfg(
+    *,
+    haiku: str = "openai/gpt-5.4-mini",
+    sonnet: str = "openai/gpt-5.5",
+    opus: str = "openai/gpt-5.5",
+    default_tier: str = "sonnet",
+):
+    from forge.config.schema import ProxyInstanceConfig, TierModels
+
+    return ProxyInstanceConfig(
+        proxy_format=1,
+        template="litellm-openai",
+        template_digest="abc",
+        provider="litellm",
+        proxy_endpoint="http://localhost:8085",
+        port=8085,
+        upstream_base_url="https://litellm.example/v1",
+        tiers=TierModels(haiku=haiku, sonnet=sonnet, opus=opus),
+        default_tier=default_tier,
+    )
+
+
+def _proxy_routing(proxy_id: str = "openai-proxy") -> session_cli.ResolvedRouting:
+    return session_cli.ResolvedRouting(
+        template="litellm-openai",
+        base_url="http://localhost:8085",
+        proxy_id=proxy_id,
+    )
 
 
 def _seed_supervise_source_session(project: Path, forge_root: Path) -> None:
@@ -978,12 +1070,167 @@ class TestSessionStart:
         )
 
     def test_start_with_model(self, runner: CliRunner, temp_env: Path) -> None:
-        """Model tier is not a session concept; CLI should not accept --model."""
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            result = runner.invoke(main, ["session", "start", "model-test", "--model", "opus"])
+        """--model pins direct Claude sessions through env vars."""
+        with patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke:
+            result = runner.invoke(main, ["session", "start", "model-test", "--model", "opus-4-7"])
 
-        assert result.exit_code != 0
+        assert result.exit_code == 0
+        assert mock_invoke.call_args is not None
+        kwargs = mock_invoke.call_args.kwargs
+        assert kwargs["model"] is None
+        assert kwargs["env_vars"]["ANTHROPIC_MODEL"] == "opus"
+        assert kwargs["env_vars"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-4-7"
+
+        state = SessionStore(str(temp_env), "model-test").read()
+        assert state.intent.launch is not None
+        assert state.intent.launch.direct_model == "claude-opus-4-7"
+
+    def test_start_with_proxy_injects_model_addendum(self, runner: CliRunner, temp_env: Path) -> None:
+        """Proxy-routed managed launches append the model-family prompt addendum."""
+        with (
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=_proxy_routing()),
+            patch("forge.config.loader.load_proxy_instance_config", return_value=_proxy_cfg()),
+            patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke,
+        ):
+            result = runner.invoke(main, ["session", "start", "addendum-start", "--proxy", "openai-proxy"])
+
+        assert result.exit_code == 0, result.output
+        prompt_file = mock_invoke.call_args.kwargs["system_prompt_file"]
+        assert prompt_file is not None
+        prompt_content = Path(prompt_file).read_text(encoding="utf-8")
+        assert "Tool Parameter Guidance" in prompt_content
+        assert "pages" in prompt_content
+
+    def test_start_with_model_no_launch_stores_normalized_pin(self, runner: CliRunner, temp_env: Path) -> None:
+        result = runner.invoke(
+            main,
+            ["session", "start", "model-no-launch", "--model", "claude-opus-4-7[1m]", "--no-launch"],
+        )
+
+        assert result.exit_code == 0
+        state = SessionStore(str(temp_env), "model-no-launch").read()
+        assert state.intent.launch is not None
+        assert state.intent.launch.direct_model == "claude-opus-4-7[1m]"
+
+    def test_start_with_sonnet_model_sets_sonnet_env(self, runner: CliRunner, temp_env: Path) -> None:
+        with patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke:
+            result = runner.invoke(
+                main,
+                ["session", "start", "sonnet-model", "--model", "claude-sonnet-4-6[1m]"],
+            )
+
+        assert result.exit_code == 0
+        kwargs = mock_invoke.call_args.kwargs
+        assert kwargs["env_vars"]["ANTHROPIC_MODEL"] == "sonnet"
+        assert kwargs["env_vars"]["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "claude-sonnet-4-6[1m]"
+
+    def test_start_with_model_accepts_subprocess_proxy(self, runner: CliRunner, temp_env: Path) -> None:
+        with patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke:
+            result = runner.invoke(
+                main,
+                [
+                    "session",
+                    "start",
+                    "model-subprocess",
+                    "--model",
+                    "opus-4-7",
+                    "--subprocess-proxy",
+                    "openrouter-anthropic",
+                ],
+            )
+
+        assert result.exit_code == 0
+        kwargs = mock_invoke.call_args.kwargs
+        assert kwargs["env_vars"]["FORGE_SUBPROCESS_PROXY"] == "openrouter-anthropic"
+        assert kwargs["env_vars"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-4-7"
+
+    @pytest.mark.parametrize("flag", ["--sidecar", "--host-proxy"])
+    def test_start_with_model_rejects_sidecar_and_host_proxy(
+        self,
+        runner: CliRunner,
+        temp_env: Path,
+        flag: str,
+    ) -> None:
+        args = ["session", "start", "bad-model", "--model", "opus-4-7", flag]
+
+        result = runner.invoke(main, args)
+
+        assert result.exit_code == 1
         assert "--model" in result.output
+
+    def test_start_with_unknown_model_rejects_before_create(self, runner: CliRunner, temp_env: Path) -> None:
+        result = runner.invoke(main, ["session", "start", "bad-model", "--model", "claude-opus-4.7.1"])
+
+        assert result.exit_code == 1
+        assert "Unknown direct Claude model" in result.output
+        assert not SessionStore(str(temp_env), "bad-model").exists()
+
+    def test_start_with_model_and_proxy_validates_alternatives(self, runner: CliRunner, temp_env: Path) -> None:
+        """--model + --proxy should validate that the proxy has model_alternatives for the model."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        proxy_cfg = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter-anthropic",
+            template_digest="abc",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8095",
+            port=8095,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+            model_alternatives={"opus": {"claude-opus-4-7": "anthropic/claude-opus-4.7"}},
+        )
+        routing = session_cli.ResolvedRouting(
+            template="openrouter-anthropic",
+            base_url="http://localhost:8095",
+            proxy_id="test-or-proxy",
+        )
+        with (
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=routing),
+            patch("forge.config.loader.load_proxy_instance_config", return_value=proxy_cfg),
+            patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke,
+        ):
+            result = runner.invoke(
+                main,
+                ["session", "start", "model-proxy-ok", "--proxy", "test-or-proxy", "--model", "claude-opus-4-7"],
+            )
+
+        assert result.exit_code == 0, result.output
+        env_vars = mock_invoke.call_args.kwargs["env_vars"]
+        assert env_vars["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-4-7"
+
+    def test_start_with_model_and_proxy_rejects_unconfigured_alternative(
+        self, runner: CliRunner, temp_env: Path
+    ) -> None:
+        """--model + --proxy should error when the proxy has no matching alternative."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        proxy_cfg = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter-openai",
+            template_digest="abc",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8096",
+            port=8096,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+        )
+        routing = session_cli.ResolvedRouting(
+            template="openrouter-openai",
+            base_url="http://localhost:8096",
+            proxy_id="test-or-openai",
+        )
+        with (
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=routing),
+            patch("forge.config.loader.load_proxy_instance_config", return_value=proxy_cfg),
+        ):
+            result = runner.invoke(
+                main,
+                ["session", "start", "model-proxy-bad", "--proxy", "test-or-openai", "--model", "claude-opus-4-7"],
+            )
+
+        assert result.exit_code == 1
+        assert "does not configure model alternative" in result.output
 
     def test_start_duplicate_fails(self, runner: CliRunner, temp_env: Path) -> None:
         """Should fail when session already exists."""
@@ -1730,6 +1977,61 @@ class TestSessionFork:
         call_kwargs = mock_manager.fork_session.call_args.kwargs
         assert call_kwargs["create_worktree"] is True
 
+    def test_sidecar_worktree_fork_injects_addendum_once(self, runner: CliRunner, temp_env: Path) -> None:
+        """Sidecar worktree forks should combine context with one copy of the addendum."""
+        parent = create_session_state(
+            "fork-parent",
+            proxy_template="litellm-openai",
+            proxy_base_url="http://localhost:8085",
+            worktree_path=str(temp_env),
+            worktree_branch="main",
+        )
+        parent.confirmed.claude_session_id = "parent-uuid"
+
+        fork_worktree = temp_env / "fork-child"
+        fork_worktree.mkdir()
+        fork_state = create_session_state(
+            "fork-child",
+            proxy_template="litellm-openai",
+            proxy_base_url="http://localhost:8085",
+            parent_session="fork-parent",
+            is_fork=True,
+            worktree_path=str(fork_worktree),
+            worktree_branch="fork-child",
+            launch_mode=LAUNCH_MODE_SIDECAR,
+        )
+        assert fork_state.worktree is not None
+        fork_state.worktree.is_worktree = True
+        fork_state.forge_root = str(fork_worktree)
+        SessionStore(str(fork_worktree), "fork-child").write(fork_state)
+
+        context_file = fork_worktree / ".forge" / "prev_sessions" / "fork-parent.md"
+        context_file.parent.mkdir(parents=True)
+        context_file.write_text("# Parent context\n", encoding="utf-8")
+
+        with (
+            patch("forge.cli.session.SessionManager") as mock_manager_cls,
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=_proxy_routing()),
+            patch("forge.config.loader.load_proxy_instance_config", return_value=_proxy_cfg()),
+            patch("forge.cli.session._generate_parent_handoff_context", return_value=(context_file, [])),
+            patch("forge.sidecar.docker.is_docker_available", return_value=True),
+            patch("forge.sidecar.get_secrets_for_template", return_value={}),
+            patch("forge.sidecar.run_sidecar_session", return_value=0),
+        ):
+            mock_manager = mock_manager_cls.return_value
+            mock_manager.fork_session.return_value = (parent, fork_state)
+
+            result = runner.invoke(
+                main,
+                ["session", "fork", "fork-parent", "--name", "fork-child", "--worktree", "--proxy", "openai-proxy"],
+            )
+
+        assert result.exit_code == 0, result.output
+        combined = fork_worktree / ".forge" / "launch-context" / "fork-child.md"
+        content = combined.read_text(encoding="utf-8")
+        assert "# Parent context" in content
+        assert content.count("# Tool Parameter Guidance") == 1
+
     def test_fork_worktree_uses_nested_forge_roots_for_extension_inheritance(
         self, runner: CliRunner, temp_env: Path
     ) -> None:
@@ -2035,7 +2337,10 @@ class TestSessionFork:
 
         assert result.exit_code == 0
         assert mock_invoke.call_args is not None
-        assert mock_invoke.call_args.kwargs["model"] == "claude-sonnet-4-6"
+        kwargs = mock_invoke.call_args.kwargs
+        assert kwargs["model"] is None
+        assert kwargs["env_vars"]["ANTHROPIC_MODEL"] == "sonnet"
+        assert kwargs["env_vars"]["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "claude-sonnet-4-6"
 
     def test_fork_no_launch_skips_claude(self, runner: CliRunner, temp_env: Path) -> None:
         """--no-launch should create fork without invoking Claude."""
@@ -2493,6 +2798,42 @@ class TestSessionResumeExtended:
         assert "Custom system prompt" in prompt_content
         assert "# Session Context: resume-parent" in prompt_content
 
+    def test_reconnect_proxy_session_injects_model_addendum(self, runner: CliRunner, temp_env: Path) -> None:
+        """Reconnecting a proxy-routed session should retain addendum injection."""
+        with patch("forge.cli.session._resolve_routing_from_cli", return_value=_proxy_routing()):
+            result = runner.invoke(
+                main,
+                ["session", "start", "reconnect-addendum", "--proxy", "openai-proxy", "--no-launch"],
+            )
+        assert result.exit_code == 0, result.output
+
+        store = SessionStore(str(temp_env), "reconnect-addendum")
+
+        def _confirm_proxy_session(manifest) -> None:
+            manifest.confirmed.claude_session_id = "reconnect-uuid"
+            manifest.confirmed.confirmed_by = "hook:SessionStart:startup"
+            manifest.confirmed.started_with_proxy = StartedWithProxy(
+                base_url="http://localhost:8085",
+                proxy_id="openai-proxy",
+                template="litellm-openai",
+            )
+
+        store.update(timeout_s=5.0, mutate=_confirm_proxy_session)
+
+        with (
+            patch("forge.config.loader.load_proxy_instance_config", return_value=_proxy_cfg()),
+            patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke,
+        ):
+            result = runner.invoke(main, ["session", "resume", "reconnect-addendum"])
+
+        assert result.exit_code == 0, result.output
+        kwargs = mock_invoke.call_args.kwargs
+        assert kwargs["resume_id"] == "reconnect-uuid"
+        prompt_file = kwargs["system_prompt_file"]
+        assert prompt_file is not None
+        prompt_content = Path(prompt_file).read_text(encoding="utf-8")
+        assert "Tool Parameter Guidance" in prompt_content
+
 
 class TestSessionResume:
     """Tests for 'forge session resume' command."""
@@ -2538,7 +2879,10 @@ class TestSessionResume:
 
         assert result.exit_code == 0
         assert mock_invoke.call_args is not None
-        assert mock_invoke.call_args.kwargs["model"] == "claude-sonnet-4-6"
+        kwargs = mock_invoke.call_args.kwargs
+        assert kwargs["model"] is None
+        assert kwargs["env_vars"]["ANTHROPIC_MODEL"] == "sonnet"
+        assert kwargs["env_vars"]["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "claude-sonnet-4-6"
 
     def test_resume_nonexistent_fails(self, runner: CliRunner, temp_env: Path) -> None:
         """Should fail for nonexistent session."""
@@ -2881,6 +3225,59 @@ class TestProxyDirectFlags:
         assert "ANTHROPIC_BASE_URL" not in kwargs["env_vars"]
         assert "ANTHROPIC_BASE_URL" in kwargs["unset_env_vars"]
 
+    def test_proxy_routed_resume_ignores_stored_direct_model_env(self, runner: CliRunner, temp_env: Path) -> None:
+        """--proxy on resume should not inject a stored direct-model pin."""
+        runner.invoke(main, ["session", "start", "proxy-resume-parent", "--model", "opus-4-7", "--no-launch"])
+        routing = session_cli.ResolvedRouting(
+            template="litellm-openai",
+            base_url="http://localhost:9999",
+            proxy_id="test-proxy",
+        )
+
+        with (
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=routing),
+            patch("forge.cli.session._resolve_context_limit", return_value=None),
+            patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke,
+        ):
+            result = runner.invoke(main, ["session", "resume", "proxy-resume-parent", "--proxy", "test-proxy"])
+
+        assert result.exit_code == 0, result.output
+        env_vars = mock_invoke.call_args.kwargs["env_vars"]
+        assert env_vars["ANTHROPIC_BASE_URL"] == "http://localhost:9999"
+        assert "ANTHROPIC_MODEL" not in env_vars
+        assert "ANTHROPIC_DEFAULT_OPUS_MODEL" not in env_vars
+
+    def test_proxy_routed_fork_ignores_stored_direct_model_env(self, runner: CliRunner, temp_env: Path) -> None:
+        """--proxy on fork should not inject an inherited direct-model pin."""
+        runner.invoke(main, ["session", "start", "proxy-fork-parent", "--model", "opus-4-7", "--no-launch"])
+        store = SessionStore(str(temp_env), "proxy-fork-parent")
+
+        def _confirm_parent(m: object) -> None:
+            m.confirmed.claude_session_id = "parent-uuid"  # type: ignore[attr-defined]
+
+        store.update(timeout_s=5.0, mutate=_confirm_parent)
+        routing = session_cli.ResolvedRouting(
+            template="litellm-openai",
+            base_url="http://localhost:9999",
+            proxy_id="test-proxy",
+        )
+
+        with (
+            patch("forge.cli.session._resolve_routing_from_cli", return_value=routing),
+            patch("forge.cli.session._resolve_context_limit", return_value=None),
+            patch("forge.cli.session.invoke_claude", return_value=0) as mock_invoke,
+        ):
+            result = runner.invoke(
+                main,
+                ["session", "fork", "proxy-fork-parent", "--name", "proxy-fork-child", "--proxy", "test-proxy"],
+            )
+
+        assert result.exit_code == 0, result.output
+        env_vars = mock_invoke.call_args.kwargs["env_vars"]
+        assert env_vars["ANTHROPIC_BASE_URL"] == "http://localhost:9999"
+        assert "ANTHROPIC_MODEL" not in env_vars
+        assert "ANTHROPIC_DEFAULT_OPUS_MODEL" not in env_vars
+
     def test_resume_direct_on_sidecar_parent_uses_host_path(self, runner: CliRunner, temp_env: Path) -> None:
         """--no-proxy on resume should override inherited sidecar launch mode."""
         runner.invoke(
@@ -3014,33 +3411,6 @@ class TestProxyDirectFlags:
             updated.confirmed.started_with_proxy is not None
         ), "confirmed.started_with_proxy should NOT be cleared on disk"
         assert updated.confirmed.started_with_proxy.proxy_id == "old-proxy"
-
-
-class TestDirectDeprecatedAlias:
-    """Verify hidden --direct alias still works for backward compatibility."""
-
-    def test_start_direct_alias_still_works(self, runner: CliRunner, temp_env: Path) -> None:
-        result = runner.invoke(main, ["session", "start", "alias-test", "--direct", "--no-launch"])
-        assert result.exit_code == 0
-
-    def test_resume_direct_alias_still_works(self, runner: CliRunner, temp_env: Path) -> None:
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            runner.invoke(main, ["session", "start", "alias-resume", "--no-proxy"])
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            result = runner.invoke(main, ["session", "resume", "alias-resume", "--direct"])
-        assert result.exit_code == 0
-
-    def test_fork_direct_alias_still_works(self, runner: CliRunner, temp_env: Path) -> None:
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            runner.invoke(main, ["session", "start", "alias-fork-parent", "--no-proxy"])
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            result = runner.invoke(main, ["session", "fork", "alias-fork-parent", "--direct"])
-        assert result.exit_code == 0
-
-    def test_incognito_direct_alias_still_works(self, runner: CliRunner, temp_env: Path) -> None:
-        with patch("forge.cli.session.invoke_claude", return_value=0):
-            result = runner.invoke(main, ["session", "incognito", "alias-incog", "--direct"])
-        assert result.exit_code == 0
 
 
 class TestSupervisorProxyFlags:

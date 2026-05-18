@@ -108,7 +108,7 @@ def get_client(
 
     Examples:
         >>> client = get_client("openai/gpt-5.2")
-        >>> client = get_client("vertex_ai/gemini-2.5-pro")
+        >>> client = get_client("vertex_ai/gemini-3.1-pro-preview")
         >>> client = get_client("gemini/gemini-2.0-flash")  # Local LiteLLM
     """
     resolved_provider = provider or detect_provider(model)
@@ -125,7 +125,16 @@ def get_client(
         else:
             raise NotImplementedError(f"Provider '{resolved_provider}' not yet implemented.")
 
-    # Create LiteLLM client (handles both remote and local)
+    if resolved_provider == "openrouter":
+        from .clients.openrouter import OpenRouterClient
+
+        return OpenRouterClient(
+            model=model,
+            provider=resolved_provider,
+            credentials=creds_manager,
+            default_hyperparams=default_hyperparams,
+        )
+
     return LiteLLMClient(
         model=model,
         provider=resolved_provider,

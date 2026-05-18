@@ -27,7 +27,7 @@ completed", or ask the user to run the commands manually unless a real prerequis
 | ---------- | -------- | ------------------------------------------------------------------------------------ |
 | `subject`  | Optional | File, directory, proposal, or instruction on what to evaluate (defaults to cwd)      |
 | `--code`   | Optional | Switch: use code evaluation framework (default: proposal)                            |
-| `--models` | Optional | Comma-separated model list (default: all available)                                  |
+| `--models` | Optional | Comma-separated model list (default: Forge workflow defaults)                        |
 | `--worker` | Optional | Repeatable: model:stance or model:"custom prompt" (mutually exclusive with --models) |
 | `--output` | Optional | Write result to file instead of conversation (e.g., `debate.md`)                     |
 
@@ -88,13 +88,13 @@ result in the conversation. If `--output` was not specified, print the result in
 
 ## Models and Roles
 
-Models are assigned stances cyclically. Default models (from `forge workflow list-models`):
+Models are assigned stances cyclically. Default models:
 
-| Order | Default Model  | Stance  | Role                     |
-| ----- | -------------- | ------- | ------------------------ |
-| 1st   | gpt-5.5        | FOR     | Supporter -- strengths   |
-| 2nd   | gemini-2.5-pro | AGAINST | Critic -- risks          |
-| 3rd   | claude-opus    | NEUTRAL | Analyst -- balanced view |
+| Order | Default Model          | Stance  | Role                     |
+| ----- | ---------------------- | ------- | ------------------------ |
+| 1st   | gpt-5.5                | FOR     | Supporter -- strengths   |
+| 2nd   | gemini-3.1-pro-preview | AGAINST | Critic -- risks          |
+| 3rd   | claude-opus            | NEUTRAL | Analyst -- balanced view |
 
 Use `--models` to control which models participate. Stances cycle through for/against/neutral in order.
 
@@ -109,4 +109,4 @@ When `--code` is specified, models evaluate the target code from adversarial per
 ## Requirements
 
 - **Forge CLI**: `forge` must be on PATH
-- **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create litellm-openai`)
+- **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create openrouter-openai`)

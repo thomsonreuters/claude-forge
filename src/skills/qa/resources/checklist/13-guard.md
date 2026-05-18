@@ -132,7 +132,7 @@ rm -f src/supervisor_demo.py
 #        I approve this exact plan. Do not implement it in this session. Wait.
 #   e) Verify a plan file was created:  ls ~/.claude/plans/
 #   f) Exit:  /exit
-forge session start guard-planner --proxy litellm-openai
+forge session start guard-planner --proxy "$FORGE_QA_OPENAI_PROXY"
 
 # 2) Fork that planner into a dedicated supervisor session, then launch it.
 # In Claude, do three things:
@@ -149,7 +149,7 @@ forge session resume guard-supervisor
 forge session fork guard-planner --name guard-executor --no-proxy --no-launch
 forge session set --session guard-executor policy.enabled true
 forge session set --session guard-executor policy.supervisor.resume_id guard-supervisor
-forge session set --session guard-executor policy.supervisor.proxy litellm-openai
+forge session set --session guard-executor policy.supervisor.proxy "$FORGE_QA_OPENAI_PROXY"
 
 # 4) Verify the executor now points at the promoted supervisor, then launch it.
 # The executor inherits the planner's conversation (via fork) but routes directly

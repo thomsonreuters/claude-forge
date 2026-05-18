@@ -71,6 +71,7 @@ def orch_stubs(monkeypatch: pytest.MonkeyPatch, orchestrator) -> None:
     Sets LITELLM_BASE_URL for remote templates that have no hardcoded URL.
     """
     monkeypatch.setattr(orchestrator, "_validate_template_exists", lambda _: None)
+    monkeypatch.setattr(orchestrator, "_ensure_template_credentials", lambda _: None)
     monkeypatch.setattr(orchestrator, "_wait_until_healthy", lambda **_: None)
     monkeypatch.setenv("LITELLM_BASE_URL", "https://litellm.test.example.com")
 
@@ -144,5 +145,6 @@ def server_stubs(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(server, "log_request_response", lambda *a, **kw: None)
     monkeypatch.setattr(server, "log_request_beautifully", lambda *a, **kw: None)
     monkeypatch.setattr(server, "log_tool_event", lambda *a, **kw: None)
+    monkeypatch.setattr(server, "log_tool_failure", lambda *a, **kw: None)
     monkeypatch.setattr(server, "_check_client_tool_failures", lambda *a, **kw: None)
     return server

@@ -111,6 +111,8 @@ class TestSessionContextDataclass:
         data = ctx.to_dict()
         assert data["session_name"] == "test-session"
         assert data["model_family"] == "openai"
+        assert "main_model" in data
+        assert data["model_profile"] == data["main_model"]
         assert data["proxy"]["is_direct"] is True
         # Verify JSON serializable
         json.dumps(data)
@@ -159,6 +161,32 @@ class TestGetSessionContext:
         assert ctx.session_name == "(unknown)"
         assert ctx.proxy.is_direct is True
         assert ctx.model_family == "anthropic"
+
+    def test_no_session_with_direct_model_env_returns_main_model(self, monkeypatch):
+        monkeypatch.delenv("FORGE_SESSION", raising=False)
+        monkeypatch.delenv("ACTIVE_TEMPLATE", raising=False)
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.setenv("ANTHROPIC_MODEL", "opus")
+        monkeypatch.setenv("ANTHROPIC_DEFAULT_OPUS_MODEL", "claude-opus-4-7")
+
+        ctx = get_session_context(None)
+
+        assert ctx.proxy.is_direct is True
+        assert ctx.model_family == "anthropic"
+        assert ctx.main_model == "claude-opus-4-7"
+
+    def test_no_session_ignores_stale_direct_model_default_without_tier(self, monkeypatch):
+        monkeypatch.delenv("FORGE_SESSION", raising=False)
+        monkeypatch.delenv("ACTIVE_TEMPLATE", raising=False)
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+        monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+        monkeypatch.setenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-4-6")
+
+        ctx = get_session_context(None)
+
+        assert ctx.proxy.is_direct is True
+        assert ctx.model_family == "anthropic"
+        assert ctx.main_model is None
 
     def test_no_session_with_proxy_env_returns_family(self, monkeypatch):
         monkeypatch.delenv("FORGE_SESSION", raising=False)
@@ -227,6 +255,28 @@ class TestGetSessionContext:
         assert ctx.proxy.template == "litellm-openai"
         assert ctx.proxy.base_url == "http://localhost:8085"
         assert ctx.proxy.is_direct is False
+
+    def test_direct_session_returns_stored_main_model(self, tmp_path: Path, monkeypatch):
+        worktree = tmp_path / "repo"
+        worktree.mkdir()
+
+        state = create_session_state(
+            "direct-session",
+            worktree_path=str(worktree),
+            direct_model="claude-opus-4-7",
+        )
+
+        SessionStore(str(worktree), "direct-session").write(state)
+        IndexStore().add_from_state(state, str(worktree))
+
+        monkeypatch.setenv("FORGE_SESSION", "direct-session")
+
+        ctx = get_session_context(None)
+        data = ctx.to_dict()
+        assert ctx.proxy.is_direct is True
+        assert ctx.model_family == "anthropic"
+        assert ctx.main_model == "claude-opus-4-7"
+        assert data["model_profile"] == "claude-opus-4-7"
 
     def test_uuid_resolution_falls_back_to_manifest_scan_when_index_is_stale(self, tmp_path: Path):
         worktree = tmp_path / "repo"

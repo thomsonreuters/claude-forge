@@ -14,7 +14,7 @@ Test uninstalling individual scopes before the complete uninstall.
 cd $FORGE_TEST_REPO
 
 # Uninstall only the local scope
-forge extension disable --local
+forge extension disable --scope local
 
 # (Optional) Uninstall hooks-only path, if you used it
 forge hook disable --local
@@ -71,7 +71,7 @@ cat .claude/settings.local.json | jq '.env.MY_CUSTOM_VAR'
 
 ```bash
 # Re-install local scope so we can test complete uninstall
-forge extension enable --local
+forge extension enable --scope local
 
 # Verify both scopes installed again
 cat ~/.forge/installed.json | jq '.installations | keys'

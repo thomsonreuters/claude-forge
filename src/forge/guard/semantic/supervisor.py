@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from forge.core.reactive.proxy import lookup_proxy_base_url
+from forge.core.reactive.routing import resolve_subprocess_routing
 from forge.core.reactive.session_runner import run_claude_session
 from forge.core.reactive.throttle import ThrottleCache, compute_cache_key
 from forge.guard.deterministic.base import DeterministicPolicy
@@ -316,25 +316,38 @@ def invoke_supervisor(
     if plan_content:
         prompt = _PLAN_OVERRIDE_PREAMBLE.format(plan_content=plan_content) + "\n\n" + prompt
 
-    try:
-        base_url = None if config.direct else (config.base_url or lookup_proxy_base_url(config.proxy))
-    except Exception as e:
-        _log.warning("Supervisor proxy '%s' not found: %s", config.proxy, e)
-        return PolicyDecision(
-            decision="warn",
-            policy_id="semantic.supervisor",
-            warnings=[f"Supervisor proxy '{config.proxy}' not found: {e}"],
-        )
+    if config.direct:
+        base_url = None
+    else:
+        try:
+            routing_result = resolve_subprocess_routing(
+                explicit_base_url=config.base_url,
+                explicit_proxy=config.proxy,
+                require_route=False,
+            )
+            base_url = routing_result.base_url
+        except Exception as e:
+            _log.warning("Supervisor proxy '%s' not found: %s", config.proxy, e)
+            return PolicyDecision(
+                decision="warn",
+                policy_id="semantic.supervisor",
+                warnings=[f"Supervisor proxy '{config.proxy}' not found: {e}"],
+            )
 
-    result = run_claude_session(
-        prompt,
-        resume_id=resolved.resume_id,
-        fork_session=config.fork_session,
-        base_url=base_url,
-        direct=config.direct,
-        timeout_seconds=config.timeout_seconds,
-        cwd=resolved.source_cwd,
-    )
+    from forge.core.reactive.cost_tracking import track_verb_cost
+
+    tracking_url = base_url
+
+    with track_verb_cost("supervisor", [tracking_url] if tracking_url else []):
+        result = run_claude_session(
+            prompt,
+            resume_id=resolved.resume_id,
+            fork_session=config.fork_session,
+            base_url=base_url,
+            direct=config.direct,
+            timeout_seconds=config.timeout_seconds,
+            cwd=resolved.source_cwd,
+        )
 
     if not result.success:
         _log.warning(

@@ -293,6 +293,24 @@ class TestProxyInstanceConfig:
 
         assert config.provider_settings["openai_api_mode"] == "responses"
 
+    def test_cost_caps_coerce_numeric_strings(self):
+        """CostCaps accepts CLI/YAML numeric strings."""
+        from forge.config.schema import CostCaps
+
+        caps = CostCaps(per_day="20.00", per_month="100")
+
+        assert caps.per_day == 20.0
+        assert caps.per_month == 100.0
+
+    def test_cost_config_accepts_raw_caps_mapping(self):
+        """CostConfig normalizes raw YAML cap mappings."""
+        from forge.config.schema import CostConfig
+
+        config = CostConfig(caps={"per_day": "20.00", "per_month": "100.00"})
+
+        assert config.caps.per_day == 20.0
+        assert config.caps.per_month == 100.0
+
 
 class TestLeaseIdValidation:
     """Tests for proxy_id path traversal prevention."""
@@ -396,6 +414,26 @@ class TestProxyInstanceConfigValidation:
                 tiers=TierModels(haiku="h", sonnet="s", opus="o"),
             )
 
+    def test_openrouter_provider_accepted(self):
+        """OpenRouter should be a valid provider."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="openrouter",
+            template_digest="sha256:test",
+            provider="openrouter",
+            proxy_endpoint="http://localhost:8095",
+            port=8095,
+            upstream_base_url="https://openrouter.ai/api/v1",
+            tiers=TierModels(
+                haiku="anthropic/claude-haiku-4.5",
+                sonnet="anthropic/claude-sonnet-4.6",
+                opus="anthropic/claude-opus-4.6",
+            ),
+        )
+        assert config.provider == "openrouter"
+
     def test_invalid_port_too_low(self):
         """Port 0 should be rejected."""
         from forge.config.schema import ProxyInstanceConfig, TierModels
@@ -460,3 +498,130 @@ class TestProxyInstanceConfigValidation:
                 tiers=TierModels(haiku="h", sonnet="s", opus="o"),
                 default_tier="invalid_tier",  # Invalid
             )
+
+    def test_invalid_cost_cap_rejected(self):
+        """Non-positive cost caps should be rejected."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        with pytest.raises(ValueError, match="costs.caps.per_day"):
+            ProxyInstanceConfig(
+                proxy_format=1,
+                template="test",
+                template_digest="sha256:test",
+                provider="litellm",
+                proxy_endpoint="http://localhost:8084",
+                port=8084,
+                upstream_base_url="https://litellm.test.example.com",
+                tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+                costs={"caps": {"per_day": "free"}},
+            )
+
+    def test_cost_config_normalized_to_structured_object(self):
+        """Raw proxy.yaml costs are stored as CostConfig after validation."""
+        from forge.config.schema import CostConfig, ProxyInstanceConfig, TierModels
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="test",
+            template_digest="sha256:test",
+            provider="litellm",
+            proxy_endpoint="http://localhost:8084",
+            port=8084,
+            upstream_base_url="https://litellm.test.example.com",
+            tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+            costs={
+                "caps": {"per_day": "20.00"},
+                "cap_mode": "strict",
+                "on_cap_hit": "warn",
+            },
+        )
+
+        assert isinstance(config.costs, CostConfig)
+        assert config.costs.caps.per_day == 20.0
+        assert config.costs.cap_mode == "strict"
+        assert config.costs.on_cap_hit == "warn"
+
+    def test_invalid_cost_action_rejected(self):
+        """Invalid cost cap actions should be rejected."""
+        from forge.config.schema import ProxyInstanceConfig, TierModels
+
+        with pytest.raises(ValueError, match="Invalid on_cap_hit"):
+            ProxyInstanceConfig(
+                proxy_format=1,
+                template="test",
+                template_digest="sha256:test",
+                provider="litellm",
+                proxy_endpoint="http://localhost:8084",
+                port=8084,
+                upstream_base_url="https://litellm.test.example.com",
+                tiers=TierModels(haiku="h", sonnet="s", opus="o"),
+                costs={"on_cap_hit": "explode"},
+            )
+
+    def test_claude_47_rejects_static_temperature_override(self):
+        """Proxy config validation rejects Forge-owned unsupported 4.7 sampling overrides."""
+        from forge.config.schema import (
+            ProxyInstanceConfig,
+            TierModels,
+            TierOverride,
+            TierOverrides,
+        )
+
+        with pytest.raises(ValueError, match="tier_overrides.opus.temperature is not supported"):
+            ProxyInstanceConfig(
+                proxy_format=1,
+                template="test",
+                template_digest="sha256:test",
+                provider="litellm",
+                proxy_endpoint="http://localhost:8084",
+                port=8084,
+                upstream_base_url="https://litellm.test.example.com",
+                tiers=TierModels(haiku="h", sonnet="s", opus="claude-opus-4-7"),
+                tier_overrides=TierOverrides(opus=TierOverride(temperature=0.7)),
+            )
+
+    def test_claude_47_rejects_static_thinking_budget_override(self):
+        """Adaptive-only 4.7 rejects static thinking budgets at config validation time."""
+        from forge.config.schema import (
+            ProxyInstanceConfig,
+            TierModels,
+            TierOverride,
+            TierOverrides,
+        )
+
+        with pytest.raises(ValueError, match="only supports adaptive thinking"):
+            ProxyInstanceConfig(
+                proxy_format=1,
+                template="test",
+                template_digest="sha256:test",
+                provider="litellm",
+                proxy_endpoint="http://localhost:8084",
+                port=8084,
+                upstream_base_url="https://litellm.test.example.com",
+                tiers=TierModels(haiku="h", sonnet="s", opus="anthropic/claude-opus-4.7"),
+                tier_overrides=TierOverrides(opus=TierOverride(thinking_budget_tokens=4096)),
+            )
+
+    def test_claude_47_accepts_xhigh_reasoning_effort_override(self):
+        """4.7 supports xhigh effort as static proxy config metadata."""
+        from forge.config.schema import (
+            ProxyInstanceConfig,
+            TierModels,
+            TierOverride,
+            TierOverrides,
+        )
+
+        config = ProxyInstanceConfig(
+            proxy_format=1,
+            template="test",
+            template_digest="sha256:test",
+            provider="litellm",
+            proxy_endpoint="http://localhost:8084",
+            port=8084,
+            upstream_base_url="https://litellm.test.example.com",
+            tiers=TierModels(haiku="h", sonnet="s", opus="claude-opus-4-7"),
+            tier_overrides=TierOverrides(opus=TierOverride(reasoning_effort="xhigh")),
+        )
+
+        assert config.tier_overrides.opus is not None
+        assert config.tier_overrides.opus.reasoning_effort == "xhigh"

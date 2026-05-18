@@ -156,7 +156,7 @@ class TestStaleManifestGuard:
     def test_extension_status_no_traceback(self, stale_manifest):
         """forge extension status handles stale manifest without traceback."""
         runner = CliRunner()
-        result = runner.invoke(main, ["extension", "status", "--user"])
+        result = runner.invoke(main, ["extension", "status", "--scope", "user"])
         assert "Traceback" not in result.output
         assert result.exit_code != 0
         assert "pre-OSS" in result.output

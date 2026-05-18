@@ -255,6 +255,21 @@ class TestEnqueueHandoffMarker:
             data["payload"]["transcript_snapshot_rel"]
             == ".forge/artifacts/my-session/transcripts/test-session-123.jsonl"
         )
+        assert "subprocess_proxy" not in data["payload"]
+
+    def test_includes_subprocess_proxy_when_provided(self, tmp_path: Path) -> None:
+        """Handoff marker snapshots subprocess proxy intent for detached execution."""
+        result = enqueue_handoff_marker(
+            session_id="test-session-123",
+            worktree_path=tmp_path,
+            session_name="my-session",
+            transcript_snapshot_rel="transcript.jsonl",
+            subprocess_proxy="openrouter-subprocess",
+        )
+
+        assert result is not None
+        data = json.loads(result.read_text())
+        assert data["payload"]["subprocess_proxy"] == "openrouter-subprocess"
 
     def test_marker_id_prefixed_with_handoff(self, tmp_path: Path) -> None:
         """enqueue_handoff_marker uses handoff-<session_id> as marker_id."""

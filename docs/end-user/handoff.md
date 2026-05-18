@@ -177,7 +177,7 @@ The `claude -p` subprocess runs with `cwd=forge_root`.
 
 ```
 Session stops
-  → Stop hook captures transcript to .forge/artifacts/
+  → Stop hook captures transcript to <forge_root>/.forge/artifacts/
   → Stop hook enqueues "handoff" work marker
   → (session ends)
 
@@ -265,12 +265,12 @@ forge handoff run --session-name <name> --worktree-path <path> --transcript-rel 
 
 ## Files to inspect (debugging)
 
-| File                                        | Purpose                                         |
-| ------------------------------------------- | ----------------------------------------------- |
-| `.forge/sessions/<name>/forge.session.json` | Session manifest (`intent.memory` config)       |
-| `.forge/artifacts/<name>/transcripts/`      | Captured transcripts (agent input)              |
-| `~/.forge/pending-work/`                    | Work queue markers (handoff-\<session_id>.json) |
-| `~/.forge/pending-work/failed/`             | Poison markers (exceeded retry limit)           |
+| File                                                     | Purpose                                         |
+| -------------------------------------------------------- | ----------------------------------------------- |
+| `<forge_root>/.forge/sessions/<name>/forge.session.json` | Session manifest (`intent.memory` config)       |
+| `<forge_root>/.forge/artifacts/<name>/transcripts/`      | Captured transcripts (agent input)              |
+| `~/.forge/pending-work/`                                 | Work queue markers (handoff-\<session_id>.json) |
+| `~/.forge/pending-work/failed/`                          | Poison markers (exceeded retry limit)           |
 
 ### Gotchas
 

@@ -99,84 +99,125 @@ echo "exit: $?"
 
 <!-- human:guided -->
 
-In the **container shell**, walk through the manual promotion flow described in the design docs: create a planning
-session, approve a tiny plan in Claude, fork a dedicated supervisor session from that planner, then fork the planner
-again into a direct-routing executor with `--no-proxy` and wire the promoted supervisor UUID into it. Use a concrete
-tiny task so the final `forge guard supervisor` check is evaluating something real, not a placeholder. If any live
-Claude launch is not available in this environment, mark this step `Skip` rather than inventing evidence.
+This is a hands-on live-Claude smoke test. Do the phases in order. The terminal commands are copy/paste blocks for the
+container shell; the prompt blocks are for the Claude session that opens after each `forge session ...` command. If live
+Claude launch is unavailable in this environment, mark this step `Skip` rather than inventing evidence.
 
-```
+**Phase 1: create an approved planner session**
+
+```bash
 cd $FORGE_TEST_REPO
 
-# Clean up from previous runs
 forge session delete guard-planner --force 2>/dev/null || true
 forge session delete guard-supervisor --force 2>/dev/null || true
 forge session delete guard-executor --force 2>/dev/null || true
 rm -f src/supervisor_demo.py
 
-# 1) Start a planning session on the proxy created in 4.2.
-# Once Claude launches:
-#   a) Type:  /plan
-#   b) Paste:
-#        Skip the exploration step. Create a plan only. Do not edit files or run any write tools.
-#
-#        The exact approved plan should be:
-#        1. Create `src/supervisor_demo.py`
-#        2. Add:
-#           def greet(name: str) -> str:
-#               return f"hello, {name}"
-#        3. Do not modify any other files
-#
-#        After showing the plan, wait for my approval.
-#   c) When Claude shows the plan, type:
-#        I approve this exact plan. Do not implement it in this session. Wait.
-#   e) Verify a plan file was created:  ls ~/.claude/plans/
-#   f) Exit:  /exit
 forge session start guard-planner --proxy "$FORGE_QA_OPENAI_PROXY"
+```
 
-# 2) Fork that planner into a dedicated supervisor session, then launch it.
-# In Claude, do three things:
-#   a) Optional human-friendly label:  /rename guard-sup
-#   b) Send one message so Claude materializes the session:
-#        Reply with this exact phrase: supervisor ready
-#   c) Exit:  /exit
+In Claude, type:
+
+```text
+/plan
+```
+
+Then paste:
+
+```text
+Skip the exploration step. Create a plan only. Do not edit files or run any write tools.
+
+The exact approved plan should be:
+1. Create `src/supervisor_demo.py`
+2. Add:
+   def greet(name: str) -> str:
+       return f"hello, {name}"
+3. Do not modify any other files
+
+After showing the plan, wait for my approval.
+```
+
+When Claude shows the plan, paste:
+
+```text
+I approve this exact plan. Do not implement it in this session. Wait.
+```
+
+Then exit Claude:
+
+```text
+/exit
+```
+
+Back in the container shell, verify that Claude wrote a plan file:
+
+```bash
+ls ~/.claude/plans/
+```
+
+**Phase 2: promote a dedicated supervisor session**
+
+```bash
+cd $FORGE_TEST_REPO
+
 forge session fork guard-planner --name guard-supervisor --no-launch
 forge session resume guard-supervisor
+```
 
-# 3) Fork the planner into a direct/no-proxy executor session.
-# --no-proxy overrides the parent's proxy routing so the executor talks
-# to Anthropic directly, while inheriting the planner's conversation context.
+In Claude, paste:
+
+```text
+Reply with this exact phrase: supervisor ready
+```
+
+Then exit:
+
+```text
+/exit
+```
+
+**Phase 3: fork a direct executor and wire the supervisor**
+
+```bash
+cd $FORGE_TEST_REPO
+
 forge session fork guard-planner --name guard-executor --no-proxy --no-launch
-forge session set --session guard-executor policy.enabled true
-forge session set --session guard-executor policy.supervisor.resume_id guard-supervisor
-forge session set --session guard-executor policy.supervisor.proxy "$FORGE_QA_OPENAI_PROXY"
-
-# 4) Verify the executor now points at the promoted supervisor, then launch it.
-# The executor inherits the planner's conversation (via fork) but routes directly
-# to Anthropic. In Claude, paste this executor prompt:
-#   Create the file `src/supervisor_demo.py` with exactly this content:
-#
-#   def greet(name: str) -> str:
-#       return f"hello, {name}"
-#
-#   Do not modify any other files. Do not add tests, docstrings, or imports.
-#
-# After Claude finishes, exit with:
-#   /exit
+forge guard supervise guard-supervisor --session guard-executor --supervisor-proxy "$FORGE_QA_OPENAI_PROXY"
 FORGE_SESSION=guard-executor forge guard status
 forge session resume guard-executor
+```
 
-# 5) Inspect the result and run a real supervisor check against the renamed session.
+In Claude, paste:
+
+```text
+Create the file `src/supervisor_demo.py` with exactly this content:
+
+def greet(name: str) -> str:
+    return f"hello, {name}"
+
+Do not modify any other files. Do not add tests, docstrings, or imports.
+```
+
+After Claude finishes, exit:
+
+```text
+/exit
+```
+
+**Phase 4: inspect the result and run the one-shot supervisor check**
+
+```bash
+cd $FORGE_TEST_REPO
+
 cat src/supervisor_demo.py
 forge guard supervisor -f src/supervisor_demo.py -r guard-supervisor --json
 echo "exit: $?"
 ```
 
-- [ ] Planner and supervisor sessions launch successfully, and the supervisor session is renamed to `guard-sup` via
-  `/rename`
-- [ ] Executor forks planner with `--no-proxy` (inherits conversation context, routes to Anthropic directly), shows
-  `Supervisor: Configured` with `resume_id: guard-supervisor` in `forge guard status`, then implements the exact tiny
-  planned file
+- [ ] Planner and supervisor sessions launch successfully; the planner has an approved plan and the supervisor session
+  materializes with a confirmed Claude session
+- [ ] Executor forks planner with `--no-proxy`, `forge guard supervise` wires `guard-supervisor`, `forge guard status`
+  shows `Supervisor: Configured`, and the executor implements the exact tiny planned file
 - [ ] `forge guard supervisor -f src/supervisor_demo.py -r guard-supervisor --json` returns structured output for the
   real tiny task (expected: aligned / exit 0)
 

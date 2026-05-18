@@ -56,7 +56,7 @@ Hooks are intentionally restricted.
 
 - write **confirmed facts** into the session file (under `confirmed.*`)
   - Session located via hook resolution: `FORGE_FORK_NAME` -> `FORGE_SESSION` -> UUID lookup
-- capture **artifacts** (approved plans, transcripts) into `.forge/artifacts/...`
+- capture **artifacts** (approved plans, transcripts) into `<forge_root>/.forge/artifacts/...`
 - apply **session overrides** through direct `%` commands handled by `UserPromptSubmit` (for example `%guard ...`,
   `%cancel-verification`)
 - emit machine-readable output for debugging
@@ -130,7 +130,7 @@ Purpose: detect plan file writes and keep a pointer to the latest plan draft.
 Purpose: capture an **approved** plan snapshot on the approval boundary.
 
 - snapshot the approved plan into:
-  - `.forge/artifacts/{session_name}/plans/`
+  - `<forge_root>/.forge/artifacts/{session_name}/plans/`
 - append an entry to `confirmed.artifacts.plans[]`
 
 ### stop (Stop)
@@ -138,16 +138,17 @@ Purpose: capture an **approved** plan snapshot on the approval boundary.
 Purpose: persist a transcript copy at stable boundaries and enqueue deferred work.
 
 - copy the transcript into:
-  - `.forge/artifacts/{session_name}/transcripts/{session_id}.jsonl`
+  - `<forge_root>/.forge/artifacts/{session_name}/transcripts/{session_id}.jsonl`
 - append an entry to `confirmed.artifacts.transcripts[]`
-- enqueue search indexing work for `.forge/search-index/`
+- enqueue search indexing work for `<forge_root>/.forge/search-index/`
 - enqueue handoff agent marker (if `memory.auto_update.enabled`). See [`handoff.md`](handoff.md).
 
 ### pre-compact (PreCompact)
 
 Purpose: capture the full, uncompacted transcript before compaction.
 
-- copies the transcript to `.forge/artifacts/{session_name}/transcripts/{session_id}_pre-compact_{timestamp}.jsonl`
+- copies the transcript to
+  `<forge_root>/.forge/artifacts/{session_name}/transcripts/{session_id}_pre-compact_{timestamp}.jsonl`
 - records the snapshot in `confirmed.compaction.transcript_snapshots[]`
 - increments `confirmed.compaction.compact_count`
 - always exits 0 (never blocks compaction; `CLAUDE_CODE_AUTO_COMPACT_WINDOW` handles compaction window sizing)
@@ -235,12 +236,14 @@ Type these directly in the Claude prompt to interact with Forge without switchin
 
 ## Artifacts: where they go
 
-Artifacts are stored under the **repo root** (not the worktree root) so they remain consolidated:
+Artifacts are stored under the session's **Forge project root** (`forge_root`). For root-level
+`session start --worktree`, that is usually the original repo root; for `fork --worktree` and `fork --into`, it is the
+destination worktree's Forge root.
 
-- `.forge/artifacts/{session_name}/plans/`
-- `.forge/artifacts/{session_name}/transcripts/`
+- `<forge_root>/.forge/artifacts/{session_name}/plans/`
+- `<forge_root>/.forge/artifacts/{session_name}/transcripts/`
 
-Paths stored in the session file should be repo-root-relative for portability.
+Paths stored in the session file should be forge-root-relative for portability.
 
 ---
 
@@ -259,7 +262,7 @@ Checklist:
 - hooks only write `confirmed.*`
 - confirm `FORGE_SESSION` env var is set (should be set by `forge session start` / `resume`)
 - if env var is missing, confirm the session exists in the IndexStore (`~/.forge/sessions/index.json`)
-- confirm the session manifest exists at `.forge/sessions/<name>/forge.session.json`
+- confirm the session manifest exists at `<forge_root>/.forge/sessions/<name>/forge.session.json`
 
 ### "Hooks changed my model / routing"
 
@@ -291,12 +294,12 @@ forge hook enable --local # Install to .claude/settings.local.json
 
 ### Files to inspect (debugging)
 
-| File                                        | Purpose                                                      |
-| ------------------------------------------- | ------------------------------------------------------------ |
-| `.forge/sessions/<name>/forge.session.json` | Session manifest with `confirmed.*` facts                    |
-| `~/.forge/sessions/index.json`              | Global session index (UUID lookup)                           |
-| Claude settings file for your scope         | Hook registration (`settings.json` or `settings.local.json`) |
-| `.forge/artifacts/`                         | Captured plans and transcripts                               |
+| File                                                     | Purpose                                                      |
+| -------------------------------------------------------- | ------------------------------------------------------------ |
+| `<forge_root>/.forge/sessions/<name>/forge.session.json` | Session manifest with `confirmed.*` facts                    |
+| `~/.forge/sessions/index.json`                           | Global session index (UUID lookup)                           |
+| Claude settings file for your scope                      | Hook registration (`settings.json` or `settings.local.json`) |
+| `<forge_root>/.forge/artifacts/`                         | Captured plans and transcripts                               |
 
 ### Gotchas
 

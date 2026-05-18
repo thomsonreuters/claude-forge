@@ -107,15 +107,15 @@ CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name 
 
 # Verify fork lives in the same directory as parent
 forge session show test-session-forked
-cat /workspace/.forge/sessions/test-session-forked/forge.session.json | \
+cat "$FORGE_TEST_REPO/.forge/sessions/test-session-forked/forge.session.json" | \
   jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}'
 ```
 
-- [ ] Forked session created in same directory (`/workspace`)
+- [ ] Forked session created in same directory (`$FORGE_TEST_REPO`)
 - [ ] `forge session show` reports type as Fork
 - [ ] Claude conversation carries over (asking "where were we?" reflects parent context)
 - [ ] No `Worktree:` line in fork output (no git worktree created)
-- [ ] Manifest at `/workspace/.forge/sessions/test-session-forked/` (not a separate worktree dir)
+- [ ] Manifest at `$FORGE_TEST_REPO/.forge/sessions/test-session-forked/` (not a separate worktree dir)
 - [ ] Manifest has `is_fork: true`, `parent_session` pointing to parent, `is_worktree: false`
 - [ ] `confirmed.claude_session_id` is populated after fork
 
@@ -132,10 +132,14 @@ branch. Because conversations are project-scoped, the fork starts a fresh Claude
 automatically injects a parent handoff context file. Ask "where were we?" to confirm the parent context is present, then
 exit (`/exit`).
 
+Note: `fork --worktree` gives the forked session its own Forge root in the new worktree. The fork manifest and parent
+handoff context should both live under the forked worktree's `.forge/` directory.
+
 ```
 # Clean up from previous runs
 forge session delete test-session-forked-wt --force 2>/dev/null || true
-git worktree remove /workspace-test-session-forked-wt --force 2>/dev/null || true
+WORKTREE_PATH="${FORGE_TEST_REPO}-test-session-forked-wt"
+git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
 git branch -D test-session-forked-wt 2>/dev/null || true
 
 # Fork with --worktree (creates isolated worktree + branch).
@@ -146,19 +150,23 @@ CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name 
 
 # Verify fork
 forge session show test-session-forked-wt
-cat /workspace-test-session-forked-wt/.forge/sessions/test-session-forked-wt/forge.session.json | \
+WORKTREE_PATH=$(forge session show test-session-forked-wt --json | jq -r '.worktree.path')
+# Manifest lives inside the forked worktree's Forge root
+cat "$WORKTREE_PATH/.forge/sessions/test-session-forked-wt/forge.session.json" | \
   jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree}), confirmed: (.confirmed | {claude_session_id})}'
-cat /workspace-test-session-forked-wt/.forge/prev_sessions/test-session-parent.md
+cat "$WORKTREE_PATH/.forge/prev_sessions/test-session-parent.md"
 ```
 
-- [ ] Worktree fork created at `/workspace-test-session-forked-wt`
+- [ ] Worktree fork created at `${FORGE_TEST_REPO}-test-session-forked-wt`
 - [ ] `forge session show` reports type as Fork with worktree info
 - [ ] Fork output shows `Extensions:` line confirming auto-install in worktree
 - [ ] Fork output shows `Context:` line with parent handoff file
 - [ ] Asking "where were we?" reflects parent context
+- [ ] Manifest at `${FORGE_TEST_REPO}-test-session-forked-wt/.forge/sessions/test-session-forked-wt/`
 - [ ] Manifest has `is_fork: true`, `parent_session`, `is_worktree: true`
 - [ ] `confirmed.claude_session_id` is populated
-- [ ] Parent handoff file exists at `/workspace-test-session-forked-wt/.forge/prev_sessions/test-session-parent.md`
+- [ ] Parent handoff file exists at
+  `${FORGE_TEST_REPO}-test-session-forked-wt/.forge/prev_sessions/test-session-parent.md`
 
 ### 5.8 Incognito Session
 
@@ -213,15 +221,18 @@ Ref-count delete guard: verify that deleting a co-resident session preserves the
 # Create a worktree session (owns the worktree)
 forge session delete test-refcount-owner --force 2>/dev/null || true
 forge session delete test-refcount-guest --force 2>/dev/null || true
-git worktree remove /workspace-test-refcount-owner --force 2>/dev/null || true
+git worktree remove "${FORGE_TEST_REPO}-test-refcount-owner" --force 2>/dev/null || true
 git branch -D test-refcount-owner 2>/dev/null || true
 
 forge session start test-refcount-owner --worktree --no-launch
 WORKTREE_PATH=$(forge session show test-refcount-owner --json | jq -r '.worktree.path')
 
-# Seed a fake UUID so fork's confirmed.claude_session_id guard passes
-OWNER_JSON="$WORKTREE_PATH/.forge/sessions/test-refcount-owner/forge.session.json"
+# Owner manifest lives centrally (root-level project, --worktree keeps parent forge_root)
+OWNER_JSON="$FORGE_TEST_REPO/.forge/sessions/test-refcount-owner/forge.session.json"
 jq '.confirmed.claude_session_id = "fixture-refcount"' "$OWNER_JSON" > /tmp/rc.json && mv /tmp/rc.json "$OWNER_JSON"
+
+# --into requires Forge enabled in the target worktree
+cd "$WORKTREE_PATH" && forge extension enable --scope local && cd "$FORGE_TEST_REPO"
 
 # Fork into the same worktree (guest, does not own)
 forge session fork test-refcount-owner --name test-refcount-guest --into "$WORKTREE_PATH" --no-launch
@@ -249,10 +260,11 @@ forge session delete test-session-worktree --force 2>/dev/null || true
 # Create a session with a git worktree (no Claude launch)
 forge session start test-session-worktree --worktree --no-launch
 
-# Worktree sessions store manifests in the worktree dir, not the main workspace.
-# Read the worktree path from session show.
+# Root-level Forge projects keep manifests centrally in the project root's
+# .forge/sessions/, not inside the worktree. The worktree is only the working
+# directory for code isolation.
 WORKTREE_PATH=$(forge session show test-session-worktree --json | jq -r '.worktree.path')
-MANIFEST="$WORKTREE_PATH/.forge/sessions/test-session-worktree/forge.session.json"
+MANIFEST="$FORGE_TEST_REPO/.forge/sessions/test-session-worktree/forge.session.json"
 
 # Verify worktree recorded in manifest
 cat "$MANIFEST" | jq '.worktree'
@@ -265,6 +277,7 @@ cat "$MANIFEST" | jq '.worktree.is_worktree'
 ```
 
 - [ ] Worktree session created
+- [ ] Manifest at `$FORGE_TEST_REPO/.forge/sessions/test-session-worktree/` (central)
 - [ ] Manifest contains worktree path + branch
 - [ ] Worktree path exists on disk
 - [ ] `worktree.is_worktree` is `true`
@@ -325,8 +338,8 @@ Verify that `--strategy` controls handoff content density on worktree forks.
 forge session delete test-strat-parent --force 2>/dev/null || true
 forge session delete test-fork-strat-min --force 2>/dev/null || true
 forge session delete test-fork-strat-struct --force 2>/dev/null || true
-git worktree remove /workspace-test-fork-strat-min --force 2>/dev/null || true
-git worktree remove /workspace-test-fork-strat-struct --force 2>/dev/null || true
+git worktree remove "${FORGE_TEST_REPO}-test-fork-strat-min" --force 2>/dev/null || true
+git worktree remove "${FORGE_TEST_REPO}-test-fork-strat-struct" --force 2>/dev/null || true
 git branch -D test-fork-strat-min 2>/dev/null || true
 git branch -D test-fork-strat-struct 2>/dev/null || true
 
@@ -347,13 +360,13 @@ jq --arg tp "$PWD/$TDIR/fixture.jsonl" \
 
 # Fork with --strategy minimal
 forge session fork test-strat-parent --name test-fork-strat-min --worktree --strategy minimal --no-launch
-HANDOFF_MIN="/workspace-test-fork-strat-min/.forge/prev_sessions/test-strat-parent.md"
+HANDOFF_MIN="${FORGE_TEST_REPO}-test-fork-strat-min/.forge/prev_sessions/test-strat-parent.md"
 test -f "$HANDOFF_MIN" && echo "MIN_HANDOFF=true" || echo "MIN_HANDOFF=false"
 wc -l < "$HANDOFF_MIN"
 
 # Fork with --strategy structured
 forge session fork test-strat-parent --name test-fork-strat-struct --worktree --strategy structured --no-launch
-HANDOFF_STRUCT="/workspace-test-fork-strat-struct/.forge/prev_sessions/test-strat-parent.md"
+HANDOFF_STRUCT="${FORGE_TEST_REPO}-test-fork-strat-struct/.forge/prev_sessions/test-strat-parent.md"
 test -f "$HANDOFF_STRUCT" && echo "STRUCT_HANDOFF=true" || echo "STRUCT_HANDOFF=false"
 wc -l < "$HANDOFF_STRUCT"
 ```
@@ -374,7 +387,7 @@ Verify that `--inline-plan` inlines approved plan content in the handoff context
 # Setup: create parent with a mock plan via confirmed.latest_plan_path
 forge session delete test-plan-parent --force 2>/dev/null || true
 forge session delete test-fork-plan --force 2>/dev/null || true
-git worktree remove /workspace-test-fork-plan --force 2>/dev/null || true
+git worktree remove "${FORGE_TEST_REPO}-test-fork-plan" --force 2>/dev/null || true
 git branch -D test-fork-plan 2>/dev/null || true
 
 forge session start test-plan-parent --no-launch
@@ -396,7 +409,7 @@ jq '.confirmed.latest_plan_path = ".claude/plans/test-plan.md" | .confirmed.clau
 # Fork with --inline-plan (plan content should appear in handoff)
 forge session fork test-plan-parent --name test-fork-plan --worktree --inline-plan --no-launch
 
-HANDOFF="/workspace-test-fork-plan/.forge/prev_sessions/test-plan-parent.md"
+HANDOFF="${FORGE_TEST_REPO}-test-fork-plan/.forge/prev_sessions/test-plan-parent.md"
 test -f "$HANDOFF" && echo "HANDOFF_EXISTS=true" || echo "HANDOFF_EXISTS=false"
 grep -c "Approved Plan" "$HANDOFF"
 grep -c "greet function" "$HANDOFF"
@@ -419,33 +432,40 @@ Fork a session into an existing non-main worktree using `--into`. Unlike `--work
 deleted. In the **container shell**, create a target worktree, fork into it, and interact briefly with Claude to confirm
 parent context, then exit (`/exit`).
 
+Note: `--into` targets have their own Forge installation (required), so manifests live in the target worktree's
+`.forge/sessions/` — not centrally. Like `fork --worktree`, the fork manifest belongs to the destination checkout; this
+differs from root-level `session start --worktree`, which keeps the session manifest in the project root's `.forge/`.
+
 ```
 # Clean up from previous runs
 forge session delete test-fork-into --force 2>/dev/null || true
-git worktree remove /workspace-test-into-target --force 2>/dev/null || true
+TARGET_WORKTREE="${FORGE_TEST_REPO}-test-into-target"
+git worktree remove "$TARGET_WORKTREE" --force 2>/dev/null || true
 git branch -D test-into-target 2>/dev/null || true
 
 # Create a target worktree (simulating an existing feature branch)
-git worktree add /workspace-test-into-target -b test-into-target
+git worktree add "$TARGET_WORKTREE" -b test-into-target
 
 # Install Forge extensions in the target worktree (required for --into)
-cd /workspace-test-into-target && forge extension enable --scope local
-cd /workspace
+cd "$TARGET_WORKTREE" && forge extension enable --scope local
+cd "$FORGE_TEST_REPO"
 
 # Fork the parent session into the existing worktree.
 # Claude will launch with parent handoff context.
 # Disable auto-memory so "where were we?" tests Forge handoff, not CC memory.
 # Ask "where were we?" to confirm parent context, then exit (/exit).
-CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name test-fork-into --into /workspace-test-into-target
+CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 forge session fork test-session-parent --name test-fork-into --into "$TARGET_WORKTREE"
 
 # Verify fork
 forge session show test-fork-into
-cat /workspace-test-into-target/.forge/sessions/test-fork-into/forge.session.json | \
+# Manifest lives in target worktree (--into targets are their own forge_root)
+cat "$TARGET_WORKTREE/.forge/sessions/test-fork-into/forge.session.json" | \
   jq '{is_fork, parent_session, worktree: (.worktree | {path, is_worktree, owns_worktree})}'
 ```
 
-- [ ] Fork created in existing worktree at `/workspace-test-into-target`
+- [ ] Fork created in existing worktree at `${FORGE_TEST_REPO}-test-into-target`
 - [ ] `forge session show` reports type as Fork with worktree info
+- [ ] Manifest at `${FORGE_TEST_REPO}-test-into-target/.forge/sessions/test-fork-into/` (target's forge_root)
 - [ ] Manifest has `is_fork: true`, `is_worktree: true`, `owns_worktree: false`
 - [ ] Parent handoff context file present in target worktree
 - [ ] Asking "where were we?" reflects parent context from 5.6

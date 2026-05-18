@@ -2,17 +2,17 @@
 
 <!-- checklist: index -->
 
-<!-- version: 1.0.16 -->
+<!-- version: 1.0.19 -->
 
-<!-- test-count: 479 -->
+<!-- test-count: 478 -->
 
-<!-- last-updated: 2026-05-15 -->
+<!-- last-updated: 2026-05-18 -->
 
 <!-- aligned-with: v0.1.0 -->
 
 **Test Repo**: `$FORGE_TEST_REPO`
 
-**Last updated**: 2026-05-15 (updated workflow routing and preflight QA coverage)
+**Last updated**: 2026-05-18 (drop status-line cost QA; align search clean, supervisor QA, and test repo paths)
 
 ---
 

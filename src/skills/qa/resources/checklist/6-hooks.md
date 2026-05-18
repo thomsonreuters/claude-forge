@@ -45,12 +45,12 @@ cd $FORGE_TEST_REPO
 # Test the status-line command with the real stdin contract.
 BASE_URL=$(jq -r '.intent.proxy.base_url // empty' .forge/sessions/test-session-1/forge.session.json)
 mkdir -p .forge/walkthrough
-cat > .forge/walkthrough/status-line-transcript.jsonl <<'EOF'
+cat > .forge/walkthrough/status-line-transcript.jsonl <<EOF
 {"requestId":"req-001","message":{"role":"user","content":[{"type":"text","text":"Read the config file."}]}}
-{"requestId":"req-001","message":{"role":"assistant","content":[{"type":"text","text":"I'll inspect it."},{"type":"tool_use","id":"tool-001","name":"Read","input":{"file_path":"/workspace/config.yaml"}}]}}
+{"requestId":"req-001","message":{"role":"assistant","content":[{"type":"text","text":"I'll inspect it."},{"type":"tool_use","id":"tool-001","name":"Read","input":{"file_path":"${FORGE_TEST_REPO}/config.yaml"}}]}}
 {"requestId":"req-001","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-001","content":"timeout: 10"}]}}
 {"requestId":"req-002","message":{"role":"user","content":[{"type":"text","text":"Update the timeout and run tests."}]}}
-{"requestId":"req-002","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-002","name":"Edit","input":{"file_path":"/workspace/config.yaml"}},{"type":"tool_use","id":"tool-003","name":"Bash","input":{"command":"uv run pytest"}}]}}
+{"requestId":"req-002","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-002","name":"Edit","input":{"file_path":"${FORGE_TEST_REPO}/config.yaml"}},{"type":"tool_use","id":"tool-003","name":"Bash","input":{"command":"uv run pytest"}}]}}
 EOF
 STATUS_INPUT=$(jq -nc \
   --arg cwd "$FORGE_TEST_REPO" \
@@ -157,7 +157,9 @@ test -f ".forge/artifacts/test-session-1/transcripts/${SESSION_ID}.jsonl"
 
 ```bash
 # pre-compact captures transcript before compaction (always exit 0)
-echo '{"session_id":"test-uuid","transcript_path":"/tmp/test.jsonl","cwd":"/workspace"}' | FORGE_SESSION=test-session-1 forge hook pre-compact
+jq -nc --arg cwd "$FORGE_TEST_REPO" \
+  '{session_id: "test-uuid", transcript_path: "/tmp/test.jsonl", cwd: $cwd}' \
+  | FORGE_SESSION=test-session-1 forge hook pre-compact
 echo "exit=$?"
 ```
 
@@ -194,8 +196,8 @@ forge session delete hook-e2e-test --force 2>/dev/null || true
 forge session start hook-e2e-test --proxy "$FORGE_QA_OPENAI_PROXY"
 ```
 
-Inside the launched Claude session, do a small action (e.g., "write hello to /tmp/test.txt" or "read
-/workspace/README.md and tell me the title"), then exit Claude (Ctrl+C or `/exit`).
+Inside the launched Claude session, do a small action (e.g., "write hello to /tmp/test.txt" or "read the repository
+README and tell me the title"), then exit Claude (Ctrl+C or `/exit`).
 
 After Claude exits, run these exact checks in the **container shell**:
 
@@ -239,7 +241,8 @@ In the **container shell**, clean up and start a worktree session:
 
 ```
 forge session delete wt-hook-test --yes --force 2>/dev/null || true
-git worktree remove /workspace-wt-hook-test --force 2>/dev/null || true
+WORKTREE_PATH="${FORGE_TEST_REPO}-wt-hook-test"
+git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
 git branch -D wt-hook-test 2>/dev/null || true
 forge session start wt-hook-test --worktree --proxy "$FORGE_QA_OPENAI_PROXY"
 ```
@@ -250,12 +253,14 @@ commands), then exit Claude (`/exit`).
 After Claude exits, verify:
 
 ```bash
+WORKTREE_PATH="${FORGE_TEST_REPO}-wt-hook-test"
+
 # Worktree was created
-ls -d /workspace-wt-hook-test 2>/dev/null || echo "worktree not found"
+ls -d "$WORKTREE_PATH" 2>/dev/null || echo "worktree not found"
 git worktree list | grep wt-hook-test
 
 # Forge extensions installed in the worktree
-cat /workspace-wt-hook-test/.claude/settings.local.json 2>/dev/null | jq '.hooks | keys'
+cat "$WORKTREE_PATH/.claude/settings.local.json" 2>/dev/null | jq '.hooks | keys'
 
 # Cleanup
 forge session delete wt-hook-test --yes --force

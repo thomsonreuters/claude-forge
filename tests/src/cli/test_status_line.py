@@ -34,6 +34,7 @@ from forge.cli.status_line import (
     format_verification,
     get_context_display,
     get_line_change_values,
+    get_session_metrics,
     get_tier_display,
     get_token_breakdown_values,
     parse_context_from_json,
@@ -1003,6 +1004,44 @@ class TestFormatRateLimits:
         assert format_rate_limits(limits, is_proxy=False) is None
 
 
+class TestGetSessionMetrics:
+    """Tests for status-line cost and duration formatting."""
+
+    def test_direct_cost_uses_claude_total_without_estimate_prefix(self):
+        result = get_session_metrics({"total_cost_usd": 0.05, "total_duration_ms": 60_000}, is_proxy=False)
+
+        assert result is not None
+        visible = _ANSI_RE.sub("", result)
+        assert visible == "$0.05 1m"
+        assert "~" not in visible
+
+    def test_proxy_cost_uses_estimate_prefix_and_duration(self):
+        result = get_session_metrics(
+            {"total_cost_usd": 0.99, "total_duration_ms": 60_000},
+            is_proxy=True,
+            proxy_cost_usd=0.05,
+        )
+
+        assert result is not None
+        visible = _ANSI_RE.sub("", result)
+        assert visible == "~$0.05 1m"
+        assert "$0.99" not in visible
+
+    def test_direct_subcent_cost_uses_cents_format(self):
+        result = get_session_metrics({"total_cost_usd": 0.005, "total_duration_ms": 30_000}, is_proxy=False)
+
+        assert result is not None
+        visible = _ANSI_RE.sub("", result)
+        assert visible == "0c 30s"
+
+    def test_proxy_subcent_cost_uses_fractional_cents(self):
+        result = get_session_metrics({"total_duration_ms": 30_000}, is_proxy=True, proxy_cost_usd=0.005)
+
+        assert result is not None
+        visible = _ANSI_RE.sub("", result)
+        assert visible == "~0.5c 30s"
+
+
 class TestFormatLineChanges:
     """Tests for direct line-change formatting."""
 
@@ -1347,6 +1386,82 @@ class TestOutputHardening:
         assert "12%/1M" in visible
         assert "+12/-3" in visible
         assert "in:28.0K out:17.5K" in visible
+
+    def test_status_line_renders_direct_cost_without_estimate_prefix(self):
+        """CLI rendering: direct cost comes from Claude status-line input."""
+        from click.testing import CliRunner
+
+        from forge.cli.status_line import _ANSI_RE, status_line
+
+        input_json = json.dumps(
+            {
+                "workspace": {"current_dir": "/tmp/demo"},
+                "model": {"display_name": "Opus 4.6"},
+                "cost": {
+                    "total_cost_usd": 0.05,
+                    "total_duration_ms": 60_000,
+                },
+            }
+        )
+        runner = CliRunner()
+        with (
+            patch("forge.cli.status_line.detect_proxy", return_value=(False, None, False)),
+            patch("forge.cli.status_line.discover_session", return_value=(None, False)),
+            patch("forge.cli.status_line.get_git_branch", return_value=None),
+            patch("forge.cli.status_line._get_terminal_width", return_value=200),
+        ):
+            result = runner.invoke(status_line, input=input_json)
+
+        assert result.exit_code == 0
+        visible = _ANSI_RE.sub("", result.output).replace("\u00a0", " ")
+        assert "$0.05 1m" in visible
+        assert "~$0.05" not in visible
+
+    def test_status_line_renders_proxy_cost_with_estimate_prefix(self):
+        """CLI rendering: proxy cost comes from runtime metrics, not direct input cost."""
+        from click.testing import CliRunner
+
+        from forge.cli.status_line import _ANSI_RE, status_line
+
+        input_json = json.dumps(
+            {
+                "workspace": {"current_dir": "/tmp/demo"},
+                "model": {"display_name": "Opus 4.6"},
+                "cost": {
+                    "total_cost_usd": 0.99,
+                    "total_duration_ms": 60_000,
+                },
+            }
+        )
+        runtime = ProxyRuntimeTruth(
+            {
+                "is_proxy": True,
+                "proxy": {
+                    "proxy_id": "test-proxy",
+                    "template": "litellm-openai",
+                    "port": 4000,
+                    "base_url": "http://localhost:4000",
+                },
+                "runtime": {
+                    "active_context_window": 200_000,
+                    "tier_mappings": {"sonnet": "gpt-5.5"},
+                },
+                "metrics": {"costs": {"total_usd": 0.05}},
+            }
+        )
+        runner = CliRunner()
+        with (
+            patch("forge.cli.status_line.detect_proxy", return_value=(True, runtime, True)),
+            patch("forge.cli.status_line.discover_session", return_value=(None, False)),
+            patch("forge.cli.status_line.get_git_branch", return_value=None),
+            patch("forge.cli.status_line._get_terminal_width", return_value=200),
+        ):
+            result = runner.invoke(status_line, input=input_json)
+
+        assert result.exit_code == 0
+        visible = _ANSI_RE.sub("", result.output).replace("\u00a0", " ")
+        assert "~$0.05 1m" in visible
+        assert "$0.99" not in visible
 
     def test_status_line_merges_template_with_proxy_model_segment(self):
         """Proxy template should render before the proxy model/context in one segment."""

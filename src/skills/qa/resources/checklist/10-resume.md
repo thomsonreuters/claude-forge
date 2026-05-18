@@ -11,7 +11,7 @@
 SESSION_JSON=".forge/sessions/test-session-1/forge.session.json"
 SESSION_ID=$(jq -r '.confirmed.claude_session_id // "fixture-transcript"' "$SESSION_JSON")
 TRANSCRIPT_REL=".forge/artifacts/test-session-1/transcripts/${SESSION_ID}.jsonl"
-TRANSCRIPT_ABS="/workspace/${TRANSCRIPT_REL}"
+TRANSCRIPT_ABS="$FORGE_TEST_REPO/${TRANSCRIPT_REL}"
 
 mkdir -p "$(dirname "$TRANSCRIPT_ABS")"
 cat > "$TRANSCRIPT_ABS" << 'EOF'

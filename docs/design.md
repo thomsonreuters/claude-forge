@@ -9,8 +9,8 @@
 
 ## 1. Philosophy: The "Glue" Approach
 
-Forge is **not** a monolith. It is the **connective tissue** between specialized tools -- a monorepo of proven tools
-sharing common libraries (Auth, Models, State) under a unified interface (`forge` CLI).
+Forge is **not** a monolith. It is the **connective tissue** between specialized tools -- a monorepo of tools sharing
+common libraries (Auth, Models, State) under a unified interface (`forge` CLI).
 
 ## 2. Core components (the "pieces")
 
@@ -149,8 +149,8 @@ checkout and leaves final cleanup to the user.
 
 This workflow motivates Forge's separation of **Session** and **Proxy**.
 
-**Goal:** Combine meticulous planning/review from one proxy (e.g., OpenAI-based) with fast/high-quality implementation
-from another, while keeping artifacts and the working directory shared.
+**Goal:** Combine deep planning/review from one proxy (e.g., OpenAI-based) with fast/high-quality implementation from
+another, while keeping artifacts and the working directory shared.
 
 > See [diagrams.md §7: Multi-Proxy Workflow](diagrams.md#7-multi-proxy-workflow).
 
@@ -201,8 +201,10 @@ worktrees and Forge projects within the logical repo. **`project`** filters by `
 
 **1:1 invariant:** Each Forge session corresponds to exactly one Claude process invocation.
 `confirmed.claude_session_id` is **launch-owned** — it starts as `None` when a session is created, and is set by the
-SessionStart hook when Claude actually starts. A non-null `claude_session_id` means "this session has been used."
-Relaunching a used session creates a child with lineage (`parent_session`), not a reuse of the same session.
+SessionStart hook when Claude actually starts. A non-null `claude_session_id` means "this session has been used." Stop
+and StopFailure also reconcile `claude_session_id` and `transcript_path` from their hook payloads to correct
+fork-session launches where SessionStart sees an inherited parent UUID. Relaunching a used session creates a child with
+lineage (`parent_session`), not a reuse of the same session.
 
 **Default resume behavior.** `forge session resume <name>` reattaches to the same Claude conversation without creating a
 child. This relaxes the 1:1 model (a new process invocation on the same Forge session) and is the default path: the
@@ -329,10 +331,13 @@ To avoid writer conflicts:
   - `confirmed` bootstrap/runtime fields written by the CLI: `derivation` (resume metadata), `is_sandboxed` (updated at
     launch time to reflect whether Claude is running via sidecar)
   - Sets `FORGE_SESSION=<session_name>` when launching Claude
-  - Note: `claude_session_id` is **not** pre-seeded by the CLI; it is set by the SessionStart hook (launch-owned)
+  - Note: `claude_session_id` is **not** pre-seeded by the CLI; it is set by hooks from Claude's live conversation
+    payloads. SessionStart sets the initial value, and Stop/StopFailure may reconcile it when native fork launches
+    materialize a child UUID after startup.
 - Hooks write:
   - `confirmed` section **during the session**: `claude_session_id`, proxy identity, artifacts, policy state, transcript
-    paths. The SessionStart hook is the authoritative source for `claude_session_id`.
+    paths. SessionStart is the first source for `claude_session_id`; Stop and StopFailure are authoritative
+    reconciliation points for the final live conversation identity.
   - Locate session via `FORGE_SESSION`
 - Forge Proxy Orchestrator writes:
   - `~/.forge/proxies/index.json`

@@ -333,8 +333,8 @@ warnings stay visible regardless.
 
 ## Files to inspect (debugging)
 
-| File                                        | Purpose                                      |
-| ------------------------------------------- | -------------------------------------------- |
-| `.forge/sessions/<name>/forge.session.json` | Session manifest (policy config + state)     |
-| Claude settings file for your scope         | Hook config (`PreToolUse` -> `policy-check`) |
-| `~/.forge/logs/`                            | Proxy logs (if supervisor uses a proxy)      |
+| File                                                     | Purpose                                      |
+| -------------------------------------------------------- | -------------------------------------------- |
+| `<forge_root>/.forge/sessions/<name>/forge.session.json` | Session manifest (policy config + state)     |
+| Claude settings file for your scope                      | Hook config (`PreToolUse` -> `policy-check`) |
+| `~/.forge/logs/`                                         | Proxy logs (if supervisor uses a proxy)      |

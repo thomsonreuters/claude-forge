@@ -118,7 +118,7 @@ if [ -z "$CONTAINER" ]; then
 fi
 ```
 
-Note: `start-container.sh` mounts a host state directory into the container at `/workspace/.forge/qa/`, so state
+Note: `start-container.sh` mounts a host state directory into the container at `$FORGE_TEST_REPO/.forge/qa/`, so state
 persists on the host at `${FORGE_HOME:-$HOME/.forge}/manual-testing/qa/`.
 
 If it fails, show the error and stop. The script handles image build, staleness detection, container reuse, workspace
@@ -138,7 +138,7 @@ docker exec "$CONTAINER" bash -lc 'test -d ~/.forge/proxies || test -f ~/.forge/
 If `STALE`: use AskUserQuestion to ask "Previous QA artifacts detected in container. Reset to clean state?" with options
 "Reset" / "Keep (resume where left off)". If the user chooses Reset, stop and recreate the container, then continue from
 Phase 1 with the fresh container. Do **not** try to scrub the live container in place: stale state can live in both
-`/root` and `/workspace`, and the workspace reset must restore the seeded test repo.
+`/root` and `$FORGE_TEST_REPO`, and the workspace reset must restore the seeded test repo.
 
 ```bash
 bash "$SCRIPTS/start-container.sh" --stop
@@ -172,7 +172,7 @@ STATE_FILE="$STATE_DIR/state.json"
 directory; Forge's own debug logs live under `/root/.forge/logs` inside the container and are copied out later.
 
 ```bash
-docker exec "$CONTAINER" mkdir -p /workspace/.forge/qa/logs /workspace/.forge/qa/forge-logs-snapshots
+docker exec "$CONTAINER" bash -lc 'mkdir -p "$FORGE_TEST_REPO/.forge/qa/logs" "$FORGE_TEST_REPO/.forge/qa/forge-logs-snapshots"'
 ```
 
 **Fresh run**: clear any previous run-local logs/snapshots, reset container debug logs, then initialize progress
@@ -180,7 +180,7 @@ tracking via `walkthrough-state.py`:
 
 ```bash
 rm -rf "$STATE_DIR/logs" "$STATE_DIR/forge-logs-snapshots"
-docker exec "$CONTAINER" bash -lc 'rm -rf /root/.forge/logs && mkdir -p /workspace/.forge/qa/logs /workspace/.forge/qa/forge-logs-snapshots'
+docker exec "$CONTAINER" bash -lc 'rm -rf /root/.forge/logs && mkdir -p "$FORGE_TEST_REPO/.forge/qa/logs" "$FORGE_TEST_REPO/.forge/qa/forge-logs-snapshots"'
 python3 "$SCRIPTS/walkthrough-state.py" "$CHECKLIST" init --force --mode full-qa "$STATE_FILE"
 ```
 
@@ -288,7 +288,7 @@ For each section/step in the filtered range:
 04. **Execute bash blocks** from the checklist -- run ONLY what the checklist specifies:
 
     ```bash
-    docker exec "$CONTAINER" bash -lc 'cd /workspace && <bash block from checklist>'
+    docker exec "$CONTAINER" bash -lc 'cd "$FORGE_TEST_REPO" && <bash block from checklist>'
     ```
 
     The agent does NOT invent commands. It runs the checklist's bash blocks verbatim. For each entry in the step's
@@ -302,7 +302,7 @@ For each section/step in the filtered range:
     dir so evidence survives the cleanup step:
 
     ```bash
-    docker exec "$CONTAINER" bash -lc 'SNAP="/workspace/.forge/qa/forge-logs-snapshots/N.X/pre-clean"; rm -rf "$SNAP"; if [ -d /root/.forge/logs ]; then mkdir -p "$SNAP" && cp -R /root/.forge/logs/. "$SNAP"/; fi'
+    docker exec "$CONTAINER" bash -lc 'SNAP="$FORGE_TEST_REPO/.forge/qa/forge-logs-snapshots/N.X/pre-clean"; rm -rf "$SNAP"; if [ -d /root/.forge/logs ]; then mkdir -p "$SNAP" && cp -R /root/.forge/logs/. "$SNAP"/; fi'
     ```
 
 05. **Check assertions**: For each assertion text from the step details, examine the command output and judge whether it
@@ -312,7 +312,7 @@ For each section/step in the filtered range:
 06. **Write logs** inside the container -- save raw command output to per-subsection log files:
 
     ```bash
-    docker exec "$CONTAINER" bash -c 'cat > /workspace/.forge/qa/logs/N.X.log <<'"'"'EOF'"'"'
+    docker exec "$CONTAINER" bash -c 'cat > "$FORGE_TEST_REPO/.forge/qa/logs/N.X.log" <<'"'"'EOF'"'"'
     <raw output>
     EOF'
     ```

@@ -433,6 +433,12 @@ def stop() -> None:
                 },
             )
 
+            # Stop carries the live conversation identity. SessionStart can
+            # lag or report an inherited UUID for native fork launches, so
+            # reconcile from Stop before later cleanup/resume code reads it.
+            m.confirmed.claude_session_id = session_id
+            m.confirmed.transcript_path = transcript_path
+
             # Record policy provenance (always on Stop, per design §4.1.6)
             from forge import __version__
             from forge.session.models import PolicyConfirmed
@@ -446,6 +452,12 @@ def stop() -> None:
             m.confirmed.confirmed_by = "hook:stop"
 
         store.update(timeout_s=HOOK_LOCK_TIMEOUT_S, mutate=_mutate)
+        try:
+            from forge.session.index import IndexStore
+
+            IndexStore().update_uuid(manifest.name, session_id, forge_root=str(store.forge_root))
+        except Exception:
+            logger.debug("Stop hook: index UUID sync failed", exc_info=True)
 
     except FileLockTimeoutError:
         manifest_updated = False
@@ -654,6 +666,12 @@ def stop_failure() -> None:
                 },
             )
 
+            # StopFailure is a last-chance transcript capture. If it carries a
+            # newer Claude session ID than SessionStart recorded, reconcile the
+            # manifest the same way Stop does.
+            m.confirmed.claude_session_id = session_id
+            m.confirmed.transcript_path = transcript_path
+
             from forge import __version__
             from forge.session.models import PolicyConfirmed
 
@@ -666,6 +684,12 @@ def stop_failure() -> None:
             m.confirmed.confirmed_by = "hook:stop-failure"
 
         store.update(timeout_s=HOOK_LOCK_TIMEOUT_S, mutate=_mutate)
+        try:
+            from forge.session.index import IndexStore
+
+            IndexStore().update_uuid(manifest.name, session_id, forge_root=str(store.forge_root))
+        except Exception:
+            logger.debug("StopFailure hook: index UUID sync failed", exc_info=True)
     except Exception:
         pass  # Best-effort: never fail on StopFailure
 

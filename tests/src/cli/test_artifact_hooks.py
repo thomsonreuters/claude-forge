@@ -14,6 +14,7 @@ from click.testing import CliRunner
 
 from forge.cli.hooks import hooks
 from forge.session import SessionStore, create_session_state
+from forge.session.index import IndexStore
 
 
 def _write_pending_transcript_marker(
@@ -163,6 +164,54 @@ class TestStopHook:
         assert marker_data["marker_id"] == "uuid-123"
         assert marker_data["payload"]["session_name"] == "test-session"
         assert marker_data["payload"]["transcript_snapshot_rel"].endswith("/uuid-123.jsonl")
+
+    def test_reconciles_child_uuid_when_fork_session_start_kept_parent_uuid(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Stop should correct same-dir fork manifests when SessionStart saw the parent UUID."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("FORGE_HOME", str(tmp_path / ".forge-test"))
+        store = _write_manifest(tmp_path, monkeypatch, session_name="fork-child")
+
+        manifest = store.read()
+        manifest.is_fork = True
+        manifest.parent_session = "fork-parent"
+        manifest.forge_root = str(tmp_path)
+        manifest.confirmed.claude_session_id = "parent-uuid"
+        manifest.confirmed.transcript_path = str(tmp_path / "parent.jsonl")
+        manifest.confirmed.confirmed_by = "hook:SessionStart:startup"
+        store.write(manifest)
+
+        IndexStore().add_from_state(
+            manifest,
+            str(tmp_path),
+            checkout_root=str(tmp_path),
+            forge_root=str(tmp_path),
+            relative_path=".",
+        )
+
+        child_transcript = tmp_path / "child.jsonl"
+        child_transcript.write_text("{}\n", encoding="utf-8")
+
+        runner = CliRunner()
+        payload = {
+            "hook_event_name": "Stop",
+            "session_id": "child-uuid",
+            "transcript_path": str(child_transcript),
+        }
+        result = runner.invoke(hooks, ["stop"], input=json.dumps(payload))
+
+        assert result.exit_code == 0
+        output = json.loads(result.output)
+        assert output["success"] is True
+
+        updated = store.read()
+        assert updated.confirmed.claude_session_id == "child-uuid"
+        assert updated.confirmed.transcript_path == str(child_transcript)
+        assert updated.confirmed.confirmed_by == "hook:stop"
+
+        index_entry = IndexStore().get_session("fork-child", forge_root=str(tmp_path))
+        assert index_entry.claude_session_id == "child-uuid"
 
     def test_no_session_still_copies_pending_transcript(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)

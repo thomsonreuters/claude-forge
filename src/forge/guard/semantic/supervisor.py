@@ -11,7 +11,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from forge.core.reactive.routing import resolve_subprocess_routing
 from forge.core.reactive.session_runner import run_claude_session
@@ -23,6 +23,7 @@ from forge.guard.semantic.verdict import (
     verdict_to_decision,
 )
 from forge.guard.types import ActionContext, PolicyDecision
+from forge.session.manager import SessionManager
 from forge.session.models import PolicyIntent, SessionState, SupervisorConfig
 
 _log = logging.getLogger(__name__)
@@ -186,8 +187,11 @@ class SemanticSupervisorPolicy(DeterministicPolicy):
         cached = self._cache.check(cache_key)
         if cached is not None:
             _log.debug("Using cached supervisor verdict for %s", cache_key)
+            cached_verdict = cached.get("verdict", "aligned")
+            if cached_verdict not in ("aligned", "divergent"):
+                cached_verdict = "aligned"
             verdict = SupervisorVerdict(
-                verdict=cached.get("verdict", "aligned"),  # type: ignore[arg-type]
+                verdict=cast(Literal["aligned", "divergent"], cached_verdict),
                 confidence=cached.get("confidence", 1.0),
             )
             decision = verdict_to_decision(verdict, intent=self.intent)
@@ -227,6 +231,77 @@ class _ResolvedTarget:
     warning: str | None = None
 
 
+def _latest_transcript_artifact_session_id(state: SessionState) -> str | None:
+    """Return newest transcript artifact UUID, tolerating legacy/raw artifact shapes."""
+    artifacts = state.confirmed.artifacts
+    if not isinstance(artifacts, dict):
+        return None
+
+    transcripts = artifacts.get("transcripts")
+    if not isinstance(transcripts, list):
+        return None
+
+    for artifact in reversed(transcripts):
+        if not isinstance(artifact, dict):
+            continue
+        session_id = artifact.get("session_id")
+        if isinstance(session_id, str) and session_id:
+            return session_id
+
+    return None
+
+
+def _raw_claude_transcript_exists(state: SessionState, session_uuid: str) -> bool:
+    """Return whether Claude can likely resume the given raw UUID."""
+    from forge.session.claude.paths import (
+        get_transcript_path,
+        resolve_claude_project_root,
+    )
+
+    roots: list[str] = []
+    if isinstance(state.confirmed.claude_project_root, str) and state.confirmed.claude_project_root:
+        roots.append(state.confirmed.claude_project_root)
+
+    try:
+        resolved = resolve_claude_project_root(state)
+        if resolved not in roots:
+            roots.append(resolved)
+    except Exception:
+        pass
+
+    for root in roots:
+        try:
+            if get_transcript_path(root, session_uuid).is_file():
+                return True
+        except Exception:
+            continue
+
+    return False
+
+
+def _parent_uuid_for_fork_target(
+    mgr: "SessionManager", state: SessionState, fallback_forge_root: str | None
+) -> str | None:
+    """Return a fork target's parent UUID when it can be resolved."""
+    if state.is_fork is not True or not isinstance(state.parent_session, str) or not state.parent_session:
+        return None
+
+    parent_forge_root = fallback_forge_root
+    derivation = state.confirmed.derivation
+    if derivation and isinstance(derivation.parent_forge_root, str) and derivation.parent_forge_root:
+        parent_forge_root = derivation.parent_forge_root
+    elif isinstance(state.forge_root, str) and state.forge_root:
+        parent_forge_root = state.forge_root
+
+    try:
+        parent_state = mgr.get_session(state.parent_session, forge_root=parent_forge_root)
+    except Exception:
+        return None
+
+    parent_uuid = parent_state.confirmed.claude_session_id
+    return parent_uuid if isinstance(parent_uuid, str) and parent_uuid else None
+
+
 def _resolve_resume_target(resume_target: str, forge_root: str | None = None) -> _ResolvedTarget:
     """Resolve a supervisor resume target to a Claude UUID and source CWD.
 
@@ -243,9 +318,8 @@ def _resolve_resume_target(resume_target: str, forge_root: str | None = None) ->
         return _ResolvedTarget(resume_id=target)
 
     try:
-        from forge.session.manager import SessionManager
-
-        state = SessionManager().get_session(target, forge_root=forge_root)
+        mgr = SessionManager()
+        state = mgr.get_session(target, forge_root=forge_root)
     except Exception:
         return _ResolvedTarget(resume_id=target)
 
@@ -258,6 +332,34 @@ def _resolve_resume_target(resume_target: str, forge_root: str | None = None) ->
     from forge.session.claude.paths import resolve_claude_project_root
 
     source_cwd = resolve_claude_project_root(state)
+
+    latest_artifact_uuid = _latest_transcript_artifact_session_id(state)
+    if latest_artifact_uuid and latest_artifact_uuid != session_uuid:
+        if _raw_claude_transcript_exists(state, latest_artifact_uuid):
+            _log.warning(
+                "Supervisor target '%s' had stale manifest UUID %s...; using latest transcript UUID %s...",
+                target,
+                session_uuid[:8],
+                latest_artifact_uuid[:8],
+            )
+            session_uuid = latest_artifact_uuid
+        else:
+            return _ResolvedTarget(
+                warning=(
+                    f"Supervisor error: Forge session '{target}' has inconsistent Claude UUID state "
+                    f"(manifest {session_uuid[:8]}..., latest transcript {latest_artifact_uuid[:8]}...), failing open"
+                )
+            )
+
+    parent_uuid = _parent_uuid_for_fork_target(mgr, state, forge_root)
+    if parent_uuid and parent_uuid == session_uuid:
+        return _ResolvedTarget(
+            warning=(
+                f"Supervisor error: Forge session '{target}' is a fork but still points at its parent Claude UUID "
+                f"({session_uuid[:8]}...), failing open"
+            )
+        )
+
     _log.debug("Resolved supervisor session %s -> %s (cwd=%s)", target, session_uuid[:16], source_cwd)
     return _ResolvedTarget(resume_id=session_uuid, source_cwd=source_cwd)
 
@@ -377,10 +479,9 @@ def validate_supervisor_target(target: str, forge_root: str | None = None) -> Se
     Raises ValueError with a user-friendly message on failure. This
     runs at wiring time (not at check time) to fail loud on bad config.
     """
-    from forge.session.manager import SessionManager
-
     try:
-        state = SessionManager().get_session(target, forge_root=forge_root)
+        mgr = SessionManager()
+        state = mgr.get_session(target, forge_root=forge_root)
     except Exception as e:
         raise ValueError(f"Supervisor target session '{target}' not found: {e}") from e
 
@@ -389,6 +490,23 @@ def validate_supervisor_target(target: str, forge_root: str | None = None) -> Se
             f"Supervisor target session '{target}' has no confirmed Claude session ID. "
             f"Launch the session first so Claude materializes a conversation."
         )
+
+    parent_uuid = _parent_uuid_for_fork_target(mgr, state, forge_root)
+    if parent_uuid and parent_uuid == state.confirmed.claude_session_id:
+        raise ValueError(
+            f"Supervisor target session '{target}' is a fork but still points at its parent Claude UUID "
+            f"({state.confirmed.claude_session_id[:8]}...). Resume or recreate the supervisor session before wiring it."
+        )
+
+    latest_artifact_uuid = _latest_transcript_artifact_session_id(state)
+    if latest_artifact_uuid and latest_artifact_uuid != state.confirmed.claude_session_id:
+        if not _raw_claude_transcript_exists(state, latest_artifact_uuid):
+            raise ValueError(
+                f"Supervisor target session '{target}' has inconsistent Claude UUID state "
+                f"(manifest {state.confirmed.claude_session_id[:8]}..., "
+                f"latest transcript {latest_artifact_uuid[:8]}...). "
+                "Recreate or resume the supervisor session before wiring it."
+            )
 
     if not _has_conversation_evidence(state):
         raise ValueError(

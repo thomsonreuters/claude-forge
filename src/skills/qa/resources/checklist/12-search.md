@@ -44,15 +44,15 @@ forge search -q "hello world" --scope all
 - [ ] `--scope all` searches indexed projects (including the current project)
 - [ ] Results ranked by BM25 relevance
 
-### 12.4 Prune Orphaned Entries
+### 12.4 Clean Orphaned Entries
 
 <!-- auto -->
 
 ```bash
-forge search prune
+forge search clean
 ```
 
 - [ ] Removes entries for deleted transcripts
-- [ ] Reports pruned count
+- [ ] Reports removed/pruned count or "No orphaned entries found."
 
 ---

@@ -205,7 +205,7 @@ accepts the slash command and actually executes the adversarial runner end to en
 If Session B is not already open, start Claude Code in the container shell first:
 
 ```
-cd /workspace
+cd $FORGE_TEST_REPO
 claude
 ```
 

@@ -33,7 +33,7 @@ Forge indexes transcripts **automatically** via the Stop hook pipeline:
 
 ```
 Session stops
-  → Stop hook copies transcript to .forge/artifacts/
+  → Stop hook copies transcript to <forge_root>/.forge/artifacts/
   → Stop hook enqueues "index" work marker
   → (session ends)
 
@@ -84,7 +84,7 @@ forge search clean
 | Tool results (file contents, output) | Truncated to 500 chars |
 
 Truncation yields ~20-50x compression over raw transcripts while keeping terms searchable. Full transcripts remain in
-`.forge/artifacts/` for direct inspection.
+`<forge_root>/.forge/artifacts/` for direct inspection.
 
 ---
 
@@ -142,10 +142,10 @@ A full rebuild reconstructs all three store files from the source transcripts.
 
 ## Files to inspect (debugging)
 
-| File                                            | Purpose                                    |
-| ----------------------------------------------- | ------------------------------------------ |
-| `<project>/.forge/search-index/documents.json`  | Indexed document metadata                  |
-| `<project>/.forge/search-index/bm25_index.json` | BM25 term index                            |
-| `<project>/.forge/search-index/content.json`    | Extracted text content                     |
-| `<project>/.forge/artifacts/*/transcripts/`     | Source transcripts (index input)           |
-| `~/.forge/pending-work/`                        | Work queue markers (index markers pending) |
+| File                                               | Purpose                                    |
+| -------------------------------------------------- | ------------------------------------------ |
+| `<forge_root>/.forge/search-index/documents.json`  | Indexed document metadata                  |
+| `<forge_root>/.forge/search-index/bm25_index.json` | BM25 term index                            |
+| `<forge_root>/.forge/search-index/content.json`    | Extracted text content                     |
+| `<forge_root>/.forge/artifacts/*/transcripts/`     | Source transcripts (index input)           |
+| `~/.forge/pending-work/`                           | Work queue markers (index markers pending) |

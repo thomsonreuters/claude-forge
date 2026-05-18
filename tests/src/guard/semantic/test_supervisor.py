@@ -21,7 +21,7 @@ from forge.guard.engine import build_engine
 from forge.guard.semantic.supervisor import SemanticSupervisorPolicy
 from forge.guard.semantic.verdict import verdict_to_decision
 from forge.guard.types import ActionContext, PolicyDecision, Violation
-from forge.session.models import SupervisorConfig
+from forge.session.models import SupervisorConfig, create_session_state
 
 # --- Fixtures ---
 
@@ -336,6 +336,135 @@ class TestSupervisorResumeTargetResolution:
         assert result.decision == "allow"
         mock_run.assert_called_once()
         assert mock_run.call_args.kwargs["resume_id"] == "resolved-uuid-1234"
+
+    def test_stale_manifest_uuid_uses_latest_resumable_transcript_uuid(self) -> None:
+        """A stale same-dir fork target should use the verified child UUID when available."""
+        from forge.core.reactive.session_runner import SessionResult
+        from forge.guard.semantic.supervisor import invoke_supervisor
+
+        session_state = create_session_state(
+            "guard-supervisor",
+            parent_session="guard-planner",
+            is_fork=True,
+            worktree_path="/workspace",
+            worktree_branch="main",
+        )
+        session_state.forge_root = "/workspace"
+        session_state.confirmed.claude_session_id = "parent-uuid"
+        session_state.confirmed.artifacts = {
+            "transcripts": [
+                {
+                    "session_id": "child-uuid",
+                    "copied_path": ".forge/artifacts/guard-supervisor/transcripts/child-uuid.jsonl",
+                }
+            ]
+        }
+
+        with (
+            patch("forge.session.manager.SessionManager.get_session", return_value=session_state),
+            patch("forge.guard.semantic.supervisor._raw_claude_transcript_exists", return_value=True),
+            patch("forge.guard.semantic.supervisor.run_claude_session") as mock_run,
+        ):
+            mock_run.return_value = SessionResult(
+                stdout='```json\n{"verdict": "aligned", "confidence": 0.9, "violations": []}\n```',
+                stderr="",
+                returncode=0,
+            )
+            result = invoke_supervisor(_make_config(resume_id="guard-supervisor"), _make_context())
+
+        assert result.decision == "allow"
+        mock_run.assert_called_once()
+        assert mock_run.call_args.kwargs["resume_id"] == "child-uuid"
+
+    def test_stale_manifest_uuid_without_resumable_child_fails_open(self) -> None:
+        """A suspicious supervisor target should not block from the wrong parent context."""
+        from forge.guard.semantic.supervisor import invoke_supervisor
+
+        session_state = create_session_state(
+            "guard-supervisor",
+            parent_session="guard-planner",
+            is_fork=True,
+            worktree_path="/workspace",
+            worktree_branch="main",
+        )
+        session_state.forge_root = "/workspace"
+        session_state.confirmed.claude_session_id = "parent-uuid"
+        session_state.confirmed.artifacts = {
+            "transcripts": [
+                {
+                    "session_id": "child-uuid",
+                    "copied_path": ".forge/artifacts/guard-supervisor/transcripts/child-uuid.jsonl",
+                }
+            ]
+        }
+
+        with (
+            patch("forge.session.manager.SessionManager.get_session", return_value=session_state),
+            patch("forge.guard.semantic.supervisor._raw_claude_transcript_exists", return_value=False),
+            patch("forge.guard.semantic.supervisor.run_claude_session") as mock_run,
+        ):
+            result = invoke_supervisor(_make_config(resume_id="guard-supervisor"), _make_context())
+
+        assert result.decision == "allow"
+        assert result.warnings is not None
+        assert "inconsistent Claude UUID state" in result.warnings[0]
+        mock_run.assert_not_called()
+
+    def test_fork_target_pointing_at_parent_uuid_fails_open(self) -> None:
+        """A fork target must not invoke the supervisor using the parent's UUID."""
+        from forge.guard.semantic.supervisor import invoke_supervisor
+
+        parent_state = create_session_state("guard-planner", worktree_path="/workspace", worktree_branch="main")
+        parent_state.confirmed.claude_session_id = "parent-uuid"
+
+        session_state = create_session_state(
+            "guard-supervisor",
+            parent_session="guard-planner",
+            is_fork=True,
+            worktree_path="/workspace",
+            worktree_branch="main",
+        )
+        session_state.forge_root = "/workspace"
+        session_state.confirmed.claude_session_id = "parent-uuid"
+
+        def get_session(name: str, forge_root: str | None = None):
+            return parent_state if name == "guard-planner" else session_state
+
+        with (
+            patch("forge.session.manager.SessionManager.get_session", side_effect=get_session),
+            patch("forge.guard.semantic.supervisor.run_claude_session") as mock_run,
+        ):
+            result = invoke_supervisor(_make_config(resume_id="guard-supervisor"), _make_context())
+
+        assert result.decision == "allow"
+        assert result.warnings is not None
+        assert "points at its parent Claude UUID" in result.warnings[0]
+        mock_run.assert_not_called()
+
+    def test_validate_rejects_fork_target_pointing_at_parent_uuid(self) -> None:
+        """Wiring should reject a supervisor fork that still has the parent's UUID."""
+        from forge.guard.semantic.supervisor import validate_supervisor_target
+
+        parent_state = create_session_state("guard-planner", worktree_path="/workspace", worktree_branch="main")
+        parent_state.confirmed.claude_session_id = "parent-uuid"
+
+        session_state = create_session_state(
+            "guard-supervisor",
+            parent_session="guard-planner",
+            is_fork=True,
+            worktree_path="/workspace",
+            worktree_branch="main",
+        )
+        session_state.forge_root = "/workspace"
+        session_state.confirmed.claude_session_id = "parent-uuid"
+        session_state.confirmed.confirmed_by = "hook:SessionStart:startup"
+
+        def get_session(name: str, forge_root: str | None = None):
+            return parent_state if name == "guard-planner" else session_state
+
+        with patch("forge.session.manager.SessionManager.get_session", side_effect=get_session):
+            with pytest.raises(ValueError, match="points at its parent Claude UUID"):
+                validate_supervisor_target("guard-supervisor", forge_root="/workspace")
 
     @patch("forge.guard.semantic.supervisor.run_claude_session")
     def test_missing_confirmed_uuid_fails_open(self, mock_run: MagicMock) -> None:

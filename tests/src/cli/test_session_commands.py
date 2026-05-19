@@ -452,6 +452,9 @@ class TestSessionShow:
         assert "intent" in data
         assert "context" in data
         assert "model_family" in data["context"]
+        assert "main_model" in data["context"]
+        assert "main_model" in data
+        assert "model_profile" not in data
 
     def test_show_field_extraction(self, runner: CliRunner, temp_env: Path) -> None:
         """--field should extract a single value."""
@@ -1947,7 +1950,7 @@ class TestSessionFork:
         assert fork_state.worktree is not None
         fork_state.worktree.is_worktree = True
 
-        context_file = fork_worktree / ".forge" / "prev_sessions" / "fork-parent.md"
+        context_file = fork_worktree / ".forge" / "prev_sessions" / "fork-parent" / "children" / "fork-child.md"
         context_file.parent.mkdir(parents=True)
         context_file.write_text("# Parent context\n")
 
@@ -2005,7 +2008,7 @@ class TestSessionFork:
         fork_state.forge_root = str(fork_worktree)
         SessionStore(str(fork_worktree), "fork-child").write(fork_state)
 
-        context_file = fork_worktree / ".forge" / "prev_sessions" / "fork-parent.md"
+        context_file = fork_worktree / ".forge" / "prev_sessions" / "fork-parent" / "children" / "fork-child.md"
         context_file.parent.mkdir(parents=True)
         context_file.write_text("# Parent context\n", encoding="utf-8")
 
@@ -2400,7 +2403,7 @@ class TestSessionFork:
         assert fork_state.worktree is not None
         fork_state.worktree.is_worktree = True
 
-        context_file = fork_worktree / ".forge" / "prev_sessions" / "fork-parent.md"
+        context_file = fork_worktree / ".forge" / "prev_sessions" / "fork-parent" / "children" / "fork-child.md"
         context_file.parent.mkdir(parents=True)
         context_file.write_text("# Parent context\n")
 
@@ -2465,7 +2468,7 @@ class TestSessionFork:
         fork_state.worktree.is_worktree = True
         fork_state.forge_root = str(nested_root)
 
-        context_file = nested_root / ".forge" / "prev_sessions" / "fork-parent.md"
+        context_file = nested_root / ".forge" / "prev_sessions" / "fork-parent" / "children" / "fork-child.md"
         context_file.parent.mkdir(parents=True)
         context_file.write_text("# Parent context\n")
 
@@ -2529,7 +2532,7 @@ class TestSessionFork:
         fork_state.worktree.is_worktree = True
         fork_state.forge_root = str(nested_root)
 
-        context_file = nested_root / ".forge" / "prev_sessions" / "fork-parent.md"
+        context_file = nested_root / ".forge" / "prev_sessions" / "fork-parent" / "children" / "fork-child.md"
         context_file.parent.mkdir(parents=True)
         context_file.write_text("# Parent context\n")
 

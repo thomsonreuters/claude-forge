@@ -112,7 +112,7 @@ class TestSessionContextDataclass:
         assert data["session_name"] == "test-session"
         assert data["model_family"] == "openai"
         assert "main_model" in data
-        assert data["model_profile"] == data["main_model"]
+        assert "model_profile" not in data
         assert data["proxy"]["is_direct"] is True
         # Verify JSON serializable
         json.dumps(data)
@@ -276,7 +276,7 @@ class TestGetSessionContext:
         assert ctx.proxy.is_direct is True
         assert ctx.model_family == "anthropic"
         assert ctx.main_model == "claude-opus-4-7"
-        assert data["model_profile"] == "claude-opus-4-7"
+        assert data["main_model"] == "claude-opus-4-7"
 
     def test_uuid_resolution_falls_back_to_manifest_scan_when_index_is_stale(self, tmp_path: Path):
         worktree = tmp_path / "repo"

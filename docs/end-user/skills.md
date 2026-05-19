@@ -213,9 +213,14 @@ Session -> proxy template -> tier model name -> vendor prefix -> family
 | `gemini`    | `openrouter-gemini`         | `-gemini.md`    |
 | `anthropic` | `litellm-anthropic`, direct | (default)       |
 
-The detection chain uses `forge session show --field model_family`, which resolves the session from `$FORGE_SESSION`
-(set by Forge hooks at launch). Skills internally pass the Claude session UUID for resolution. If detection fails,
-skills fall back to the Opus-optimized default resource.
+The detection chain uses `forge session context --field model_family`, which resolves managed sessions from
+`$FORGE_SESSION` (set by Forge at launch) and otherwise falls back to local environment metadata such as
+`ACTIVE_TEMPLATE`, `ANTHROPIC_BASE_URL`, and direct-model env vars. If detection fails, skills fall back to the
+Opus-optimized default resource.
+
+Single-model skills also print the resolved model when Forge can identify it. In unmanaged direct Claude sessions,
+Claude Code may not expose the exact selected model to Forge; in that case the preflight says the exact model is not
+available instead of reporting `none`.
 
 **No manual configuration needed.** The right instructions are selected automatically based on which proxy you're
 connected to.
@@ -238,6 +243,7 @@ Check the detected family:
 
 ```bash
 forge session show --field model_family
+forge session show --field main_model
 ```
 
 If the family is wrong, the proxy template's tier models may not have the expected vendor prefix. Check with

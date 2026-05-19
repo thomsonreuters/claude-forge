@@ -56,8 +56,8 @@ def test_output_root_writes_context_to_separate_directory(tmp_path):
     # Written to fork dir, not parent dir
     assert str(fork_dir) in str(result.context_file)
     assert str(parent_dir) not in str(result.context_file)
-    assert (fork_dir / ".forge" / "prev_sessions" / "parent.md").is_file()
-    assert not (parent_dir / ".forge" / "prev_sessions" / "parent.md").exists()
+    assert (fork_dir / ".forge" / "prev_sessions" / "parent" / "generated.md").is_file()
+    assert not (parent_dir / ".forge" / "prev_sessions" / "parent" / "generated.md").exists()
 
 
 def test_output_root_none_defaults_to_project_root(tmp_path):
@@ -78,4 +78,4 @@ def test_output_root_none_defaults_to_project_root(tmp_path):
     )
 
     assert result.context_file is not None
-    assert (parent_dir / ".forge" / "prev_sessions" / "parent.md").is_file()
+    assert (parent_dir / ".forge" / "prev_sessions" / "parent" / "generated.md").is_file()

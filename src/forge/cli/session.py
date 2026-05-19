@@ -708,12 +708,22 @@ def _generate_parent_handoff_context(
     strategy: str = "structured",
     inline_plan: bool = False,
 ) -> tuple[Path | None, list[str]]:
-    """Generate a fresh parent-context handoff file for a forked session."""
+    """Generate a fresh parent-context handoff file for a forked session.
+
+    Writes ``<fork_forge_root>/.forge/prev_sessions/<parent>/generated.md`` (the
+    regeneratable cache) and copies it into ``children/<fork_name>.md`` (the
+    per-child authoritative file used at launch). Returns the child file path.
+    """
     if not manifest.is_fork or not manifest.parent_session:
         return None, []
 
+    from forge.session.prev_sessions import child_path as _child_path
+
     fork_worktree = Path(manifest.worktree.path) if manifest.worktree else Path.cwd()
-    context_path = fork_worktree / ".forge" / "prev_sessions" / f"{manifest.parent_session}.md"
+    fork_artifact_root = Path(manifest.forge_root) if manifest.forge_root else fork_worktree
+    # Fallback path used when parent_state cannot be loaded: reuse an existing
+    # per-child file from a prior launch if available.
+    existing_child = _child_path(fork_artifact_root, manifest.parent_session, manifest.name)
 
     if parent_state is None:
         parent_entry = None
@@ -746,12 +756,12 @@ def _generate_parent_handoff_context(
             parent_scope = parent_entry.forge_root or parent_entry.worktree_path
             parent_state = manager.get_session(manifest.parent_session, forge_root=parent_scope)
         except ForgeSessionError:
-            if context_path.is_file():
-                return context_path.resolve(), []
+            if existing_child.is_file():
+                return existing_child.resolve(), []
             return None, []
         except Exception:
-            if context_path.is_file():
-                return context_path.resolve(), []
+            if existing_child.is_file():
+                return existing_child.resolve(), []
             return None, []
 
     parent_worktree = Path(parent_state.worktree.path) if parent_state.worktree else Path.cwd()
@@ -778,11 +788,12 @@ def _generate_parent_handoff_context(
         parent_state=parent_state,
         forge_root=project_root,
         parent_worktree_root=parent_worktree,
-        output_root=fork_worktree if fork_worktree != parent_worktree else None,
+        output_root=fork_artifact_root if fork_artifact_root.resolve() != project_root.resolve() else None,
         strategy=resume_strategy,
         depth=1,
         get_session=_get_session_safe,
         inline_plan=inline_plan,
+        child_name=manifest.name,
     )
     if handoff_result.context_file is None:
         return None, handoff_result.warnings
@@ -849,6 +860,21 @@ def session() -> None:
         forge session list                     # List all sessions
     """
     pass
+
+
+# Register subgroups attached to `session`. Done at module import so that
+# `forge session handoff show` resolves on first call. Imported here (not at
+# top of module) to avoid circular imports: session_handoff imports from this
+# module's namespace (`_cwd_forge_root`, `_handle_error`, `console`).
+def _register_subgroups() -> None:
+    from forge.cli.session_handoff import handoff_group  # noqa: E402
+    from forge.cli.session_memory import memory_group  # noqa: E402
+
+    session.add_command(handoff_group)
+    session.add_command(memory_group)
+
+
+_register_subgroups()
 
 
 # sys is imported by _handle_error above; keep it available for the re-exported modules

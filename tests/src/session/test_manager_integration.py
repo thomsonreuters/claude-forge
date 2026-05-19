@@ -290,7 +290,9 @@ print(json.dumps({
         assert result.data["child_name"] == "parent-session-resumed"
         assert result.data["parent_session"] == "parent-session"
         assert result.data["has_handoff"] is True
-        assert result.data["context_file_rel"] == ".forge/prev_sessions/parent-session.md"
+        assert (
+            result.data["context_file_rel"] == ".forge/prev_sessions/parent-session/children/parent-session-resumed.md"
+        )
 
     def test_resume_with_explicit_child_name(self, manager_workspace: "WorktreeWorkspace") -> None:
         """resume_session should accept explicit child name."""

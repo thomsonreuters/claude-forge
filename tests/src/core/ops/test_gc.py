@@ -163,32 +163,129 @@ class TestDetectOrphanSessionDirs:
 
 class TestDetectOrphanHandoffFiles:
     def test_no_orphans(self, tmp_path: Path) -> None:
-
         fr = _seed_session(tmp_path, "parent")
 
-        prev_dir = fr / ".forge" / "prev_sessions"
-        prev_dir.mkdir(parents=True)
-        (prev_dir / "parent.md").write_text("# Handoff")
+        # New layout: <parent>/generated.md + <parent>/children/<child>.md
+        # Only "parent" is in the ref_set, but a self-resume (child = parent
+        # name reuse via auto-gen suffix) wouldn't happen; for "no orphans"
+        # we simulate a parent dir with no children yet.
+        parent_dir = fr / ".forge" / "prev_sessions" / "parent"
+        parent_dir.mkdir(parents=True)
+        (parent_dir / "generated.md").write_text("# Cache")
 
         ref_set = {("parent", str(fr))}
         result = _detect_orphan_handoff_files(ref_set, {fr})
         assert result.count == 0
 
-    def test_detects_orphan(self, tmp_path: Path) -> None:
-
+    def test_detects_orphan_parent_dir(self, tmp_path: Path) -> None:
         fr = _seed_session(tmp_path, "alpha")
 
-        prev_dir = fr / ".forge" / "prev_sessions"
-        prev_dir.mkdir(parents=True)
-        (prev_dir / "deleted-parent.md").write_text("# Stale handoff")
+        # Parent dir for a session that isn't in the index -- whole dir orphan
+        orphan_parent = fr / ".forge" / "prev_sessions" / "deleted-parent"
+        orphan_parent.mkdir(parents=True)
+        (orphan_parent / "generated.md").write_text("# Stale cache")
 
         ref_set = {("alpha", str(fr))}
         result = _detect_orphan_handoff_files(ref_set, {fr})
         assert result.count == 1
-        assert "deleted-parent.md" in result.items[0]
+        assert "deleted-parent" in result.items[0]
+
+    def test_detects_orphan_child_file(self, tmp_path: Path) -> None:
+        # Both parent and one valid child are in the index; an additional
+        # child file under the same parent is orphaned (e.g., child was
+        # deleted from the index but the file lingered).
+        fr = _seed_session(tmp_path, "parent")
+        _seed_session(tmp_path, "live-child", forge_root=fr)
+        from forge.session import SessionStore, create_session_state
+        from forge.session.models import Derivation
+
+        live_state = create_session_state("live-child", worktree_path=str(fr))
+        live_state.forge_root = str(fr)
+        live_state.confirmed.derivation = Derivation(
+            parent_session="parent",
+            resume_mode="handoff",
+            context_file=".forge/prev_sessions/parent/children/live-child.md",
+        )
+        SessionStore(str(fr), "live-child").write(live_state)
+
+        parent_dir = fr / ".forge" / "prev_sessions" / "parent"
+        parent_dir.mkdir(parents=True)
+        (parent_dir / "generated.md").write_text("# Cache")
+        children_dir = parent_dir / "children"
+        children_dir.mkdir()
+        (children_dir / "live-child.md").write_text("# Live child")
+        (children_dir / "deleted-child.md").write_text("# Orphan child")
+
+        ref_set = {("parent", str(fr)), ("live-child", str(fr))}
+        result = _detect_orphan_handoff_files(ref_set, {fr})
+        assert result.count == 1
+        assert "deleted-child.md" in result.items[0]
+
+    def test_preserves_cross_root_child_file_referenced_by_derivation(self, tmp_path: Path) -> None:
+        parent_root = _seed_session(tmp_path, "parent")
+        child_root = tmp_path / "child-root"
+        child_root.mkdir()
+
+        from forge.session import SessionStore, create_session_state
+        from forge.session.models import Derivation
+
+        child_state = create_session_state("child", worktree_path=str(child_root), parent_session="parent")
+        child_state.forge_root = str(child_root)
+        child_state.confirmed.derivation = Derivation(
+            parent_session="parent",
+            resume_mode="handoff",
+            context_file=".forge/prev_sessions/parent/children/child.md",
+        )
+        SessionStore(str(child_root), "child").write(child_state)
+
+        parent_dir = child_root / ".forge" / "prev_sessions" / "parent"
+        children_dir = parent_dir / "children"
+        children_dir.mkdir(parents=True)
+        (parent_dir / "generated.md").write_text("# Cache")
+        live_child = children_dir / "child.md"
+        live_child.write_text("# Live context")
+        stale_child = children_dir / "stale.md"
+        stale_child.write_text("# Stale context")
+
+        ref_set = {("parent", str(parent_root)), ("child", str(child_root))}
+        result = _detect_orphan_handoff_files(ref_set, {parent_root, child_root})
+
+        assert str(parent_dir) not in result.items
+        assert str(live_child) not in result.items
+        assert result.items == [str(stale_child)]
+
+    def test_existing_session_name_does_not_keep_unreferenced_child_file(self, tmp_path: Path) -> None:
+        fr = _seed_session(tmp_path, "parent")
+        _seed_session(tmp_path, "native-child", forge_root=fr)
+
+        parent_dir = fr / ".forge" / "prev_sessions" / "parent"
+        children_dir = parent_dir / "children"
+        children_dir.mkdir(parents=True)
+        (parent_dir / "generated.md").write_text("# Cache")
+        stale = children_dir / "native-child.md"
+        stale.write_text("# Stale context")
+
+        ref_set = {("parent", str(fr)), ("native-child", str(fr))}
+        result = _detect_orphan_handoff_files(ref_set, {fr})
+
+        assert result.count == 1
+        assert result.items == [str(stale)]
+
+    def test_detects_legacy_flat_files(self, tmp_path: Path) -> None:
+        # Pre-0.2.0 flat <parent>.md files at the top of prev_sessions/ are
+        # always orphans -- new code never writes there.
+        fr = _seed_session(tmp_path, "alpha")
+
+        prev_dir = fr / ".forge" / "prev_sessions"
+        prev_dir.mkdir(parents=True)
+        (prev_dir / "alpha.md").write_text("# Legacy")  # parent is in index, still orphan
+        (prev_dir / "old-deleted.md").write_text("# Legacy")
+
+        ref_set = {("alpha", str(fr))}
+        result = _detect_orphan_handoff_files(ref_set, {fr})
+        assert result.count == 2
 
     def test_ignores_non_md_files(self, tmp_path: Path) -> None:
-
         fr = tmp_path / "project"
         prev_dir = fr / ".forge" / "prev_sessions"
         prev_dir.mkdir(parents=True)
@@ -401,21 +498,60 @@ class TestRunClean:
         assert "session_dirs" in result.categories_cleaned
 
     def test_cleans_orphan_handoff_file(self, tmp_path: Path) -> None:
-
+        # Orphan parent dir (parent not in index) -- whole dir is cleaned.
         fr = _seed_session(tmp_path, "alpha")
 
-        prev_dir = fr / ".forge" / "prev_sessions"
-        prev_dir.mkdir(parents=True)
-        orphan = prev_dir / "deleted-parent.md"
-        orphan.write_text("# Stale")
-        assert orphan.exists()
+        orphan_parent = fr / ".forge" / "prev_sessions" / "deleted-parent"
+        orphan_parent.mkdir(parents=True)
+        (orphan_parent / "generated.md").write_text("# Stale cache")
+        (orphan_parent / "children").mkdir()
+        (orphan_parent / "children" / "deleted-child.md").write_text("# Stale child")
+        assert orphan_parent.exists()
 
         ctx = _make_ctx(tmp_path, forge_root=fr)
         result = run_clean(ctx=ctx, scope="repo")
 
         assert result.deleted_count >= 1
-        assert not orphan.exists()
+        assert not orphan_parent.exists()
         assert "handoff_files" in result.categories_cleaned
+
+    def test_cleans_legacy_flat_handoff_file(self, tmp_path: Path) -> None:
+        # Legacy pre-0.2.0 flat <parent>.md files at the top of prev_sessions/.
+        # GC treats these as orphans regardless of whether parent is in index.
+        fr = _seed_session(tmp_path, "alpha")
+
+        prev_dir = fr / ".forge" / "prev_sessions"
+        prev_dir.mkdir(parents=True)
+        legacy = prev_dir / "alpha.md"
+        legacy.write_text("# Legacy flat file")
+        assert legacy.exists()
+
+        ctx = _make_ctx(tmp_path, forge_root=fr)
+        result = run_clean(ctx=ctx, scope="repo")
+
+        assert result.deleted_count >= 1
+        assert not legacy.exists()
+        assert "handoff_files" in result.categories_cleaned
+
+    def test_cleans_empty_dirs_after_child_unlink(self, tmp_path: Path) -> None:
+        # Removing the last orphan child should also prune empty children/ and
+        # the parent dir (which only has the generated.md cache left).
+        fr = _seed_session(tmp_path, "alpha")
+
+        parent_dir = fr / ".forge" / "prev_sessions" / "alpha"
+        parent_dir.mkdir(parents=True)
+        (parent_dir / "generated.md").write_text("# Cache")
+        children_dir = parent_dir / "children"
+        children_dir.mkdir()
+        (children_dir / "deleted-child.md").write_text("# Orphan")
+
+        ctx = _make_ctx(tmp_path, forge_root=fr)
+        result = run_clean(ctx=ctx, scope="repo")
+
+        assert "handoff_files" in result.categories_cleaned
+        # children/ removed; parent dir removed because only generated.md remained
+        assert not children_dir.exists()
+        assert not parent_dir.exists()
 
     def test_nothing_to_clean(self, tmp_path: Path) -> None:
 
@@ -558,11 +694,12 @@ class TestCrossRootNameReuse:
     """P2: name reuse across forge_roots for handoff and work-queue."""
 
     def test_handoff_name_reuse_across_roots(self, tmp_path: Path) -> None:
-        """alpha in proj-a should not mask stale alpha.md in proj-b."""
+        """alpha parent dir in proj-a should not mask orphan alpha parent dir in proj-b."""
         fr_a = _seed_session(tmp_path, "alpha", tmp_path / "proj-a")
         fr_b = tmp_path / "proj-b"
-        (fr_b / ".forge" / "prev_sessions").mkdir(parents=True)
-        (fr_b / ".forge" / "prev_sessions" / "alpha.md").write_text("stale")
+        orphan_dir = fr_b / ".forge" / "prev_sessions" / "alpha"
+        orphan_dir.mkdir(parents=True)
+        (orphan_dir / "generated.md").write_text("stale")
 
         ref_set = {("alpha", str(fr_a))}
         result = _detect_orphan_handoff_files(ref_set, {fr_a, fr_b})

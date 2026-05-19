@@ -131,7 +131,8 @@ this.
 
 When sessions cross **Forge project boundaries** (worktree forks, `fork --into`, resume), Forge uses **file-based
 handoff**: `process_handoff()` reads the parent's transcript artifacts and generates a portable context file at
-`<forge_root>/.forge/prev_sessions/<parent>.md`, appended at launch via `--append-system-prompt-file`. This is an
+`<forge_root>/.forge/prev_sessions/<parent>/generated.md`, then copies it to the launch-time child artifact at
+`<forge_root>/.forge/prev_sessions/<parent>/children/<child>.md`, appended via `--append-system-prompt-file`. This is an
 accepted tradeoff: handoff files are lossy compared to native `--resume` (structured summary vs full conversation), but
 they enable branch isolation and cross-worktree workflows.
 
@@ -449,7 +450,9 @@ them.
 
 **Per-invocation routing plan:** Workflow commands resolve routing for all workers **once** at invocation start as a
 frozen `WorkerRoutingPlan`. No per-worker resolution at runtime. This prevents registry drift during parallel fan-out
-and ensures preflight checks match runtime behavior.
+and ensures preflight checks match runtime behavior. User-facing workflow JSON surfaces this decision as
+`resolved_models`, including requested model, actual model ref, provider, proxy, template, and routing source for each
+worker.
 
 > **Routing reference details** — data type schemas (`ModelRoute`, `RoutingResult`, `WorkerRoutingPlan`), function
 > signatures, route derivation ranking, and sidecar constraints are in
@@ -610,10 +613,12 @@ This pulls relevant context from earlier sessions (e.g., a decision from 5 sessi
 **Processed context location:**
 
 ```
-<forge_root>/.forge/prev_sessions/<parent-name>.md   # Strategy-dependent context view
+<forge_root>/.forge/prev_sessions/<parent-name>/generated.md            # Regeneratable parent cache
+<forge_root>/.forge/prev_sessions/<parent-name>/children/<child>.md     # Per-child launch artifact
 ```
 
-You can resume the same parent with different strategies. Raw artifacts stay immutable; only the processed view changes.
+You can resume the same parent with different strategies. Raw artifacts stay immutable; the parent cache is regenerated,
+while existing per-child launch artifacts are not overwritten.
 
 **Session derivation tracking:**
 
@@ -647,7 +652,7 @@ child's `forge_root` when the parent was in a different checkout). `parent_proje
 **Context assembly (what child loads at start):**
 
 1. Designated memory docs (always, via CLAUDE.md)
-2. Processed handoff: `<forge_root>/.forge/prev_sessions/<parent>.md` (strategy-dependent)
+2. Processed handoff: `<forge_root>/.forge/prev_sessions/<parent>/children/<child>.md` (strategy-dependent)
 3. Lineage reference: pointer to raw artifacts for deep reads
 
 **Why two phases?**
@@ -878,21 +883,26 @@ groups require an explicit subcommand. List/show commands support `--json` for s
 
 #### Session management
 
-| Command                                | Purpose                                                                           |
-| -------------------------------------- | --------------------------------------------------------------------------------- |
-| `forge session start [name]`           | Create and start a new session (auto-named if omitted)                            |
-| `forge session resume [name]`          | Reattach to an existing session (default), or derive a fresh child with `--fresh` |
-| `forge session fork <parent> [--name]` | Fork a session (same dir by default; `--worktree` for isolation)                  |
-| `forge session show [session]`         | Show session details (`--json`, `--field`); accepts name or UUID                  |
-| `forge session list`                   | List sessions (`--scope repo\|project\|all`; default `repo`; `--json`)            |
-| `forge session set <key> <value>`      | Set a mid-session override                                                        |
-| `forge session reset [key]`            | Reset overrides to intent                                                         |
-| `forge session delete <name>...`       | Delete one or more sessions (`--all` for bulk deletion)                           |
-| `forge session clean --older-than N`   | Bulk-delete sessions older than N days                                            |
-| `forge session incognito [name]`       | Start an ephemeral session (auto-delete on exit)                                  |
-| `forge session shell [name]`           | Open shell in sidecar container                                                   |
+| Command                                  | Purpose                                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------------------- |
+| `forge session start [name]`             | Create and start a new session (auto-named if omitted)                            |
+| `forge session resume [name]`            | Reattach to an existing session (default), or derive a fresh child with `--fresh` |
+| `forge session fork <parent> [--name]`   | Fork a session (same dir by default; `--worktree` for isolation)                  |
+| `forge session show [session]`           | Show session details (`--json`, `--field`); accepts name or UUID                  |
+| `forge session list`                     | List sessions (`--scope repo\|project\|all`; default `repo`; `--json`)            |
+| `forge session set <key> <value>`        | Set a mid-session override                                                        |
+| `forge session reset [key]`              | Reset overrides to intent                                                         |
+| `forge session delete <name>...`         | Delete one or more sessions (`--all` for bulk deletion)                           |
+| `forge session clean --older-than N`     | Bulk-delete sessions older than N days                                            |
+| `forge session incognito [name]`         | Start an ephemeral session (auto-delete on exit)                                  |
+| `forge session shell [name]`             | Open shell in sidecar container                                                   |
+| `forge session memory list-docs`         | List designated memory docs (`--json`)                                            |
+| `forge session memory add-doc <path>`    | Add a designated memory doc (`--strategy`, `--shadows`)                           |
+| `forge session memory remove-doc <path>` | Remove a designated memory doc                                                    |
+| `forge session handoff show [name]`      | Inspect handoff-agent review reports (`--latest`, `--all`)                        |
 
-Note: `session context` is a deprecated alias for `session show`.
+Note: `session context` is a deprecated alias for `session show`. `session resume --fresh --review` opens the generated
+per-child handoff file in `$EDITOR` before launching Claude.
 
 #### Proxy management
 
@@ -1523,6 +1533,13 @@ review/evaluation skills are adversarial-compatible (runner checks for `{stance_
 
 Cross-session continuity via designated markdown files that sessions keep updated—no knowledge graphs or async
 synthesis.
+
+> **Naming note: "handoff" refers to two unrelated things in Forge.** The **handoff agent** (this section) is the
+> Stop-time worker that updates memory docs. **Resume handoff** (§3.9) is the parent-context file generated by
+> `forge session resume --fresh`. Different concept, different file location
+> (`<forge_root>/.forge/prev_sessions/<parent>/children/<child>.md`), different lifecycle. See
+> `docs/end-user/handoff.md` for the user-facing distinction and `forge session handoff show` for inspecting agent
+> output.
 
 The simplest memory system is:
 

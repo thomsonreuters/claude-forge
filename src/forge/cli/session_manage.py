@@ -911,6 +911,7 @@ def _build_show_json(
 
     data["context"] = {
         "model_family": ctx.model_family,
+        "main_model": ctx.main_model,
         "models": dict(ctx.models),
         "proxy": {
             "template": ctx.proxy.template,
@@ -928,6 +929,7 @@ def _build_show_json(
 
     # Top-level aliases for backward compat with old `session context --field`
     data["model_family"] = ctx.model_family
+    data["main_model"] = ctx.main_model
     data["models"] = dict(ctx.models)
     data["proxy"] = data["context"]["proxy"]
     data["policy"] = data["context"]["policy"]

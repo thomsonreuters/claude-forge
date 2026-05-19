@@ -84,10 +84,10 @@ created, then exit.
 forge session resume test-session-1 --fresh --strategy structured --child-name test-resumed-structured
 
 # Check processed handoff
-cat .forge/prev_sessions/test-session-1.md
+cat .forge/prev_sessions/test-session-1/generated.md
 ```
 
-- [ ] Handoff file created in `.forge/prev_sessions/`
+- [ ] Handoff file created at `.forge/prev_sessions/<parent>/children/<child>.md`
 - [ ] Contains conversation skeleton with truncated tool results
 
 ### 10.4 Resume with Full Strategy
@@ -106,7 +106,7 @@ fail if the transcript is too large for the proxy context window.
 forge session resume test-session-1 --fresh --strategy full --child-name test-resumed-full
 
 # Check the handoff
-cat .forge/prev_sessions/test-session-1.md
+cat .forge/prev_sessions/test-session-1/generated.md
 ```
 
 - [ ] Full transcript included
@@ -130,7 +130,7 @@ forge session delete test-resumed-ai --yes --force 2>/dev/null || true
 forge session resume test-session-1 --fresh --strategy ai-curated --child-name test-resumed-ai
 
 # Check the curated output or fallback output
-cat .forge/prev_sessions/test-session-1.md
+cat .forge/prev_sessions/test-session-1/generated.md
 ```
 
 - [ ] Parent transcript fixture from 10.1 exists

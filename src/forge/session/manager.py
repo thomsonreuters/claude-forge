@@ -49,6 +49,7 @@ from .models import (
     SidecarLaunchIntent,
     create_session_state,
 )
+from .prev_sessions import child_path, child_path_rel, ensure_child, generated_path
 from .store import SessionStore
 
 logger = logging.getLogger(__name__)
@@ -658,6 +659,7 @@ class SessionManager:
             strategy=resume_strategy,
             depth=depth,
             get_session=get_session_safe,
+            child_name=child_name,
         )
 
         # claude_session_id stays None until the SessionStart hook fires
@@ -685,7 +687,7 @@ class SessionManager:
             parent_project_root=parent_entry.project_root,
         )
 
-        self._persist_resume_child(
+        final_child_name = self._persist_resume_child(
             child_state=child_state,
             child_name=child_name,
             parent_name=parent_name,
@@ -693,6 +695,9 @@ class SessionManager:
             project_root=project_root,
             name_was_auto=name_was_auto,
         )
+        if final_child_name != child_name:
+            handoff_result.context_file = child_path(parent_artifact_root, parent_name, final_child_name)
+            handoff_result.context_file_rel = child_path_rel(parent_name, final_child_name)
         return child_state, handoff_result
 
     def _create_resume_child(
@@ -739,14 +744,18 @@ class SessionManager:
         parent_entry: SessionIndexEntry,
         project_root: Path,
         name_was_auto: bool,
-    ) -> None:
+    ) -> str:
         """Write child session to disk and index (shared by native and handoff).
 
         Race protection: if an auto-generated name collides at add_from_state
         (concurrent resume), retry once with a fresh timestamp suffix.
+
+        Returns the final persisted child name, which may differ from the
+        original auto-generated name after a retry.
         """
+        parent_forge_root = parent_entry.forge_root or parent_entry.worktree_path
         for attempt in range(2):
-            child_store = SessionStore(parent_entry.forge_root or parent_entry.worktree_path, child_name)
+            child_store = SessionStore(parent_forge_root, child_name)
             child_store.write(child_state)
 
             try:
@@ -764,8 +773,27 @@ class SessionManager:
                 if not name_was_auto or attempt > 0:
                     raise
 
-                child_name = self._generate_resume_name(parent_name)
+                derivation = child_state.confirmed.derivation
+                if derivation is not None and derivation.resume_mode == "handoff":
+                    orphan_context = child_path(Path(parent_forge_root), parent_name, child_name)
+                    generated_context = generated_path(Path(parent_forge_root), parent_name)
+                    try:
+                        if (
+                            orphan_context.is_file()
+                            and generated_context.is_file()
+                            and orphan_context.read_bytes() == generated_context.read_bytes()
+                        ):
+                            orphan_context.unlink()
+                    except OSError:
+                        logger.debug("Could not remove orphaned retry context file %s", orphan_context, exc_info=True)
+
+                child_name = self._generate_resume_name(parent_name, forge_root=parent_forge_root)
                 child_state.name = child_name
+                if derivation is not None and derivation.resume_mode == "handoff":
+                    ensure_child(Path(parent_forge_root), parent_name, child_name)
+                    derivation.context_file = child_path_rel(parent_name, child_name)
+
+        return child_name
 
     def _load_existing_fork_target(
         self,
@@ -1119,16 +1147,22 @@ class SessionManager:
                     fork_relative_path = "."
 
         fork_state.forge_root = fork_forge_root
+        fork_resume_mode = "handoff" if (create_worktree or is_into) else "native"
+        # For handoff-mode forks the per-child file is created lazily at launch
+        # (see _generate_parent_handoff_context). We pre-record the reference
+        # here so GC knows the fork's child file belongs to this session, even
+        # if launch happens later.
+        fork_context_file_rel = child_path_rel(parent_name, fork_name) if fork_resume_mode == "handoff" else None
         fork_state.confirmed.derivation = Derivation(
             parent_session=parent_name,
             parent_transcript=_latest_transcript_artifact_path(parent),
             inherited_proxy=fork_proxy_template,
-            resume_mode="handoff" if (create_worktree or is_into) else "native",
+            resume_mode=fork_resume_mode,
             strategy=None,
             depth=1,
             resumed_at=now_iso(),
             lineage=[parent_name],
-            context_file=None,
+            context_file=fork_context_file_rel,
             parent_forge_root=parent_entry.forge_root or parent_entry.worktree_path,
             parent_project_root=parent_entry.project_root,
         )

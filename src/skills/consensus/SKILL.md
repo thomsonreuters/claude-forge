@@ -79,9 +79,9 @@ If the command fails, surface the real error and stop; do not claim success.
 
 Read `${CLAUDE_SKILL_DIR}/resources/synthesis.md` for synthesis instructions.
 
-Apply the synthesis rules to produce a unified consensus report from both rounds of results.
-Start the report with a "Resolved Models Used" section listing each worker from `resolved_models`, including requested
-model, resolved model ref, provider, proxy, template, and role.
+Apply the synthesis rules to produce a unified consensus report from both rounds of results. Start the report with a
+"Resolved Models Used" section listing each worker from `resolved_models`, including requested model, resolved model
+ref, provider, proxy, template, and role.
 
 **Output routing:** If `--output` was specified, write the complete synthesis to that path using the Write tool (create
 parent directories if needed). Print a one-line confirmation: `Wrote synthesis to {path}`. Do not also print the full

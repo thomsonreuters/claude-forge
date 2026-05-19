@@ -7,7 +7,10 @@ continues to work.
 
 from __future__ import annotations
 
+import os
 import shlex
+import shutil
+import subprocess
 import sys
 import uuid as _uuid
 from pathlib import Path
@@ -285,7 +288,7 @@ def _persist_fork_handoff_derivation(
     context_file: str | None = None
     if context_path is not None:
         try:
-            context_file = str(context_path.relative_to(worktree_path))
+            context_file = str(context_path.relative_to(forge_root))
         except ValueError:
             context_file = str(context_path)
 
@@ -299,6 +302,36 @@ def _persist_fork_handoff_derivation(
         m.confirmed.derivation.context_file = context_file
 
     return SessionStore(str(forge_root), manifest.name).update(timeout_s=5.0, mutate=_mutate)
+
+
+def _is_legacy_flat_handoff_path(path: Path) -> bool:
+    """Return True for pre-0.2.0 ``.forge/prev_sessions/<parent>.md`` artifacts."""
+    return path.suffix == ".md" and path.parent.name == "prev_sessions"
+
+
+def _resolve_derivation_context_file(manifest: SessionState) -> Path | None:
+    """Resolve a persisted handoff context file for a never-launched child."""
+    derivation = manifest.confirmed.derivation
+    if derivation is None or not derivation.context_file:
+        return None
+
+    context_path = Path(derivation.context_file).expanduser()
+    if _is_legacy_flat_handoff_path(context_path):
+        parent = derivation.parent_session or manifest.parent_session or "<parent>"
+        console.print(
+            "[red]Error:[/red] Legacy handoff artifact format is no longer supported: " f"{display_path(context_path)}"
+        )
+        console.print(
+            "[dim]Tip: run "
+            f"'forge session resume {parent} --fresh' to regenerate a per-child handoff artifact.[/dim]"
+        )
+        sys.exit(1)
+    if not context_path.is_absolute():
+        worktree_path = Path(manifest.worktree.path) if manifest.worktree else Path.cwd()
+        forge_root = Path(manifest.forge_root) if manifest.forge_root else worktree_path
+        context_path = forge_root / context_path
+
+    return context_path.resolve() if context_path.is_file() else None
 
 
 def _launch_claude_for_session(
@@ -1184,6 +1217,12 @@ def start(
     help="Context transfer: native (full conversation via --fork-session) or handoff (assembled summary). Default: handoff.",
 )
 @click.option(
+    "--review",
+    is_flag=True,
+    default=False,
+    help="Open the generated child context in $EDITOR before launch (only with --fresh handoff mode).",
+)
+@click.option(
     "--force",
     "-f",
     is_flag=True,
@@ -1198,6 +1237,7 @@ def resume(
     strategy: str,
     depth: int,
     resume_mode: str | None,
+    review: bool,
     force: bool,
 ) -> None:
     """Resume a session.
@@ -1231,6 +1271,17 @@ def resume(
 
     if not fresh and child_name:
         console.print("[red]Error:[/red] --child-name requires --fresh")
+        sys.exit(1)
+
+    if review and not fresh:
+        console.print("[red]Error:[/red] --review requires --fresh")
+        sys.exit(1)
+
+    if review and resume_mode == "native":
+        console.print(
+            "[red]Error:[/red] --review is only meaningful in handoff mode; "
+            "native resume carries the parent conversation verbatim with no editable artifact."
+        )
         sys.exit(1)
 
     routing: ResolvedRouting | None = None
@@ -1301,6 +1352,7 @@ def resume(
                 depth=depth,
                 routing=routing,
                 direct=direct,
+                review=review,
             )
     elif not _has_confirmed_claude_session(manifest):
         _launch_in_place(
@@ -1397,12 +1449,17 @@ def _launch_in_place(
         launch_action = "Fork parent Claude conversation"
     else:
         session_id = str(_uuid.uuid4())
-        fork_context, prompt_warnings = _sess()._generate_parent_handoff_context(manager=manager, manifest=manifest)
-        if fork_context is not None:
-            prompt_files.append(fork_context)
+        persisted_context = _resolve_derivation_context_file(manifest)
+        if persisted_context is not None:
+            prompt_files.append(persisted_context)
             launch_action = "Start fresh Claude session with parent context"
         else:
-            launch_action = "Start fresh Claude session"
+            fork_context, prompt_warnings = _sess()._generate_parent_handoff_context(manager=manager, manifest=manifest)
+            if fork_context is not None:
+                prompt_files.append(fork_context)
+                launch_action = "Start fresh Claude session with parent context"
+            else:
+                launch_action = "Start fresh Claude session"
 
     # Write pre-seeded UUID to manifest + index (after worktree_path is resolved)
     forge_root_path = Path(manifest.forge_root) if manifest.forge_root else worktree_path
@@ -1655,6 +1712,36 @@ def _pick_session(
         return None
 
 
+def _open_in_editor(file_path: Path, *, resume_session_name: str | None = None) -> None:
+    """Open ``file_path`` in $EDITOR. Aborts launch on non-zero exit (git-commit-style).
+
+    The file is edited in place; no temp file dance because the per-child
+    context file is the authoritative artifact.
+    """
+    editor = os.environ.get("EDITOR", "vim")
+    editor_argv = shlex.split(editor)
+    if not editor_argv:
+        console.print("[red]Error:[/red] $EDITOR is empty. Set $EDITOR to an available editor.")
+        sys.exit(1)
+    if not shutil.which(editor_argv[0]):
+        console.print(f"[red]Error:[/red] Editor '{editor}' not found. Set $EDITOR to an available editor.")
+        sys.exit(1)
+
+    result = subprocess.run([*editor_argv, str(file_path)])
+    if result.returncode != 0:
+        resume_tip = (
+            f"forge session resume {resume_session_name}"
+            if resume_session_name
+            else "forge session resume <child-name>"
+        )
+        console.print(
+            f"[red]Aborted:[/red] editor exited with code {result.returncode}. Session not launched.\n"
+            f"[dim]Tip: The handoff file at {display_path(file_path)} is preserved; "
+            f"run '{resume_tip}' to launch with the current content.[/dim]"
+        )
+        sys.exit(result.returncode)
+
+
 def _resume_fresh(
     *,
     manager: SessionManager,
@@ -1665,11 +1752,14 @@ def _resume_fresh(
     depth: int,
     routing: ResolvedRouting | None,
     direct: bool,
+    review: bool = False,
 ) -> None:
     """Create a fresh child session with context assembled from parent.
 
     This is the --fresh path of ``forge session resume``. Creates a new
     derived session with a context summary, then launches Claude fresh.
+    When ``review`` is True, opens the per-child handoff file in $EDITOR
+    before launching (user can curate the context).
     """
     # Routing for context limit: --proxy/--no-proxy override > parent's effective routing.
     if routing:
@@ -1714,6 +1804,10 @@ def _resume_fresh(
         for warning in handoff_result.warnings:
             console.print(f"[yellow]Warning:[/yellow] {warning}")
     console.print()
+
+    if review and handoff_result.context_file is not None:
+        console.print(f"[dim]Opening {handoff_result.context_file_rel} in $EDITOR for review...[/dim]")
+        _open_in_editor(handoff_result.context_file, resume_session_name=child_manifest.name)
 
     console.print(f"Created derived session [green]{child_manifest.name}[/green] from [cyan]{parent}[/cyan]")
     console.print(f"[dim]Strategy: {strategy}, Depth: {depth}[/dim]")

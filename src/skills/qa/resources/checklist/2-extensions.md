@@ -1,4 +1,4 @@
-<!-- prereq: 0, 1 -->
+<!-- prereq: 0.3, 1.1 -->
 
 ## 2. Claude Code Extensions (`forge extension enable`)
 

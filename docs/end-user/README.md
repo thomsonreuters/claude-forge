@@ -7,7 +7,7 @@ How to use Forge features. Each guide is self-contained; start here for the over
 Running `claude` directly works, but you lose session tracking. Forge wraps Claude Code to add:
 
 - **Session tracking** -- named sessions with artifacts, plans, and transcripts
-- **Session resume** -- AI-curated handoff when context fills up
+- **Session resume** -- structured or AI-curated handoff when context fills up
 - **Hook-driven capture** -- plan snapshots, transcript archival on exit
 - **Status line** -- proxy, session, and policy info in the Claude UI
 - **Policy enforcement** -- TDD, coding standards, semantic supervisor

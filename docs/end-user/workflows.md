@@ -154,7 +154,7 @@ All `forge workflow` subcommands support:
 
 | Flag      | Description                                                                                           |
 | --------- | ----------------------------------------------------------------------------------------------------- |
-| `--json`  | Structured JSON output, including worker responses, resolved model refs, routing, durations, status    |
+| `--json`  | Structured JSON output, including worker responses, resolved model refs, routing, durations, status   |
 | `--check` | Gate mode: exit 0 if passed, exit 1 if failed (fail-closed)                                           |
 | `-m`      | Comma-separated model names (e.g., `claude-opus,gemini-3.1-pro-preview`)                              |
 | `--proxy` | Route proxy-backed workers through this proxy; direct workers (e.g., `claude-opus`) stay on Anthropic |

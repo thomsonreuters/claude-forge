@@ -232,7 +232,10 @@ class TestSessionResume:
         assert "--resume" not in result.stdout
         # Should have been invoked (just checking claude was called)
         assert "claude" in result.stdout
-        assert "--append-system-prompt-file /workspace/.forge/prev_sessions/resume-invoke-test.md" in result.stdout
+        # Per-child path: <parent>/children/<auto-named-child>.md
+        assert (
+            "--append-system-prompt-file /workspace/.forge/prev_sessions/resume-invoke-test/children/" in result.stdout
+        )
 
     def test_resume_nonexistent_fails(self, mock_claude_workspace: ContainerLike) -> None:
         """Should fail for nonexistent session."""
@@ -376,7 +379,9 @@ class TestSessionResumeScenarios:
         # Worktree fork has no --session-id (UUID hook-owned)
         assert "--fork-session" not in invocations.stdout
 
-        context_file = mock_claude_workspace.exec("cat /workspace-fork-child/.forge/prev_sessions/fork-parent.md")
+        context_file = mock_claude_workspace.exec(
+            "cat /workspace-fork-child/.forge/prev_sessions/fork-parent/children/fork-child.md"
+        )
         assert "# Session Context: fork-parent" in context_file.stdout
         assert "hello from parent" in context_file.stdout
 
@@ -415,7 +420,9 @@ class TestSessionResumeScenarios:
         assert result.returncode == 0
         assert "no valid turns" not in result.stdout.lower()
 
-        context_file = mock_claude_workspace.exec("cat /workspace-legacy-child/.forge/prev_sessions/legacy-parent.md")
+        context_file = mock_claude_workspace.exec(
+            "cat /workspace-legacy-child/.forge/prev_sessions/legacy-parent/children/legacy-child.md"
+        )
         assert "# Session Context: legacy-parent" in context_file.stdout
         assert "legacy hello from parent" in context_file.stdout
         assert "legacy response from assistant" in context_file.stdout
@@ -445,6 +452,8 @@ class TestSessionResumeScenarios:
             parent["confirmed"]["transcript_path"] = str(transcript)
             parent_path.write_text(json.dumps(parent))
 
+            # Legacy pre-0.2.0 flat file -- new code ignores it; fork regenerates
+            # context in the new per-parent layout and writes a per-child file.
             stale_context = Path("/workspace/.forge/prev_sessions/stale-parent.md")
             stale_context.parent.mkdir(parents=True, exist_ok=True)
             stale_context.write_text("# Session Context: stale-parent\\n\\nstale context file\\n", encoding="utf-8")
@@ -456,7 +465,9 @@ class TestSessionResumeScenarios:
         )
 
         assert result.returncode == 0
-        context_file = mock_claude_workspace.exec("cat /workspace-stale-child/.forge/prev_sessions/stale-parent.md")
+        context_file = mock_claude_workspace.exec(
+            "cat /workspace-stale-child/.forge/prev_sessions/stale-parent/children/stale-child.md"
+        )
         assert "fresh context from transcript" in context_file.stdout
         assert "stale context file" not in context_file.stdout
 

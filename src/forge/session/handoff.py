@@ -1,8 +1,11 @@
 """Session handoff strategies for context assembly.
 
-This module implements resume-phase context processing (handoff assembly).
-When resuming a session, we process the parent's transcript artifacts to assemble context
-for the child session.
+Resume-phase context processing: when resuming a session, process the parent's
+transcript artifacts to assemble a context document for the child session.
+
+Note: "handoff" here means resume-context assembly. The separate handoff agent
+(``handoff_agent.py``) is the Stop-time memory-doc updater -- different concept
+despite the shared name. See ``handoff_agent.py`` docstring for that one.
 
 Strategies:
 - minimal: Lineage pointer only (no transcript parsing)
@@ -10,7 +13,10 @@ Strategies:
 - full: Complete parent transcript (with budget check)
 - ai-curated: LLM-selected highlights with intelligent summarization
 
-Output: .forge/prev_sessions/<parent-name>.md
+Output: ``<forge_root>/.forge/prev_sessions/<parent-name>/generated.md`` -- the
+parent-scoped, regeneratable cache. ``SessionManager.resume_session`` and the
+fork launch path copy this into ``children/<child>.md`` (per-child authoritative
+context) -- see ``prev_sessions.py``.
 """
 
 from __future__ import annotations
@@ -27,6 +33,12 @@ from forge.core.transcript import parse_jsonl_transcript, truncate
 from forge.session.artifacts import resolve_artifact_path
 from forge.session.claude.paths import get_transcript_path
 from forge.session.models import SessionState
+from forge.session.prev_sessions import (
+    child_path_rel,
+    ensure_child,
+    generated_path,
+    generated_path_rel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +120,16 @@ def _resolve_plan_content(
 
 @dataclass
 class HandoffResult:
-    """Result of processing parent context for resume."""
+    """Result of processing parent context for resume.
 
-    context_file: Path | None  # Generated .forge/prev_sessions/<name>.md (absolute)
-    context_file_rel: str | None  # Repo-relative path
+    ``context_file`` and ``context_file_rel`` point at the file the caller
+    should append to the child's system prompt. When ``process_handoff`` is
+    called with ``child_name``, this is ``children/<child>.md`` (per-child,
+    durable). Otherwise it is ``generated.md`` (parent-scoped cache).
+    """
+
+    context_file: Path | None  # Absolute path to the launch-time context file
+    context_file_rel: str | None  # Forge-root-relative path
     transcript_artifact_path: str | None  # Parent's transcript artifact (repo-relative)
     token_estimate: int | None  # Approximate tokens (if computed)
     lineage: list[str]  # Resolved ancestry chain
@@ -713,10 +731,16 @@ def process_handoff(
     output_root: Path | None = None,
     inline_plan: bool = False,
     parent_worktree_root: Path | None = None,
+    child_name: str | None = None,
 ) -> HandoffResult:
     """Process parent context for resume and generate context file.
 
-    This is the main entry point for context assembly.
+    Writes the parent-scoped cache at ``<parent>/generated.md``. When
+    ``child_name`` is provided, also copies that cache into
+    ``<parent>/children/<child>.md`` (the per-child authoritative file) and
+    returns the child path in ``HandoffResult.context_file``. If the child
+    file already exists, ``ensure_child`` leaves it alone -- regenerating the
+    parent cache never disturbs an existing child file.
 
     Args:
         parent_name: Parent session name.
@@ -731,9 +755,13 @@ def process_handoff(
         inline_plan: If True, inline the approved plan content instead of just a path reference.
         parent_worktree_root: Parent's worktree path (for latest_plan_path resolution).
             Derived from parent_state.worktree.path if None.
+        child_name: When provided, ``ensure_child`` is called so
+            ``HandoffResult.context_file`` points at the per-child file.
+            When omitted, points at the parent-scoped ``generated.md`` (caller
+            handles the child copy itself).
 
     Returns:
-        HandoffResult with generated context file path and metadata.
+        HandoffResult with the launch-time context file path and metadata.
     """
     warnings: list[str] = []
 
@@ -832,13 +860,16 @@ def process_handoff(
         warnings.append(f"Unknown strategy '{strategy}', using minimal")
 
     write_root = output_root if output_root is not None else forge_root
-    prev_sessions_dir = write_root / ".forge" / "prev_sessions"
-    prev_sessions_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = generated_path(write_root, parent_name)
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(content, encoding="utf-8")
 
-    context_file = prev_sessions_dir / f"{parent_name}.md"
-    context_file.write_text(content, encoding="utf-8")
-
-    context_file_rel = f".forge/prev_sessions/{parent_name}.md"
+    if child_name is not None:
+        context_file = ensure_child(write_root, parent_name, child_name)
+        context_file_rel = child_path_rel(parent_name, child_name)
+    else:
+        context_file = cache_file
+        context_file_rel = generated_path_rel(parent_name)
 
     return HandoffResult(
         context_file=context_file,

@@ -4,7 +4,7 @@
 
 <!-- version: 1.0.19 -->
 
-<!-- test-count: 481 -->
+<!-- test-count: 482 -->
 
 <!-- last-updated: 2026-05-18 -->
 
@@ -12,7 +12,7 @@
 
 **Test Repo**: `$FORGE_TEST_REPO`
 
-**Last updated**: 2026-05-18 (drop status-line cost QA; align search clean, supervisor QA, and test repo paths)
+**Last updated**: 2026-05-18 (add memory CLI and handoff report checks)
 
 ---
 

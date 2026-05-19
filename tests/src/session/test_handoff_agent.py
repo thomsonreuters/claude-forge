@@ -797,6 +797,63 @@ class TestRunHandoffAgent:
             assert result is False
             mock_run.assert_not_called()
 
+    def test_persists_review_file_in_augment_mode(self, workspace: Path) -> None:
+        """Augment mode writes a review file under artifacts/<session>/handoff/."""
+        from forge.session.handoff_agent import review_dir
+
+        with patch("forge.session.handoff_agent.run_claude_session") as mock_run:
+            mock_run.return_value = SessionResult(
+                stdout="Applied: docs/state.md\n- Added handoff notes\n",
+                stderr="",
+                returncode=0,
+            )
+            result = self._run_with_mock_claude(workspace, mock_run, session_name="my-sess")
+
+        assert result is True
+        files = list(review_dir(workspace, "my-sess").iterdir())
+        assert len(files) == 1
+        content = files[0].read_text(encoding="utf-8")
+        assert "Handoff Agent Report -- my-sess" in content
+        assert "**Mode**: augment" in content
+        assert "Applied: docs/state.md" in content
+        assert files[0].name.startswith("review-")
+        assert files[0].name.endswith(".md")
+
+    def test_persists_review_file_in_review_only_mode(self, workspace: Path) -> None:
+        """Review-only mode persists the would-have-been-applied output."""
+        from forge.session.handoff_agent import review_dir
+
+        with patch("forge.session.handoff_agent.run_claude_session") as mock_run:
+            mock_run.return_value = SessionResult(
+                stdout="Would add: 'New decision recorded' to docs/state.md\n",
+                stderr="",
+                returncode=0,
+            )
+            result = self._run_with_mock_claude(
+                workspace,
+                mock_run,
+                session_name="my-sess",
+                config=HandoffConfig(enabled=True, min_turns=1, mode="review-only"),
+            )
+
+        assert result is True
+        files = list(review_dir(workspace, "my-sess").iterdir())
+        assert len(files) == 1
+        content = files[0].read_text(encoding="utf-8")
+        assert "**Mode**: review-only" in content
+        assert "Would add" in content
+
+    def test_review_file_not_written_on_run_failure(self, workspace: Path) -> None:
+        """Failed agent run (non-zero exit) skips the review file."""
+        from forge.session.handoff_agent import review_dir
+
+        with patch("forge.session.handoff_agent.run_claude_session") as mock_run:
+            mock_run.return_value = SessionResult(stdout="", stderr="boom", returncode=1)
+            result = self._run_with_mock_claude(workspace, mock_run, session_name="my-sess")
+
+        assert result is False
+        assert not review_dir(workspace, "my-sess").exists()
+
 
 # ---------------------------------------------------------------------------
 # _validate_designated_docs

@@ -31,6 +31,12 @@ class TestReviewCodeSkill:
         content = (SKILLS_DIR / "review" / "SKILL.md").read_text()
         assert "forge session context" in content
         assert "model_family" in content
+        assert 'forge session context "${CLAUDE_SESSION_ID}"' not in content
+
+    def test_preflight_reports_main_model(self):
+        content = (SKILLS_DIR / "review" / "SKILL.md").read_text()
+        assert "--field main_model" in content
+        assert "exact model not exposed to Forge" in content
 
     def test_no_style_flag(self):
         content = (SKILLS_DIR / "review" / "SKILL.md").read_text()
@@ -116,6 +122,12 @@ class TestReviewDocsSkill:
         content = (SKILLS_DIR / "review-docs" / "SKILL.md").read_text()
         assert "forge session context" in content
         assert "model_family" in content
+        assert 'forge session context "${CLAUDE_SESSION_ID}"' not in content
+
+    def test_preflight_reports_main_model(self):
+        content = (SKILLS_DIR / "review-docs" / "SKILL.md").read_text()
+        assert "--field main_model" in content
+        assert "exact model not exposed to Forge" in content
 
 
 class TestOldSkillsDeleted:
@@ -269,6 +281,12 @@ class TestUnderstandSkill:
         content = (SKILLS_DIR / "understand" / "SKILL.md").read_text()
         assert "forge session context" in content
         assert "model_family" in content
+        assert 'forge session context "${CLAUDE_SESSION_ID}"' not in content
+
+    def test_preflight_reports_main_model(self):
+        content = (SKILLS_DIR / "understand" / "SKILL.md").read_text()
+        assert "--field main_model" in content
+        assert "exact model not exposed to Forge" in content
 
     def test_allows_bash_for_model_detection(self):
         content = (SKILLS_DIR / "understand" / "SKILL.md").read_text()
@@ -321,6 +339,14 @@ class TestChallengeSkill:
 
 
 class TestQaWorkflowChecklist:
+    def test_extensions_prereqs_are_step_level_for_partial_runs(self):
+        """Section 2 prereqs should not pull clean-state checks after install."""
+        extensions_md = SKILLS_DIR / "qa" / "resources" / "checklist" / "2-extensions.md"
+        content = extensions_md.read_text()
+        first_line = content.splitlines()[0]
+        assert first_line == "<!-- prereq: 0.3, 1.1 -->"
+        assert "<!-- prereq: 0, 1 -->" not in content
+
     def test_session_context_step_uses_positional_session_arg(self):
         skills_md = SKILLS_DIR / "qa" / "resources" / "checklist" / "15-skills.md"
         content = skills_md.read_text()
@@ -454,8 +480,9 @@ class TestQaHandoffChecklist:
         handoff_md = SKILLS_DIR / "qa" / "resources" / "checklist" / "16-handoff.md"
         content = handoff_md.read_text()
         step = content.split("### 16.3", 1)[1].split("### 16.4", 1)[0]
-        assert '"strategy":"suggested"' in step
-        assert '"shadows":"docs/team-standards.md"' in step
+        assert "forge session memory add-doc .forge/memory/suggested_standards.md" in step
+        assert "--strategy suggested" in step
+        assert "--shadows docs/team-standards.md" in step
         assert "cmp -s docs/team-standards.md /tmp/team-standards.before" in step
 
     def test_handoff_includes_queued_startup_step(self):

@@ -64,15 +64,19 @@ Do not ask the user -- just apply the rules.
 
 **Do NOT start the analysis until this step is complete.**
 
-Model family: !`forge session context "${CLAUDE_SESSION_ID}" --field model_family 2>/dev/null || true`
+Model family: !`forge session context --field model_family 2>/dev/null || true` Main model:
+!`forge session context --field main_model 2>/dev/null || true`
+
+Resolve session context from `$FORGE_SESSION` or the local environment. Do not force `$CLAUDE_SESSION_ID`: unmanaged
+direct Claude sessions are not in Forge's session index, but may still expose direct-model environment metadata.
 
 Pick **one** instruction file (first match wins, read only one):
 
-1. If model family is non-empty: `${CLAUDE_SKILL_DIR}/resources/{mode}-{family}.md`
-2. Otherwise (or if the above doesn't exist): `${CLAUDE_SKILL_DIR}/resources/{mode}.md`
+1. If model family is `openai` or `gemini`: `${CLAUDE_SKILL_DIR}/resources/{mode}-{family}.md`
+2. Otherwise: `${CLAUDE_SKILL_DIR}/resources/{mode}.md`
 
-If model family lookup returns empty output or errors, treat it as "no family" and immediately select
-`${CLAUDE_SKILL_DIR}/resources/{mode}.md`. Do not probe multiple variants.
+If model family lookup returns empty output, `anthropic`, or errors, treat it as the default family and immediately
+select `${CLAUDE_SKILL_DIR}/resources/{mode}.md`. Do not probe multiple variants.
 
 ### Tool-call hygiene (normative)
 
@@ -97,7 +101,8 @@ missing, report the path and stop.
 
 ```
 Analyzing {target} in {mode} mode (depth: {depth}).
-  model_family: {family or "(none — using default)"}
+  model_family: {family or "anthropic"}
+  model:        {main_model or "Claude Code default (exact model not exposed to Forge)"}
   instruction:  {instruction_file_name}
 ```
 

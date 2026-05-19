@@ -333,12 +333,34 @@ forge session resume auth-refactor --fresh
 
 # Lossless: carry full conversation history
 forge session resume auth-refactor --fresh --resume-mode native
+
+# Curate the assembled context in $EDITOR before launching
+forge session resume auth-refactor --fresh --review
 ```
 
 Native mode requires the parent to have a confirmed Claude session ID (i.e., the session must have been launched at
-least once). `--strategy` and `--depth` are ignored in native mode.
+least once). `--strategy` and `--depth` are ignored in native mode. `--review` is only valid for handoff mode (native
+resumes carry the conversation verbatim and have no editable artifact).
 
-Resume and fork-recovery launches inject the generated handoff file directly with `--append-system-prompt-file`. If you
+**Curating the handoff with `--review`.** When you pass `--review`, Forge opens the generated per-child handoff file in
+`$EDITOR` and waits. Save and exit normally to launch; abort (`:cq` in vim) to skip the launch. The edited file is
+preserved on disk regardless of whether the launch proceeded. If you abort, the child session remains unlaunched; run
+`forge session resume <child>` later to launch it with the preserved edited handoff file.
+
+**Per-parent layout for resume artifacts.** Each parent gets a directory under `.forge/prev_sessions/`:
+
+```text
+<forge_root>/.forge/prev_sessions/
+└── <parent>/
+    ├── generated.md             # Regeneratable cache (overwritten on every resume)
+    └── children/
+        └── <child>.md           # Per-child authoritative context (durable)
+```
+
+Re-resuming the same parent regenerates `generated.md` but never disturbs an existing `children/<child>.md`. Any
+hand-edits a user makes to a child file survive subsequent resumes from the same parent.
+
+Resume and fork-recovery launches inject the per-child file directly with `--append-system-prompt-file`. If you
 customize `CLAUDE.md`, do not also add manual references to `.forge/prev_sessions/...` there, or you may duplicate the
 same handoff context.
 
@@ -365,11 +387,12 @@ forge session fork auth-refactor --name auth-refactor-alt --worktree
 
 Creates a git worktree for the fork. `--branch` implies `--worktree`. Because Claude conversations are project-scoped,
 the fork starts a fresh Claude session in the new worktree and automatically injects a parent handoff context file
-(`.forge/prev_sessions/<parent>.md`). Claude knows where the parent left off, but the old visible chat history is not
-replayed.
+(`.forge/prev_sessions/<parent>/children/<fork-name>.md`). Claude knows where the parent left off, but the old visible
+chat history is not replayed.
 
 The fork manifest and handoff file live under the new worktree's Forge root. For a root-level project, inspect
-`<new-worktree>/.forge/sessions/<fork>/forge.session.json` and `<new-worktree>/.forge/prev_sessions/<parent>.md`.
+`<new-worktree>/.forge/sessions/<fork>/forge.session.json` and
+`<new-worktree>/.forge/prev_sessions/<parent>/children/<fork-name>.md`.
 
 **With `--into` (existing worktree):**
 

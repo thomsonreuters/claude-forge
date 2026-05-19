@@ -21,7 +21,15 @@ EOF
 forge session set memory.auto_update.enabled true --session test-session-1
 forge session set memory.auto_update.min_turns 1 --session test-session-1
 forge session set memory.auto_update.mode augment --session test-session-1
-forge session set memory.designated_docs '[{"path":".forge/memory/debugging.md","strategy":"debugging"},{"path":".forge/memory/patterns.md","strategy":"patterns"}]' --session test-session-1
+forge session set memory.designated_docs '[]' --session test-session-1
+forge session memory add-doc .forge/memory/debugging.md --strategy debugging --session test-session-1
+forge session memory add-doc .forge/memory/patterns.md --strategy patterns --session test-session-1
+forge session memory list-docs --session test-session-1
+forge session memory list-docs --json --session test-session-1 | jq -e '
+  length == 2
+  and any(.[]; .path == ".forge/memory/debugging.md" and .strategy == "debugging")
+  and any(.[]; .path == ".forge/memory/patterns.md" and .strategy == "patterns")
+'
 
 # Verify config
 cat .forge/sessions/test-session-1/forge.session.json | jq '.overrides.memory'
@@ -29,7 +37,7 @@ cat .forge/sessions/test-session-1/forge.session.json | jq '.overrides.memory'
 
 - [ ] Handoff config written to session overrides
 - [ ] `enabled`, `min_turns`, and `mode` values set
-- [ ] `designated_docs` includes one existing file and one missing file
+- [ ] `forge session memory add-doc/list-docs` configured one existing file and one missing file
 - [ ] Config stores worktree-relative paths under `memory.designated_docs`
 
 ### 16.2 Run Handoff Manually (Direct Update)
@@ -64,6 +72,9 @@ AFTER_LINES=$(wc -l < .forge/memory/debugging.md)
 echo "before=$BEFORE_LINES after=$AFTER_LINES"
 cat .forge/memory/debugging.md
 
+ls .forge/artifacts/test-session-1/handoff/review-*.md
+forge session handoff show test-session-1 --latest
+
 test "$AFTER_LINES" -gt "$BEFORE_LINES"
 test ! -e .forge/memory/patterns.md
 ```
@@ -72,6 +83,7 @@ test ! -e .forge/memory/patterns.md
 - [ ] Worktree-relative doc paths resolve correctly in the test repo
 - [ ] `forge handoff run` succeeds with the transcript artifact path provided
 - [ ] Existing designated docs are updated with session takeaways
+- [ ] Handoff agent stdout is persisted and visible via `forge session handoff show --latest`
 
 ### 16.3 Shadow Handoff (`suggested` + `shadows`)
 
@@ -97,7 +109,12 @@ cat > .forge/memory/suggested_standards.md <<'EOF'
 EOF
 
 forge session set memory.auto_update.mode augment --session test-session-1
-forge session set memory.designated_docs '[{"path":".forge/memory/suggested_standards.md","strategy":"suggested","shadows":"docs/team-standards.md"}]' --session test-session-1
+forge session set memory.designated_docs '[]' --session test-session-1
+forge session memory add-doc .forge/memory/suggested_standards.md \
+  --strategy suggested \
+  --shadows docs/team-standards.md \
+  --session test-session-1
+forge session memory list-docs --session test-session-1
 
 mkdir -p .forge/artifacts/test-session-1/transcripts
 cat > .forge/artifacts/test-session-1/transcripts/manual-handoff-shadow.jsonl <<'EOF'
@@ -141,7 +158,9 @@ cd $FORGE_TEST_REPO
 
 # Restore direct-update config for the queued-path test.
 forge session set memory.auto_update.mode augment --session test-session-1
-forge session set memory.designated_docs '[{"path":".forge/memory/debugging.md","strategy":"debugging"},{"path":".forge/memory/patterns.md","strategy":"patterns"}]' --session test-session-1
+forge session set memory.designated_docs '[]' --session test-session-1
+forge session memory add-doc .forge/memory/debugging.md --strategy debugging --session test-session-1
+forge session memory add-doc .forge/memory/patterns.md --strategy patterns --session test-session-1
 
 cat > .forge/memory/debugging.md <<'EOF'
 # Debugging Notes

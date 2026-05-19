@@ -96,7 +96,6 @@ class SessionContext:
             },
             "model_family": self.model_family,
             "main_model": self.main_model,
-            "model_profile": self.main_model,
             "models": dict(self.models),
             "policy": {
                 "enabled": self.policy.enabled,

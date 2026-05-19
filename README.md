@@ -33,7 +33,7 @@ Claude Code talks to Anthropic and tracks conversations. Forge adds an operation
 - **Context Compatibility** -- When routing to models with different context windows, Forge sets the native
   `CLAUDE_CODE_AUTO_COMPACT_WINDOW` so compaction timing matches the routed model.
 - **Autonomous Loops** -- Verification policies that keep Claude working until tests pass.
-- **Session Resume** -- When context fills up, hand off to a fresh session with AI-curated history.
+- **Session Resume** -- When context fills up, hand off to a fresh session with structured or AI-curated history.
 - **Policy Engine** -- TDD enforcement, coding standards, and semantic alignment checks.
 - **Multi-Model Review** -- Fan out code reviews to multiple models, get adversarial consensus.
 
@@ -44,7 +44,7 @@ Running `claude` directly bypasses session tracking. When you launch through For
 | Feature                | `claude` directly | `forge session start`                         |
 | ---------------------- | ----------------- | --------------------------------------------- |
 | Session tracking       | No                | Yes -- named sessions, artifacts, transcripts |
-| Session resume         | No                | Yes -- AI-curated handoff to fresh context    |
+| Session resume         | No                | Yes -- editable handoff to fresh context      |
 | Status line            | No                | Yes -- proxy, session, policy info            |
 | Hook-driven artifacts  | No                | Yes -- plan snapshots, transcript capture     |
 | Policy enforcement     | No                | Yes -- TDD, coding standards, supervisor      |

@@ -50,7 +50,7 @@ class TestDerivationDataclass:
             depth=3,
             resumed_at="2025-01-15T10:00:00+00:00",
             lineage=["parent", "grandparent", "great-grandparent"],
-            context_file=".forge/prev_sessions/parent.md",
+            context_file=".forge/prev_sessions/parent/children/child.md",
         )
         assert d.parent_session == "parent"
         assert d.parent_transcript == ".forge/artifacts/parent/transcripts/abc.jsonl"
@@ -59,7 +59,7 @@ class TestDerivationDataclass:
         assert d.depth == 3
         assert d.resumed_at == "2025-01-15T10:00:00+00:00"
         assert d.lineage == ["parent", "grandparent", "great-grandparent"]
-        assert d.context_file == ".forge/prev_sessions/parent.md"
+        assert d.context_file == ".forge/prev_sessions/parent/children/child.md"
 
 
 class TestSessionConfirmedWithDerivation:
@@ -103,7 +103,7 @@ class TestSessionConfirmedWithDerivation:
             depth=2,
             resumed_at="2025-01-15T10:00:00+00:00",
             lineage=["parent", "grandparent"],
-            context_file=".forge/prev_sessions/parent.md",
+            context_file=".forge/prev_sessions/parent/children/child.md",
         )
         confirmed = SessionConfirmed(
             derivation=d,
@@ -145,7 +145,7 @@ class TestSessionStateWithDerivation:
             depth=1,
             resumed_at="2025-01-15T10:30:00+00:00",
             lineage=["parent-session"],
-            context_file=".forge/prev_sessions/parent-session.md",
+            context_file=".forge/prev_sessions/parent-session/children/child-session.md",
         )
 
         confirmed = SessionConfirmed(
@@ -189,7 +189,9 @@ class TestSessionStateWithDerivation:
         assert parsed.confirmed.derivation is not None
         assert parsed.confirmed.derivation.parent_session == "parent-session"
         assert parsed.confirmed.derivation.strategy == "structured"
-        assert parsed.confirmed.derivation.context_file == ".forge/prev_sessions/parent-session.md"
+        assert (
+            parsed.confirmed.derivation.context_file == ".forge/prev_sessions/parent-session/children/child-session.md"
+        )
 
     def test_backwards_compatible_without_derivation(self) -> None:
         """Sessions without derivation should still load correctly."""

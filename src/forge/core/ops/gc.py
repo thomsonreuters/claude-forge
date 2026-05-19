@@ -217,6 +217,30 @@ def _build_worktree_reference_set(ctx: ExecutionContext, scope: str, scope_roots
     return result
 
 
+def _build_handoff_context_reference_set(ref_set: set[tuple[str, str]]) -> set[str]:
+    """Build absolute paths referenced by session derivation context_file fields."""
+    from forge.session import SessionStore
+
+    result: set[str] = set()
+    for name, forge_root in ref_set:
+        try:
+            state = SessionStore(forge_root, name).read()
+        except Exception:
+            _log.debug("Could not read session manifest for handoff GC: %s (%s)", name, forge_root, exc_info=True)
+            continue
+
+        derivation = state.confirmed.derivation
+        if derivation is None or not derivation.context_file:
+            continue
+
+        context_path = Path(derivation.context_file).expanduser()
+        if not context_path.is_absolute():
+            context_path = Path(forge_root) / context_path
+        result.add(str(context_path.resolve()))
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Pure detect functions (read-only)
 # ---------------------------------------------------------------------------
@@ -247,28 +271,60 @@ def _detect_orphan_session_dirs(ref_set: set[tuple[str, str]], forge_roots: set[
 
 
 def _detect_orphan_handoff_files(ref_set: set[tuple[str, str]], forge_roots: set[Path]) -> OrphanCategory:
-    """Find handoff files whose parent session is not in the index.
+    """Find orphaned resume-context artifacts under ``prev_sessions/``.
 
-    Checks (parent_name, forge_root) against the ref_set to handle
-    name reuse across different Forge projects correctly.
+    Walks the per-parent layout (``<parent>/generated.md`` +
+    ``<parent>/children/<child>.md``) and identifies three kinds of orphans:
+
+    1. ``<parent>/`` directories whose parent session is not in the index --
+       the whole directory is orphaned (rmtree).
+    2. ``children/<child>.md`` files not referenced by any child session's
+       ``Derivation.context_file`` (within a still-referenced parent dir) --
+       just the file.
+    3. Top-level ``<parent>.md`` files (legacy pre-0.2.0 flat layout) --
+       always orphaned since new code never writes here.
+
+    Parent liveness checks (session_name, forge_root) against the ref_set to
+    handle name reuse across different Forge projects correctly. Child files
+    are kept only when an indexed session derivation references that exact path.
     """
+    from forge.session import prev_sessions as _ps
+
     orphans: list[str] = []
+    referenced_context_files = _build_handoff_context_reference_set(ref_set)
 
     for forge_root in forge_roots:
-        prev_dir = forge_root / ".forge" / "prev_sessions"
-        if not prev_dir.is_dir():
+        prev_root = _ps.prev_sessions_root(forge_root)
+        if not prev_root.is_dir():
             continue
-        # Build per-root name set: sessions known to exist in THIS forge_root
         names_in_root = {name for name, fr in ref_set if fr == str(forge_root)}
-        for child in prev_dir.iterdir():
-            if not child.is_file() or child.suffix != ".md":
+
+        # 1 + 2: per-parent directories and their child files
+        for parent_dir_path in _ps.iter_parents(forge_root):
+            parent_name = parent_dir_path.name
+            child_files = list(_ps.iter_children(forge_root, parent_name))
+            referenced_children = [
+                child_file for child_file in child_files if str(child_file.resolve()) in referenced_context_files
+            ]
+
+            if parent_name not in names_in_root and not referenced_children:
+                orphans.append(str(parent_dir_path))
                 continue
-            parent_name = child.stem
-            if parent_name not in names_in_root:
-                orphans.append(str(child))
+
+            # Parent dir is live either because the parent session lives in
+            # this Forge root, or because a cross-worktree child references a
+            # child context file under it. Remove only unreferenced children.
+            for child_file in child_files:
+                if str(child_file.resolve()) not in referenced_context_files:
+                    orphans.append(str(child_file))
+
+        # 3: legacy flat files at the top of prev_sessions/
+        for legacy_file in _ps.iter_legacy_flat_files(forge_root):
+            orphans.append(str(legacy_file))
+
     return OrphanCategory(
         category="handoff_files",
-        description="Handoff files for sessions not in the index",
+        description="Orphaned resume-context artifacts (handoff files)",
         count=len(orphans),
         items=sorted(orphans),
     )
@@ -548,7 +604,7 @@ def run_clean(*, ctx: ExecutionContext, scope: str = "repo") -> CleanResult:
         if category.category == "session_dirs":
             cleaned = _clean_session_dirs(category.items, result)
         elif category.category == "handoff_files":
-            cleaned = _clean_files(category.items, result)
+            cleaned = _clean_handoff_files(category.items, result)
         elif category.category == "active_entries":
             cleaned = _clean_active_entries(category.items)
         elif category.category == "work_queue":
@@ -579,7 +635,7 @@ def _clean_session_dirs(items: list[str], result: CleanResult) -> int:
 
 
 def _clean_files(items: list[str], result: CleanResult) -> int:
-    """Remove orphaned files (handoff .md files, work-queue markers)."""
+    """Remove orphaned files (work-queue markers)."""
     cleaned = 0
     for path_str in items:
         try:
@@ -587,6 +643,54 @@ def _clean_files(items: list[str], result: CleanResult) -> int:
             cleaned += 1
         except OSError as e:
             result.failed.append((path_str, str(e)))
+    return cleaned
+
+
+def _clean_handoff_files(items: list[str], result: CleanResult) -> int:
+    """Remove orphaned resume-context artifacts.
+
+    Items may be:
+    - ``<parent>/`` directories (whole orphaned parents) -- rmtree
+    - ``<parent>/children/<child>.md`` files -- unlink, then prune empty
+      ``children/`` and parent dirs that contain only ``generated.md``
+    - Top-level ``<parent>.md`` legacy flat files -- unlink
+    """
+    cleaned = 0
+    dirs_to_check: set[Path] = set()
+
+    for path_str in items:
+        path = Path(path_str)
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+                cleaned += 1
+            elif path.is_file():
+                # Track parent for empty-dir cleanup after unlinking
+                if path.parent.name == "children":
+                    dirs_to_check.add(path.parent)
+                path.unlink()
+                cleaned += 1
+        except OSError as e:
+            result.failed.append((path_str, str(e)))
+
+    # Post-cleanup: drop empty children/ and parent dirs left behind.
+    # If parent dir contains only generated.md (no children left), the cache
+    # is dead weight too -- the whole parent dir goes.
+    for children_dir in dirs_to_check:
+        try:
+            if not children_dir.is_dir() or any(children_dir.iterdir()):
+                continue
+            children_dir.rmdir()
+            parent = children_dir.parent
+            if not parent.is_dir():
+                continue
+            remaining = list(parent.iterdir())
+            if not remaining or (len(remaining) == 1 and remaining[0].name == "generated.md"):
+                shutil.rmtree(parent)
+        except OSError:
+            # Best-effort post-cleanup
+            pass
+
     return cleaned
 
 

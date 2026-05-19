@@ -2,9 +2,9 @@
 
 <!-- version: 1.0.0 -->
 
-<!-- test-count: 84 assertions -->
+<!-- test-count: 90 assertions -->
 
-<!-- last-updated: 2026-03-19 -->
+<!-- last-updated: 2026-05-18 -->
 
 <!-- aligned-with: v0.1.0 -->
 
@@ -517,6 +517,31 @@ bash "$SCRIPTS/run-in-repo.sh" forge session list
 
 - [ ] Both walkthrough-demo and walkthrough-fork appear in session list
 
+### 11.5 Try Memory Doc Commands
+
+<!-- human:guided -->
+
+In your **Terminal** window, try the lightweight memory-doc setup commands. This does not run the handoff agent; it only
+verifies that session memory docs can be added, inspected, and removed without editing raw JSON.
+
+```
+mkdir -p .forge/memory
+cat > .forge/memory/walkthrough-notes.md <<'EOF'
+# Walkthrough Notes
+EOF
+
+forge session memory add-doc .forge/memory/walkthrough-notes.md --strategy debugging --session walkthrough-demo
+forge session memory list-docs --session walkthrough-demo
+forge session memory list-docs --json --session walkthrough-demo
+forge session memory remove-doc .forge/memory/walkthrough-notes.md --session walkthrough-demo
+forge session memory list-docs --session walkthrough-demo
+```
+
+- [ ] `add-doc` succeeds for `.forge/memory/walkthrough-notes.md`
+- [ ] `list-docs` shows the path with `debugging` strategy
+- [ ] `list-docs --json` emits the same designated doc in JSON form
+- [ ] `remove-doc` succeeds and the final list no longer includes the doc
+
 ---
 
 ## 12. Sidecar Execution
@@ -675,9 +700,14 @@ rm -rf "$FORGE_TEST_REPO/.forge/artifacts"
 rm -rf "$FORGE_TEST_REPO/.forge/search-index"
 ```
 
+```bash
+rm -rf "$FORGE_TEST_REPO/.forge/memory"
+```
+
 - [ ] Fork session cleaned (or did not exist)
 - [ ] Session deleted
 - [ ] Proxy deleted
+- [ ] Walkthrough memory docs removed
 
 ### 13.3 Uninstall from Sandbox
 

@@ -199,7 +199,13 @@ def test_deferred_same_dir_fork_session_start_reconciles_child_uuid(
 
 
 def test_worktree_fork_handoff_regenerates_stale_context(tmp_path: Path) -> None:
-    """Worktree forks should overwrite stale cached handoff with current transcript context."""
+    """Worktree forks regenerate parent cache; legacy flat stale files are ignored.
+
+    Under the per-parent-directory layout the fork's launch-time context file
+    lives at ``<fork>/.forge/prev_sessions/<parent>/children/<fork_name>.md``.
+    Legacy pre-0.2.0 flat ``<parent>.md`` files at the top of ``prev_sessions/``
+    are no longer read; new code writes only to the new path.
+    """
     parent_dir = tmp_path / "parent-worktree"
     fork_dir = tmp_path / "fork-worktree"
     parent_dir.mkdir()
@@ -234,13 +240,15 @@ def test_worktree_fork_handoff_regenerates_stale_context(tmp_path: Path) -> None
     manager = SessionManager()
     manager.index_store.add_from_state(parent_state, str(parent_dir))
 
-    stale_parent_context = parent_dir / ".forge" / "prev_sessions" / "stale-parent.md"
-    stale_parent_context.parent.mkdir(parents=True, exist_ok=True)
-    stale_parent_context.write_text("# Session Context: stale-parent\n\nstale parent context\n", encoding="utf-8")
+    # Legacy stale flat files at the OLD location. New code ignores these
+    # entirely; they remain on disk until GC sweeps them.
+    legacy_parent_flat = parent_dir / ".forge" / "prev_sessions" / "stale-parent.md"
+    legacy_parent_flat.parent.mkdir(parents=True, exist_ok=True)
+    legacy_parent_flat.write_text("legacy parent (should be ignored)\n", encoding="utf-8")
 
-    stale_fork_context = fork_dir / ".forge" / "prev_sessions" / "stale-parent.md"
-    stale_fork_context.parent.mkdir(parents=True, exist_ok=True)
-    stale_fork_context.write_text("# Session Context: stale-parent\n\nstale fork context\n", encoding="utf-8")
+    legacy_fork_flat = fork_dir / ".forge" / "prev_sessions" / "stale-parent.md"
+    legacy_fork_flat.parent.mkdir(parents=True, exist_ok=True)
+    legacy_fork_flat.write_text("legacy fork (should be ignored)\n", encoding="utf-8")
 
     fork_state = create_session_state(
         "stale-child",
@@ -256,11 +264,63 @@ def test_worktree_fork_handoff_regenerates_stale_context(tmp_path: Path) -> None
 
     context_path, warnings = _generate_parent_handoff_context(manager=manager, manifest=fork_state)
 
+    expected_child = fork_dir / ".forge" / "prev_sessions" / "stale-parent" / "children" / "stale-child.md"
     assert context_path is not None
-    assert context_path == stale_fork_context.resolve()
-    content = stale_fork_context.read_text(encoding="utf-8")
+    assert context_path == expected_child.resolve()
+    content = expected_child.read_text(encoding="utf-8")
     assert "fresh context from transcript" in content
-    assert "stale parent context" not in content
-    assert "stale fork context" not in content
+    assert "legacy parent" not in content
+    assert "legacy fork" not in content
     assert "Transcript not available" not in content
+    assert warnings == []
+
+    # Legacy flat files are NOT modified or removed by handoff -- that is GC's job.
+    assert legacy_parent_flat.is_file()
+    assert legacy_fork_flat.is_file()
+
+
+def test_worktree_fork_handoff_writes_to_nested_forge_root(tmp_path: Path) -> None:
+    """Nested Forge project forks should write prev_sessions under forge_root."""
+    parent_dir = tmp_path / "parent-worktree"
+    fork_dir = tmp_path / "fork-worktree"
+    nested_forge_root = fork_dir / "packages" / "app"
+    parent_dir.mkdir()
+    nested_forge_root.mkdir(parents=True)
+
+    parent_state = create_session_state(
+        "parent",
+        proxy_template="litellm-openai",
+        proxy_base_url="http://localhost:8085",
+        worktree_path=str(parent_dir),
+        worktree_branch="main",
+    )
+    parent_state.forge_root = str(parent_dir)
+
+    manager = SessionManager()
+    SessionStore(str(parent_dir), "parent").write(parent_state)
+    manager.index_store.add_from_state(parent_state, str(parent_dir))
+
+    fork_state = create_session_state(
+        "child",
+        proxy_template="litellm-openai",
+        proxy_base_url="http://localhost:8085",
+        parent_session="parent",
+        is_fork=True,
+        worktree_path=str(fork_dir),
+        worktree_branch="child",
+    )
+    assert fork_state.worktree is not None
+    fork_state.worktree.is_worktree = True
+    fork_state.forge_root = str(nested_forge_root)
+
+    context_path, warnings = _generate_parent_handoff_context(
+        manager=manager,
+        manifest=fork_state,
+        parent_state=parent_state,
+    )
+
+    expected_child = nested_forge_root / ".forge" / "prev_sessions" / "parent" / "children" / "child.md"
+    assert context_path == expected_child.resolve()
+    assert expected_child.is_file()
+    assert not (fork_dir / ".forge" / "prev_sessions" / "parent" / "children" / "child.md").exists()
     assert warnings == []

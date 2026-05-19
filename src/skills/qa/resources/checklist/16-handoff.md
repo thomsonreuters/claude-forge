@@ -11,7 +11,8 @@
 ```bash
 cd $FORGE_TEST_REPO
 
-# Seed one real target doc and intentionally leave one configured doc missing.
+# Seed one real target doc. The CLI validates existence, so the intentionally
+# missing doc used for runtime-skip coverage is injected below via raw override.
 mkdir -p .forge/memory
 cat > .forge/memory/debugging.md <<'EOF'
 # Debugging Notes
@@ -23,7 +24,14 @@ forge session set memory.auto_update.min_turns 1 --session test-session-1
 forge session set memory.auto_update.mode augment --session test-session-1
 forge session set memory.designated_docs '[]' --session test-session-1
 forge session memory add-doc .forge/memory/debugging.md --strategy debugging --session test-session-1
-forge session memory add-doc .forge/memory/patterns.md --strategy patterns --session test-session-1
+forge session memory list-docs --json --session test-session-1 | jq -e '
+  length == 1
+  and any(.[]; .path == ".forge/memory/debugging.md" and .strategy == "debugging")
+'
+
+# Inject one missing doc directly to validate the agent's runtime skip path.
+# This represents stale/manual config; `forge session memory add-doc` should reject it.
+forge session set memory.designated_docs '[{"path":".forge/memory/debugging.md","strategy":"debugging","shadows":null},{"path":".forge/memory/patterns.md","strategy":"patterns","shadows":null}]' --session test-session-1
 forge session memory list-docs --session test-session-1
 forge session memory list-docs --json --session test-session-1 | jq -e '
   length == 2
@@ -37,7 +45,8 @@ cat .forge/sessions/test-session-1/forge.session.json | jq '.overrides.memory'
 
 - [ ] Handoff config written to session overrides
 - [ ] `enabled`, `min_turns`, and `mode` values set
-- [ ] `forge session memory add-doc/list-docs` configured one existing file and one missing file
+- [ ] `forge session memory add-doc/list-docs` configures an existing designated doc
+- [ ] Raw override includes one missing designated doc for runtime skip coverage
 - [ ] Config stores worktree-relative paths under `memory.designated_docs`
 
 ### 16.2 Run Handoff Manually (Direct Update)
@@ -158,9 +167,7 @@ cd $FORGE_TEST_REPO
 
 # Restore direct-update config for the queued-path test.
 forge session set memory.auto_update.mode augment --session test-session-1
-forge session set memory.designated_docs '[]' --session test-session-1
-forge session memory add-doc .forge/memory/debugging.md --strategy debugging --session test-session-1
-forge session memory add-doc .forge/memory/patterns.md --strategy patterns --session test-session-1
+forge session set memory.designated_docs '[{"path":".forge/memory/debugging.md","strategy":"debugging","shadows":null},{"path":".forge/memory/patterns.md","strategy":"patterns","shadows":null}]' --session test-session-1
 
 cat > .forge/memory/debugging.md <<'EOF'
 # Debugging Notes

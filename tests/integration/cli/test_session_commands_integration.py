@@ -237,6 +237,58 @@ class TestSessionResume:
             "--append-system-prompt-file /workspace/.forge/prev_sessions/resume-invoke-test/children/" in result.stdout
         )
 
+    def test_resume_review_opens_editor_and_launches_edited_child_context(
+        self,
+        mock_claude_workspace: ContainerLike,
+    ) -> None:
+        """--fresh --review opens the per-child artifact and launches with the edited file."""
+        mock_claude_workspace.exec("cd /workspace && forge session start review-parent --no-launch")
+        _run_container_python(
+            mock_claude_workspace,
+            """
+            import json
+            from pathlib import Path
+
+            from forge.session.claude.paths import get_transcript_path
+
+            parent_path = Path("/workspace/.forge/sessions/review-parent/forge.session.json")
+            parent = json.loads(parent_path.read_text())
+            parent["confirmed"]["claude_session_id"] = "review-parent-uuid"
+            parent["confirmed"]["confirmed_by"] = "hook:SessionStart:startup"
+            transcript = get_transcript_path("/workspace", "review-parent-uuid")
+            transcript.parent.mkdir(parents=True, exist_ok=True)
+            transcript.write_text(
+                '{"requestId":"r1","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":[{"type":"text","text":"original parent context"}]}}\\n',
+                encoding="utf-8",
+            )
+            parent["confirmed"]["transcript_path"] = str(transcript)
+            parent_path.write_text(json.dumps(parent))
+            """,
+        )
+        mock_claude_workspace.write_file(
+            "/tmp/review-editor",
+            """#!/bin/bash
+set -euo pipefail
+echo 'EDITOR_WAS_HERE' >> "$1"
+""",
+        )
+        mock_claude_workspace.exec("chmod +x /tmp/review-editor && > /tmp/claude_invocations.log")
+
+        result = mock_claude_workspace.exec(
+            "cd /workspace && EDITOR=/tmp/review-editor "
+            "forge session resume review-parent --fresh --review --child-name review-child",
+            timeout=30,
+        )
+
+        assert result.returncode == 0, result.stderr
+        context_path = "/workspace/.forge/prev_sessions/review-parent/children/review-child.md"
+        invocations = mock_claude_workspace.read_file("/tmp/claude_invocations.log")
+        assert f"--append-system-prompt-file {context_path}" in invocations
+
+        context = mock_claude_workspace.read_file(context_path)
+        assert "original parent context" in context
+        assert "EDITOR_WAS_HERE" in context
+
     def test_resume_nonexistent_fails(self, mock_claude_workspace: ContainerLike) -> None:
         """Should fail for nonexistent session."""
         result = mock_claude_workspace.exec("cd /workspace && forge session resume nonexistent")

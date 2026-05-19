@@ -1601,7 +1601,8 @@ Per-doc strategies control how each file is updated. Strategies are a `str → s
 
 **No file creation.** Designated docs must already exist; missing files are skipped. Humans choose which docs to
 maintain; the agent maintains them. This avoids the agent making structural choices (new files/templates) implicitly.
-Seed files before configuring them.
+Seed files before configuring them. `forge session memory add-doc` enforces this at configuration time; runtime skip
+handling remains for manual JSON overrides and stale manifests.
 
 Direct update strategies (Mode 1) include: `project-state`, `checklist`, `changelog`, `debugging`, `patterns`,
 `generic`. Shadow strategy (Mode 2): `suggested` (propose additions as checkboxes with rationale).

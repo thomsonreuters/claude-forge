@@ -37,13 +37,14 @@ forge logs --clean
 
 # Verify cleanup
 forge logs
-# Expected: reports 0 log files
+# Expected: reports 0 log files when no Forge processes are running.
+# If QA proxies are still running, active proxy logs may be retained.
 ```
 
 - [ ] `FORGE_DEBUG=1` enables debug logging (no crash, no error)
 - [ ] `forge logs` shows log directory location and file counts
 - [ ] Log files were actually written (count > 0 after debug run)
-- [ ] `forge logs --clean` removes log files
-- [ ] After cleanup, `forge logs` reports 0 files
+- [ ] `forge logs --clean` removes stale log files
+- [ ] After cleanup, `forge logs` reports 0 files, or only logs for currently running Forge proxy processes
 
 ---

@@ -10,8 +10,12 @@
 # Clean up test sessions and artifacts, but preserve the QA state mount
 rm -rf .forge/sessions/ .forge/artifacts/ .forge/prev_sessions/ .forge/search-index/
 
-# Remove shell profile backup (optional)
-rm -f ~/.zshrc.forge-uninstall-backup
+# Remove shell profile backups (optional)
+rm -f \
+  ~/.bashrc.forge-uninstall-backup \
+  ~/.bash_profile.forge-uninstall-backup \
+  ~/.zshrc.forge-uninstall-backup \
+  ~/.config/fish/config.fish.forge-uninstall-backup
 
 # Remove QA cost fixture logs (safe: only QA-owned fixture names)
 rm -f ~/.forge/costs/requests/qa-fixture_*.jsonl

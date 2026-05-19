@@ -95,6 +95,39 @@ def _build_transcript(turn_count: int = 10) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _install_outputting_claude_mock(workspace: ContainerLike) -> None:
+    """Replace the default mock with one that emits stable stdout for report tests."""
+    workspace.write_file(
+        "/tmp/claude-mock",
+        """#!/bin/bash
+set -euo pipefail
+
+if [ "${1:-}" = "--version" ]; then
+    echo "99.99.99 (Claude Code)"
+    exit 0
+fi
+
+pid="$$"
+echo "$(date -Iseconds) claude $*" >> /tmp/claude_invocations.log
+env | sort > "/tmp/claude_env_${pid}.log"
+
+if [ ! -t 0 ]; then
+    cat > "/tmp/claude_stdin_${pid}.log"
+else
+    : > "/tmp/claude_stdin_${pid}.log"
+fi
+
+cat <<'MOCK_STDOUT'
+Review proposal: add the latest session fact to docs/state.md.
+MOCK_STDOUT
+
+exit "${FORGE_MOCK_CLAUDE_EXIT_CODE:-0}"
+""",
+    )
+    result = workspace.exec("chmod +x /tmp/claude-mock && > /tmp/claude_invocations.log")
+    assert result.returncode == 0, result.stderr
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -275,6 +308,66 @@ class TestHandoffRunMultiDoc:
 
         prompt = claude_capture_file("/tmp/claude_stdin_*.log")
         assert "Do NOT modify any files" in prompt
+
+    def test_memory_cli_review_only_report_is_visible(
+        self,
+        mock_claude_workspace: ContainerLike,
+        claude_capture_file: Callable[[str], str],
+    ) -> None:
+        """memory add-doc → handoff review-only → session handoff show exposes the report."""
+        session_name = "memory-review"
+        transcript_rel = f".forge/artifacts/{session_name}/transcripts/uuid-456.jsonl"
+        _install_outputting_claude_mock(mock_claude_workspace)
+
+        result = mock_claude_workspace.exec(f"cd /workspace && forge session start {session_name} --no-launch")
+        assert result.returncode == 0, result.stderr
+        mock_claude_workspace.exec("mkdir -p /workspace/docs")
+        mock_claude_workspace.write_file("/workspace/docs/state.md", "# State\n")
+        mock_claude_workspace.exec(f"mkdir -p /workspace/$(dirname {transcript_rel})")
+        mock_claude_workspace.write_file(f"/workspace/{transcript_rel}", _build_transcript())
+
+        result = mock_claude_workspace.exec(
+            f"cd /workspace && forge session memory add-doc docs/state.md "
+            f"--strategy project-state --session {session_name}"
+        )
+        assert result.returncode == 0, result.stderr
+        for key, value in (
+            ("memory.auto_update.enabled", "true"),
+            ("memory.auto_update.mode", "review-only"),
+            ("memory.auto_update.min_turns", "1"),
+        ):
+            result = mock_claude_workspace.exec(
+                f"cd /workspace && forge session set --session {session_name} {key} {value}"
+            )
+            assert result.returncode == 0, result.stderr
+
+        list_result = mock_claude_workspace.exec(
+            f"cd /workspace && forge session memory list-docs --session {session_name} --json"
+        )
+        assert list_result.returncode == 0, list_result.stderr
+        assert json.loads(list_result.stdout) == [
+            {"path": "docs/state.md", "strategy": "project-state", "shadows": None}
+        ]
+
+        result = mock_claude_workspace.exec(
+            "cd /workspace && forge handoff run "
+            f"--session-name {session_name} "
+            "--worktree-path /workspace "
+            f"--transcript-rel {transcript_rel} "
+            "--timeout 5",
+            timeout=20,
+        )
+        assert result.returncode == 0, result.stderr
+
+        prompt = claude_capture_file("/tmp/claude_stdin_*.log")
+        assert "Do NOT modify any files" in prompt
+        assert "docs/state.md" in prompt
+
+        show_result = mock_claude_workspace.exec(f"cd /workspace && forge session handoff show {session_name} --latest")
+        assert show_result.returncode == 0, show_result.stderr
+        assert "Handoff Agent Report -- memory-review" in show_result.stdout
+        assert "Mode**: review-only" in show_result.stdout
+        assert "Review proposal: add the latest session fact to docs/state.md." in show_result.stdout
 
     def test_shadow_doc_prompt(
         self,

@@ -234,6 +234,7 @@ class TestReviewSubprocessProxy:
 
         monkeypatch.setenv(FORGE_SUBPROCESS_PROXY_VAR, "openrouter")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+        monkeypatch.setattr("forge.review.engine.shutil.which", lambda name: "/usr/local/bin/claude")
         monkeypatch.setattr(
             "forge.core.reactive.proxy.check_proxy_reachable",
             lambda proxy, timeout_s=1.0: (proxy == "openrouter", "", "http://localhost:8095"),
@@ -260,6 +261,7 @@ class TestReviewSubprocessProxy:
 
         monkeypatch.setenv(FORGE_SUBPROCESS_PROXY_VAR, "dead-proxy")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+        monkeypatch.setattr("forge.review.engine.shutil.which", lambda name: "/usr/local/bin/claude")
 
         errors = preflight_check(
             [

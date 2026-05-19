@@ -114,16 +114,33 @@ cat .claude/settings.local.json | jq '.env.MY_CUSTOM_VAR'
 <!-- destructive -->
 
 ```bash
-# Check that block markers were removed from profile
-grep -c "claude-forge" ~/.zshrc || echo "No claude-forge entries"
-grep -c "~/.forge/bin" ~/.zshrc || echo "No forge bin entries"
+# Check that block markers were removed from any shell profile Forge may touch.
+PROFILES=("$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc" "$HOME/.config/fish/config.fish")
+FOUND_PROFILE=0
+FOUND_BACKUP=0
 
-# Check backup was created
-ls ~/.zshrc.forge-uninstall-backup 2>/dev/null && echo "Backup exists"
+for profile in "${PROFILES[@]}"; do
+  if [ -f "$profile" ]; then
+    FOUND_PROFILE=1
+    echo "Checking $profile"
+    grep -n ">>> claude-forge >>>" "$profile" && exit 1 || true
+    grep -n "$HOME/.forge/bin" "$profile" && exit 1 || true
+  fi
+
+  if [ -f "$profile.forge-uninstall-backup" ]; then
+    FOUND_BACKUP=1
+    echo "Backup exists: $profile.forge-uninstall-backup"
+  fi
+done
+
+echo "profiles_found=$FOUND_PROFILE backups_found=$FOUND_BACKUP"
+if [ "$FOUND_PROFILE" -eq 0 ]; then
+  echo "No shell profile exists in this container; profile cleanup is N/A."
+fi
 ```
 
-- [ ] No `>>> claude-forge >>>` block in profile
-- [ ] No `.forge/bin` in PATH
-- [ ] Backup file created at `~/.zshrc.forge-uninstall-backup`
+- [ ] No `>>> claude-forge >>>` block remains in any existing shell profile
+- [ ] No `.forge/bin` PATH entry remains in any existing shell profile
+- [ ] Backup file exists for any profile that was modified; if no shell profile exists, profile cleanup is N/A
 
 ---

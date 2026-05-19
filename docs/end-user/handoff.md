@@ -268,7 +268,9 @@ The agent validates designated docs before processing:
 | Self-shadowing    | `doc.path == doc.shadows`                             |
 | Empty shadows     | `shadows=""` (must be non-empty or null)              |
 
-Invalid docs are skipped with a log warning. If all docs are invalid or missing, the agent exits cleanly (not an error).
+`forge session memory add-doc` validates these rules up front, including file existence. Manual JSON configs and older
+session manifests are still revalidated at runtime; invalid or missing docs are skipped with a log warning. If all docs
+are invalid or missing, the agent exits cleanly (not an error).
 
 The transcript path is also validated (same safety checks) since it comes from CLI args / work queue markers.
 

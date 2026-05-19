@@ -116,4 +116,5 @@ Use `--models` to control which models participate. Use `--worker` for explicit 
 ## Requirements
 
 - **Forge CLI**: `forge` must be on PATH
+- **Claude CLI**: workflow workers run through local `claude -p`; `claude` must be on PATH in this Bash environment
 - **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create openrouter-openai`)

@@ -93,7 +93,8 @@ def _run_preflight(
             "\n[dim]Tip: Check model availability with 'forge workflow list-models'.\n"
             "Check proxy status: 'forge proxy list'\n"
             "Check auth status: 'forge auth status'\n"
-            "Create a proxy: 'forge proxy create <template>'[/dim]"
+            "Create a proxy: 'forge proxy create <template>'\n"
+            "Check worker runtime: 'command -v claude'[/dim]"
         )
     sys.exit(1)
 

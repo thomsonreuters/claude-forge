@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import threading
@@ -56,8 +57,16 @@ def preflight_check(
 
     Returns a list of error strings (empty means all OK).
     """
+    errors: list[str] = []
+
+    if should_spawn_subprocesses() and shutil.which("claude") is None:
+        errors.append(
+            "claude CLI not found in PATH. `forge workflow` workers run through local `claude -p`, "
+            "even for proxy-routed models; install Claude Code or expose `claude` on PATH in the "
+            "environment running `forge workflow`."
+        )
+
     if routing_plan is not None:
-        errors: list[str] = []
         for spec, result in zip(specs, routing_plan.routes):
             if result.route is None:
                 reason = result.warning or "No compatible route found"
@@ -72,7 +81,6 @@ def preflight_check(
     from .models import check_model_availability
 
     availabilities = check_model_availability(specs)
-    errors = []
     for avail in availabilities:
         if avail.status == "ready":
             continue

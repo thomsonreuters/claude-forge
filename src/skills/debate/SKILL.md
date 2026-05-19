@@ -112,4 +112,5 @@ When `--code` is specified, models evaluate the target code from adversarial per
 ## Requirements
 
 - **Forge CLI**: `forge` must be on PATH
+- **Claude CLI**: workflow workers run through local `claude -p`; `claude` must be on PATH in this Bash environment
 - **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create openrouter-openai`)

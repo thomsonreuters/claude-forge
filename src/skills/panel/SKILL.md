@@ -136,5 +136,6 @@ result in the conversation. If `--output` was not specified, print the result in
 ## Requirements
 
 - **Forge CLI**: `forge` must be on PATH
+- **Claude CLI**: workflow workers run through local `claude -p`; `claude` must be on PATH in this Bash environment
 - **Proxies**: GPT-5.5 and Gemini require active proxies (`forge proxy create openrouter-openai`)
 - **List available models**: `forge workflow list-models`

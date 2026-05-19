@@ -83,4 +83,5 @@ result in the conversation. If `--output` was not specified, print the result in
 ## Requirements
 
 - **Forge CLI**: `forge` must be on PATH
+- **Claude CLI**: workflow workers run through local `claude -p`; `claude` must be on PATH in this Bash environment
 - **Claude Opus**: Uses direct Anthropic (no proxy needed)

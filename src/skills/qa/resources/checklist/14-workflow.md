@@ -10,6 +10,8 @@ Validates workflow runners + skill architecture.
 - This section uses `$FORGE_QA_WORKFLOW_MODELS` (set by `start-container.sh` per provider profile). Workflow proxy
   aliases are created in 4.2.
 - Omitting `--models` uses all configured defaults (from `forge workflow list-models`).
+- Workflow workers require `claude` on PATH in the environment running `forge workflow`; proxies choose model routing,
+  but workers still execute through local `claude -p`.
 
 ### 14.1 List Available Workflow Models
 
@@ -209,10 +211,12 @@ type in Session B:
 
 Wait for Claude to finish. Do not replace this with `forge workflow debate` in the shell; that CLI surface is already
 covered by `14.6`. If Claude only says `Command completed`, echoes the skill instructions back, or asks you to run the
-commands manually, treat this step as a failure.
+commands manually, treat this step as a failure. If the command reports `claude CLI not found in PATH`, the slash
+command was accepted but the nested workflow worker runtime is missing from Claude Code's Bash environment.
 
 - [ ] Slash command accepted in Claude Code (no unknown-skill or parsing error)
 - [ ] Claude executes the skill itself (not just instruction injection / "Command completed")
+- [ ] No workflow preflight error about `claude` missing from PATH
 - [ ] Workers spawned with different stances (for/against/neutral)
 - [ ] Synthesis produced with points of agreement AND disagreement
 - [ ] Different perspectives visible in the final response
@@ -286,7 +290,7 @@ env -u ANTHROPIC_API_KEY FORGE_HOME="$tmp_home" \
     --json 2>&1 | tee /tmp/forge-workflow-direct-preflight.json
 rm -rf "$tmp_home"
 
-jq -e '.preflight_errors[0] | test("ANTHROPIC_API_KEY|anthropic"; "i")' \
+jq -e 'any(.preflight_errors[]; test("ANTHROPIC_API_KEY|anthropic"; "i"))' \
   /tmp/forge-workflow-direct-preflight.json
 ```
 

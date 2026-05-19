@@ -18,6 +18,12 @@ def _no_api_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _claude_cli_available(monkeypatch):
+    """Preflight tests opt out explicitly when they need to simulate a missing worker runtime."""
+    monkeypatch.setattr("forge.review.engine.shutil.which", lambda name: "/usr/local/bin/claude")
+
+
 def _spec(
     name: str = "test-model",
     family: str = "openai",
@@ -314,6 +320,17 @@ def _avail(spec: ModelSpec, status: str = "ready", reason: str = "") -> ModelAva
 
 class TestPreflightCheck:
     """Tests for preflight_check() with routing plan."""
+
+    def test_missing_claude_cli_returns_worker_runtime_error(self, monkeypatch: pytest.MonkeyPatch):
+        specs = [_spec("a"), _spec("b")]
+        plan = _plan(*[_routing_result() for _ in range(2)])
+        monkeypatch.setattr("forge.review.engine.shutil.which", lambda name: None)
+
+        errors = preflight_check(specs, routing_plan=plan)
+
+        assert len(errors) == 1
+        assert "claude CLI not found in PATH" in errors[0]
+        assert "proxy-routed models" in errors[0]
 
     def test_all_routed_returns_empty(self):
         specs = [_spec("a"), _spec("b")]

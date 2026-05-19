@@ -7,6 +7,14 @@ parallel `claude -p` subprocesses and collect results for synthesis.
 - Proxies (model routing): [`proxies.md`](proxies.md)
 - Policies (automatic gating): [`policies.md`](policies.md)
 
+All workflow runners require the local Claude Code CLI (`claude`) on `PATH`, because Forge uses `claude -p` as the
+worker runtime even when the selected model is routed through an OpenRouter or LiteLLM proxy. Verify this from the same
+shell or Claude Code Bash environment that runs `forge workflow`:
+
+```bash
+command -v claude
+```
+
 ---
 
 ## Quick start
@@ -264,6 +272,11 @@ forge workflow analyze "Deep analysis" -t 900
 
 Workflow subprocesses use `claude -p --bare` for faster startup when `ANTHROPIC_API_KEY` is available. `--bare` requires
 Claude Code >= 2.1.81. Upgrade Claude Code to resolve this.
+
+### "Worker fails with `claude CLI not found in PATH`"
+
+The workflow resolved model routing, but the local worker runtime is missing. Install Claude Code or expose `claude` on
+`PATH` in the same environment that runs `forge workflow`. Proxy-backed models still need the local `claude -p` binary.
 
 ### "debate rejects my proposal"
 

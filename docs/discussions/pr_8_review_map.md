@@ -11,7 +11,7 @@ OpenRouter gateway
   -> capability-based subprocess routing
   -> proxy request cost logs and verb attribution
   -> per-proxy spend caps
-  -> handoff/session primitives for runtime abstraction
+  -> durable session handoff and memory management
 ```
 
 Use this map for architectural and correctness review of the PR's implementation areas, plus a final documentation
@@ -23,7 +23,6 @@ Design anchors:
 
 - [docs/design_appendix.md](../design_appendix.md) A.2, proxy templates vs user-defined proxies
 - [docs/design_appendix.md](../design_appendix.md) A.6, credentials and connection values
-- [docs/proposals/runtime_abstraction.md](../proposals/runtime_abstraction.md), "OpenRouter" and "PR #8 Alignment"
 
 Review invariants:
 
@@ -67,8 +66,6 @@ Design anchors:
 
 - [docs/design.md](../design.md) 3.14, cost tracking and spend caps
 - [docs/design_appendix.md](../design_appendix.md) A.9, proxy cost configuration and logs
-- [docs/proposals/runtime_abstraction.md](../proposals/runtime_abstraction.md), "Usage and Cost Visibility" and "Cost
-  Caps"
 
 Review invariants:
 
@@ -119,7 +116,6 @@ Design anchors:
 
 - [docs/design.md](../design.md) 3.6.12, subprocess routing resolution
 - [docs/design_appendix.md](../design_appendix.md) L, subprocess routing reference
-- [docs/proposals/runtime_abstraction.md](../proposals/runtime_abstraction.md), Phase 0 and Phase 4
 
 Review invariants:
 
@@ -218,8 +214,6 @@ Design anchors:
 - [docs/design.md](../design.md) 3.9, session resume and context management
 - [docs/design.md](../design.md) 5.6, designated memory docs
 - [docs/design_appendix.md](../design_appendix.md) G, memory doc reference
-- [docs/proposals/runtime_abstraction.md](../proposals/runtime_abstraction.md), "Curated Handoff as Cross-Runtime
-  Substrate"
 
 Review invariants:
 
@@ -268,16 +262,14 @@ Tests:
 
 ## Suggested Review Order
 
-1. Read the PR description and [docs/proposals/runtime_abstraction.md](../proposals/runtime_abstraction.md) "PR #8
-   Alignment".
+1. Read the PR description and this review map's dependency chain.
 2. Review OpenRouter gateway support.
 3. Review model catalog/template changes needed by OpenRouter and workflows.
 4. Review capability-based subprocess routing.
 5. Review cost tracking and spend caps.
 6. Review session handoff/memory changes.
-7. Cross-check docs: verify [docs/proposals/runtime_abstraction.md](../proposals/runtime_abstraction.md) marks Phases
-   1-6 as future work, keeps runtime/provider/gateway/auth distinct, and matches the implemented CLI surfaces in
-   end-user docs.
+7. Cross-check docs: verify runtime/provider/gateway/auth terminology stays distinct and the implemented CLI surfaces
+   match the end-user docs.
 
 Documentation cross-check tests:
 

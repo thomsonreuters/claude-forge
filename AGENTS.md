@@ -25,6 +25,12 @@ Use `uv` for dependencies and `make` for the standard workflow:
 - `./scripts/setup.sh --local` performs the editable local install used for development.
 - `make deps` syncs dev dependencies and is the prerequisite behind the standard targets.
 - `uv run forge --help` checks the CLI entry point.
+- `command -v claude` verifies the local Claude Code CLI before workflow testing; `forge workflow` runners use
+  `claude -p` even when workers route through a proxy.
+- `forge workflow list-models [--available] [--json]` checks which workflow models are routable in the current
+  credential/proxy setup.
+- `forge proxy costs [--period month]` reviews cost logs; configure caps with
+  `forge proxy set <proxy_id> costs.caps.per_day=...`, `costs.cap_mode=strict`, and `costs.on_cap_hit=reject|warn`.
 - `make test-unit` runs tests.
 - `make test-integration` builds Docker images, starts test infrastructure, and runs integration-marked tests.
 - `make test-regression` runs regression tests.
@@ -44,6 +50,11 @@ variables first and `~/.forge/credentials.yaml` second, CLI failures should be a
 and workflow preflight should fail fast when required auth or proxies are missing. Remember that proxy health only
 confirms the local proxy process is reachable; use `forge proxy start <proxy_id> --smoke-test` to verify upstream LLM
 connectivity after first setup, credential changes, or proxy auth changes.
+
+For session resume or handoff-agent changes, verify the user-facing surfaces that apply:
+`forge session resume <name> --fresh --review`, `forge session memory list-docs|add-doc|remove-doc`, and
+`forge session handoff show [--all]`. Designated memory docs must already exist before `add-doc` because the CLI
+validates file existence and strategy/shadow consistency.
 
 ## Coding Style & Naming Conventions
 
